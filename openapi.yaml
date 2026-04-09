@@ -1,0 +1,1848 @@
+components:
+  schemas:
+    Activity:
+      additionalProperties: false
+      properties:
+        channel_id:
+          description: Broadcast push channel ID (iOS 18+). Set when activity transitions to ONGOING.
+          examples:
+            - kWWZ5wJRKkx6ZwLKBjYqow
+          type: string
+        content:
+          $ref: "#/components/schemas/Content"
+        created_at:
+          format: date-time
+          type: string
+        delete_at:
+          description: Scheduled deletion time (set automatically from ended_ttl)
+          format: date-time
+          type: string
+        ended_ttl:
+          description: Seconds after ENDED before auto-delete (1s to 30 days)
+          examples:
+            - 300
+          format: int64
+          maximum: 2592000
+          minimum: 1
+          type: integer
+        name:
+          examples:
+            - Dishwasher
+          maxLength: 256
+          type: string
+        priority:
+          examples:
+            - 0
+          format: int64
+          maximum: 10
+          minimum: 0
+          type: integer
+        slug:
+          examples:
+            - dishwasher
+          maxLength: 128
+          minLength: 1
+          pattern: ^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$
+          type: string
+        stale_ttl:
+          description: Seconds of inactivity (ONGOING) before auto-end (1s to 30 days)
+          examples:
+            - 1800
+          format: int64
+          maximum: 2592000
+          minimum: 1
+          type: integer
+        state:
+          enum:
+            - ENDED
+            - ONGOING
+            - PREEMPTED
+          examples:
+            - ONGOING
+          type: string
+        updated_at:
+          format: date-time
+          type: string
+      required:
+        - slug
+        - name
+        - state
+        - priority
+        - content
+        - created_at
+        - updated_at
+      type: object
+    ActivityShare:
+      additionalProperties: false
+      properties:
+        activity_name:
+          description: Activity display name
+          type: string
+        created_at:
+          format: date-time
+          type: string
+        id:
+          format: int64
+          type: integer
+        is_active:
+          description: Whether the activity currently exists. Only present in GET /shares/all responses.
+          type: boolean
+        owner_id:
+          description: The activity owner's user ID
+          type: string
+        owner_nickname:
+          description: Owner's display name (present in list-shared-with-me responses)
+          type: string
+        role:
+          enum:
+            - viewer
+            - editor
+          type: string
+        shared_user_id:
+          type: string
+        shared_user_nickname:
+          description: Display name of the shared user
+          type: string
+        slug:
+          description: Activity slug
+          type: string
+        slug_pattern:
+          description: Slug pattern for pattern-based shares. Present only in GET /shares/all responses for pattern shares.
+          type: string
+      required:
+        - id
+        - owner_id
+        - slug
+        - shared_user_id
+        - role
+        - created_at
+        - activity_name
+      type: object
+    ActivityWithSharing:
+      additionalProperties: false
+      properties:
+        channel_id:
+          description: Broadcast push channel ID (iOS 18+). Set when activity transitions to ONGOING.
+          examples:
+            - kWWZ5wJRKkx6ZwLKBjYqow
+          type: string
+        content:
+          $ref: "#/components/schemas/Content"
+        created_at:
+          format: date-time
+          type: string
+        delete_at:
+          description: Scheduled deletion time (set automatically from ended_ttl)
+          format: date-time
+          type: string
+        ended_ttl:
+          description: Seconds after ENDED before auto-delete (1s to 30 days)
+          examples:
+            - 300
+          format: int64
+          maximum: 2592000
+          minimum: 1
+          type: integer
+        is_shared:
+          type: boolean
+        name:
+          examples:
+            - Dishwasher
+          maxLength: 256
+          type: string
+        owner_id:
+          type: string
+        owner_nickname:
+          type: string
+        priority:
+          examples:
+            - 0
+          format: int64
+          maximum: 10
+          minimum: 0
+          type: integer
+        share_count:
+          format: int64
+          type: integer
+        share_role:
+          type: string
+        slug:
+          examples:
+            - dishwasher
+          maxLength: 128
+          minLength: 1
+          pattern: ^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$
+          type: string
+        stale_ttl:
+          description: Seconds of inactivity (ONGOING) before auto-end (1s to 30 days)
+          examples:
+            - 1800
+          format: int64
+          maximum: 2592000
+          minimum: 1
+          type: integer
+        state:
+          enum:
+            - ENDED
+            - ONGOING
+            - PREEMPTED
+          examples:
+            - ONGOING
+          type: string
+        updated_at:
+          format: date-time
+          type: string
+      required:
+        - slug
+        - name
+        - state
+        - priority
+        - content
+        - created_at
+        - updated_at
+      type: object
+    Content:
+      additionalProperties: true
+      properties:
+        accent_color:
+          description: "Accent color: named color or hex (#RRGGBB / #RRGGBBAA)"
+          type: string
+        background_color:
+          description: "Background color: named color or hex"
+          type: string
+        completion_message:
+          description: Text shown when the countdown expires (default Completed). Countdown template only.
+          maxLength: 512
+          type: string
+        current_step:
+          description: Index of currently running job (0-based). Required when template is steps.
+          format: int64
+          minimum: 0
+          type: integer
+        decimals:
+          description: Decimal places for value display. Timeline template only.
+          format: int64
+          maximum: 10
+          minimum: 0
+          type: integer
+        duration:
+          description: "Countdown length: plain seconds (1500) or h/m/s units (30s, 5m, 1h30m). Countdown template only."
+          examples:
+            - 25m
+          type: string
+        end_date:
+          description: Unix timestamp for countdown end. Required if duration is not set. Countdown template only.
+          format: int64
+          type: integer
+        fired_at:
+          description: Unix timestamp when the alert fired. Alert template only.
+          format: int64
+          type: integer
+        history:
+          additionalProperties:
+            items:
+              $ref: "#/components/schemas/HistoryPoint"
+            type:
+              - array
+              - "null"
+          type: object
+        icon:
+          description: "Icon name. SF Symbol (e.g. washer, flame) or Material Design Icon with mdi: prefix (e.g. mdi:thermometer)."
+          maxLength: 128
+          type: string
+        max_value:
+          description: Maximum value of the range. Required when template is gauge.
+          format: double
+          type: number
+        min_value:
+          description: Minimum value of the range. Required when template is gauge.
+          format: double
+          type: number
+        progress:
+          description: Progress value [0.0 - 1.0]
+          format: double
+          maximum: 1
+          minimum: 0
+          type: number
+        remaining_time:
+          description: Remaining time in seconds
+          format: int64
+          minimum: 0
+          type: integer
+        scale:
+          description: "Y-axis scale mode. Timeline template only. Default: linear."
+          enum:
+            - linear
+            - logarithmic
+          type: string
+        secondary_url:
+          description: Secondary URL. Displayed as a second tappable button. Only supported on steps and alert templates.
+          maxLength: 2048
+          type: string
+        severity:
+          description: Alert severity level. Required when template is alert.
+          enum:
+            - critical
+            - warning
+            - info
+          type: string
+        smoothing:
+          description: Curve interpolation between data points. Timeline template only.
+          type: boolean
+        start_date:
+          description: Unix timestamp when countdown began. Countdown template only.
+          format: int64
+          type: integer
+        state:
+          description: Short status text (e.g. Washing, Build Container Image)
+          maxLength: 256
+          type: string
+        step_labels:
+          items:
+            type: string
+          type:
+            - array
+            - "null"
+        step_rows:
+          items:
+            format: int64
+            type: integer
+          type:
+            - array
+            - "null"
+        subtitle:
+          description: Secondary descriptive text (e.g. Layer 150/200, repo / CI/CD)
+          maxLength: 256
+          type: string
+        template:
+          description: Template type that determines the Live Activity layout
+          enum:
+            - generic
+            - countdown
+            - steps
+            - alert
+            - gauge
+            - timeline
+          type: string
+        text_color:
+          description: "Text color: named color or hex"
+          type: string
+        thresholds:
+          description: Horizontal reference lines on the sparkline. Timeline template only.
+          items:
+            $ref: "#/components/schemas/Threshold"
+          maxItems: 5
+          type:
+            - array
+            - "null"
+        total_steps:
+          description: Total number of jobs in the workflow. Required when template is steps.
+          format: int64
+          minimum: 1
+          type: integer
+        unit:
+          description: Unit label displayed after the value (e.g. °C, %, rpm). Gauge and timeline templates.
+          maxLength: 32
+          type: string
+        units:
+          additionalProperties:
+            type: string
+          type: object
+        url:
+          description: Primary URL. Displayed as a tappable button. Only supported on steps and alert templates.
+          maxLength: 2048
+          type: string
+        value:
+          description: Numeric value (gauge) or labeled values object (timeline)
+        warning_pushed:
+          description: Server-set flag indicating a countdown warning push has been sent.
+          readOnly: true
+          type: boolean
+        warning_threshold:
+          description: Seconds before end_date when accent color turns orange and a warning push is sent. Countdown template only.
+          format: int64
+          minimum: 0
+          type: integer
+      type: object
+    CreateActivityInputBody:
+      additionalProperties: false
+      properties:
+        ended_ttl:
+          description: Seconds after ENDED before auto-delete (1s to 30 days)
+          format: int64
+          maximum: 2592000
+          minimum: 1
+          type: integer
+        name:
+          description: Human-readable activity name
+          maxLength: 256
+          minLength: 1
+          type: string
+        priority:
+          description: Eviction priority (0=lowest, 10=highest, default 0)
+          format: int64
+          maximum: 10
+          minimum: 0
+          type: integer
+        slug:
+          description: Unique activity identifier (alphanumeric, hyphens, underscores)
+          maxLength: 128
+          minLength: 1
+          pattern: ^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$
+          type: string
+        stale_ttl:
+          description: Seconds of inactivity before auto-ending (1s to 30 days)
+          format: int64
+          maximum: 2592000
+          minimum: 1
+          type: integer
+      required:
+        - slug
+        - name
+      type: object
+    CreateIntegrationKeyInputBody:
+      additionalProperties: false
+      properties:
+        activity_slugs:
+          description: Restrict key to specific activity slugs or patterns (trailing *)
+          items:
+            type: string
+          type:
+            - array
+            - "null"
+        name:
+          description: Human-readable name for the integration key
+          maxLength: 256
+          minLength: 1
+          type: string
+        notifications:
+          description: "Allow this key to create notifications (default: false)"
+          type: boolean
+        scope:
+          description: "Permission scope (default: activity:update)"
+          enum:
+            - activity:update
+            - activity:manage
+          type: string
+      required:
+        - name
+      type: object
+    CreateNotificationInputBody:
+      additionalProperties: false
+      properties:
+        activity_slug:
+          type: string
+        body:
+          description: Notification body
+          maxLength: 4096
+          minLength: 1
+          type: string
+        category:
+          description: Notification category
+          maxLength: 128
+          type: string
+        collapse_id:
+          description: Collapse ID for replacing notifications
+          maxLength: 64
+          type: string
+        image_url:
+          description: Image URL (must be HTTPS)
+          maxLength: 2048
+          type: string
+        level:
+          description: "Interruption level (default: active)"
+          enum:
+            - passive
+            - active
+            - time-sensitive
+            - critical
+          type: string
+        metadata:
+          additionalProperties:
+            type: string
+          type: object
+        push:
+          type: boolean
+        source:
+          description: Source identifier
+          maxLength: 128
+          type: string
+        source_display_name:
+          description: Human-readable source name
+          maxLength: 256
+          type: string
+        subtitle:
+          description: Notification subtitle
+          maxLength: 256
+          type: string
+        thread_id:
+          description: Thread identifier for grouping
+          maxLength: 128
+          type: string
+        title:
+          description: Notification title
+          maxLength: 256
+          minLength: 1
+          type: string
+        url:
+          description: Action URL
+          maxLength: 2048
+          type: string
+        volume:
+          description: Volume for critical alerts (0.0-1.0)
+          format: double
+          maximum: 1
+          minimum: 0
+          type: number
+      required:
+        - title
+        - body
+      type: object
+    CreateNotificationOutputBody:
+      additionalProperties: false
+      properties:
+        id:
+          format: int64
+          type: integer
+        pushed:
+          type: boolean
+      required:
+        - id
+        - pushed
+      type: object
+    CreatePatternShareCodeInputBody:
+      additionalProperties: false
+      properties:
+        expires_in:
+          description: Expiry duration in seconds (60s to 7 days, default 24h)
+          format: int64
+          maximum: 604800
+          minimum: 60
+          type: integer
+        max_uses:
+          description: Maximum number of times this code can be used
+          format: int64
+          minimum: 1
+          type: integer
+        role:
+          description: "Share role: viewer (read-only) or editor (can update)"
+          enum:
+            - viewer
+            - editor
+          type: string
+        slug_pattern:
+          description: Slug pattern with trailing wildcard (e.g. argocd-*)
+          maxLength: 129
+          minLength: 2
+          type: string
+      required:
+        - slug_pattern
+      type: object
+    CreateShareCodeInputBody:
+      additionalProperties: false
+      properties:
+        expires_in:
+          description: Expiry duration in seconds (60s to 7 days, default 24h)
+          format: int64
+          maximum: 604800
+          minimum: 60
+          type: integer
+        max_uses:
+          description: Maximum number of times this code can be used
+          format: int64
+          minimum: 1
+          type: integer
+        role:
+          description: "Share role: viewer (read-only) or editor (can update)"
+          enum:
+            - viewer
+            - editor
+          type: string
+      type: object
+    DefaultKeyResponse:
+      additionalProperties: false
+      properties:
+        created:
+          type: boolean
+        created_at:
+          format: date-time
+          type: string
+        id:
+          type: string
+        is_default:
+          type: boolean
+        key:
+          type: string
+        name:
+          type: string
+        scope:
+          type: string
+      required:
+        - id
+        - name
+        - scope
+        - is_default
+        - created
+        - created_at
+      type: object
+    DeleteNotificationsInputBody:
+      additionalProperties: false
+      properties:
+        all:
+          description: Delete all notifications
+          type: boolean
+        ids:
+          description: Notification IDs to delete
+          items:
+            format: int64
+            type: integer
+          maxItems: 100
+          type:
+            - array
+            - "null"
+      type: object
+    DemoRunResponse:
+      additionalProperties: false
+      properties:
+        demo_id:
+          type: string
+        estimated_duration_ms:
+          format: int64
+          type: integer
+        mode:
+          type: string
+        sequences:
+          items:
+            $ref: "#/components/schemas/DemoSequence"
+          type:
+            - array
+            - "null"
+        total_steps:
+          format: int64
+          type: integer
+      required:
+        - demo_id
+        - mode
+        - sequences
+        - total_steps
+        - estimated_duration_ms
+      type: object
+    DemoSequence:
+      additionalProperties: false
+      properties:
+        name:
+          type: string
+        priority:
+          format: int64
+          type: integer
+        slug:
+          type: string
+        steps:
+          items:
+            $ref: "#/components/schemas/DemoStep"
+          type:
+            - array
+            - "null"
+        template:
+          type: string
+      required:
+        - slug
+        - name
+        - template
+        - priority
+        - steps
+      type: object
+    DemoStatusResponse:
+      additionalProperties: false
+      properties:
+        current_action:
+          type: string
+        current_slug:
+          type: string
+        demo_id:
+          type: string
+        mode:
+          type: string
+        sequences:
+          items:
+            $ref: "#/components/schemas/DemoSequence"
+          type:
+            - array
+            - "null"
+        status:
+          type: string
+        steps_complete:
+          format: int64
+          type: integer
+        total_steps:
+          format: int64
+          type: integer
+      required:
+        - demo_id
+        - mode
+        - status
+        - steps_complete
+        - total_steps
+      type: object
+    DemoStep:
+      additionalProperties: false
+      properties:
+        action:
+          type: string
+        body:
+          type: string
+        delay_ms:
+          format: int64
+          type: integer
+        method:
+          type: string
+        path:
+          type: string
+      required:
+        - action
+        - method
+        - path
+        - body
+        - delay_ms
+      type: object
+    ExpireSubscriptionInputBody:
+      additionalProperties: false
+      properties:
+        status:
+          enum:
+            - expired
+            - revoked
+          type: string
+      type: object
+    ExpireSubscriptionOutputBody:
+      additionalProperties: false
+      properties:
+        message:
+          type: string
+        status:
+          type: string
+      required:
+        - message
+      type: object
+    GetDeviceSubscriptionsOutputBody:
+      additionalProperties: false
+      properties:
+        slugs:
+          items:
+            type: string
+          type:
+            - array
+            - "null"
+      required:
+        - slugs
+      type: object
+    GetMeOutputBody:
+      additionalProperties: false
+      properties:
+        activity_count:
+          format: int64
+          type: integer
+        expires_at:
+          format: date-time
+          type: string
+        id:
+          type: string
+        nickname:
+          type:
+            - string
+            - "null"
+        product_id:
+          type: string
+        subscribed:
+          type: boolean
+        subscription_status:
+          type: string
+      required:
+        - id
+        - nickname
+        - activity_count
+        - subscribed
+      type: object
+    GetSubscriptionOutputBody:
+      additionalProperties: false
+      properties:
+        subscribed:
+          type: boolean
+        subscription:
+          $ref: "#/components/schemas/Subscription"
+      required:
+        - subscribed
+        - subscription
+      type: object
+    GetSubscriptionStatusOutputBody:
+      additionalProperties: false
+      properties:
+        is_subscribed:
+          type: boolean
+      required:
+        - is_subscribed
+      type: object
+    HealthOutputBody:
+      additionalProperties: false
+      properties:
+        status:
+          description: Health status
+          examples:
+            - ok
+          type: string
+      required:
+        - status
+      type: object
+    HistoryPoint:
+      additionalProperties: false
+      properties:
+        t:
+          format: int64
+          type: integer
+        v:
+          format: double
+          type: number
+      required:
+        - t
+        - v
+      type: object
+    HumaError:
+      additionalProperties: false
+      properties:
+        error:
+          type: string
+      required:
+        - error
+      type: object
+    IntegrationKey:
+      additionalProperties: false
+      properties:
+        activity_slugs:
+          description: Scoped slug patterns. Omitted when unrestricted (all activities).
+          items:
+            type: string
+          type:
+            - array
+            - "null"
+        created_at:
+          format: date-time
+          type: string
+        id:
+          type: string
+        is_default:
+          description: Whether this is the auto-generated default key
+          type: boolean
+        last_used_at:
+          description: Timestamp of the last API request made with this key
+          format: date-time
+          type: string
+        name:
+          examples:
+            - ArgoCD Bridge
+          type: string
+        notifications:
+          description: Whether this key can create notifications
+          type: boolean
+        scope:
+          enum:
+            - activity:update
+            - activity:manage
+          examples:
+            - activity:manage
+          type: string
+      required:
+        - id
+        - name
+        - scope
+        - is_default
+        - notifications
+        - created_at
+      type: object
+    IntegrationKeyCreatedResponse:
+      additionalProperties: false
+      properties:
+        activity_slugs:
+          items:
+            type: string
+          type:
+            - array
+            - "null"
+        created_at:
+          format: date-time
+          type: string
+        id:
+          type: string
+        is_default:
+          type: boolean
+        key:
+          type: string
+        name:
+          type: string
+        notifications:
+          type: boolean
+        scope:
+          type: string
+      required:
+        - key
+        - id
+        - name
+        - scope
+        - is_default
+        - notifications
+        - created_at
+      type: object
+    JoinShareInputBody:
+      additionalProperties: false
+      properties:
+        code:
+          description: 8-character alphanumeric share code
+          maxLength: 8
+          minLength: 1
+          type: string
+      required:
+        - code
+      type: object
+    JoinShareResponse:
+      additionalProperties: false
+      properties:
+        activity_name:
+          description: Activity name (activity share only)
+          type: string
+        matched_activities:
+          description: Number of matched activities (pattern share only)
+          format: int64
+          type: integer
+        owner_id:
+          description: User ID of the activity owner
+          type: string
+        role:
+          description: The role granted by the share
+          type: string
+        slug:
+          description: Activity slug (activity share only)
+          type: string
+        slug_pattern:
+          description: Slug pattern (pattern share only)
+          type: string
+      required:
+        - role
+        - owner_id
+      type: object
+    ListNotificationsOutputBody:
+      additionalProperties: false
+      properties:
+        next_cursor:
+          type: string
+        notifications:
+          items:
+            $ref: "#/components/schemas/Notification"
+          type:
+            - array
+            - "null"
+      required:
+        - notifications
+        - next_cursor
+      type: object
+    MarkNotificationsReadInputBody:
+      additionalProperties: false
+      properties:
+        all:
+          description: Mark all notifications as read
+          type: boolean
+        ids:
+          description: Notification IDs to mark as read
+          items:
+            format: int64
+            type: integer
+          maxItems: 100
+          type:
+            - array
+            - "null"
+      type: object
+    Notification:
+      additionalProperties: false
+      properties:
+        activity_slug:
+          examples:
+            - deploy-prod
+          type: string
+        body:
+          examples:
+            - Successfully deployed to production
+          type: string
+        category:
+          type: string
+        created_at:
+          format: date-time
+          type: string
+        id:
+          examples:
+            - 42
+          format: int64
+          type: integer
+        image_url:
+          type: string
+        level:
+          enum:
+            - passive
+            - active
+            - time-sensitive
+            - critical
+          examples:
+            - active
+          type: string
+        metadata:
+          additionalProperties:
+            type: string
+          type: object
+        pushed:
+          description: Whether the notification was pushed to at least one device
+          type: boolean
+        read_at:
+          description: Timestamp when the notification was read (null if unread)
+          format: date-time
+          type:
+            - string
+            - "null"
+        source:
+          examples:
+            - github-actions
+          type: string
+        source_display_name:
+          examples:
+            - GitHub Actions
+          type: string
+        subtitle:
+          examples:
+            - pushward-server v2.4.0
+          type: string
+        thread_id:
+          examples:
+            - ci-deploys
+          type: string
+        title:
+          examples:
+            - Deploy Complete
+          type: string
+        url:
+          type: string
+      required:
+        - id
+        - title
+        - subtitle
+        - body
+        - thread_id
+        - level
+        - category
+        - source
+        - activity_slug
+        - pushed
+        - read_at
+        - created_at
+      type: object
+    PatternShare:
+      additionalProperties: false
+      properties:
+        created_at:
+          format: date-time
+          type: string
+        id:
+          format: int64
+          type: integer
+        matched_count:
+          description: Number of activities currently matching the pattern
+          format: int64
+          type: integer
+        owner_id:
+          description: The pattern share owner's user ID
+          type: string
+        owner_nickname:
+          description: Owner's display name
+          type: string
+        role:
+          enum:
+            - viewer
+            - editor
+          type: string
+        shared_user_id:
+          type: string
+        shared_user_nickname:
+          description: Shared user's display name
+          type: string
+        slug_pattern:
+          description: Slug pattern (e.g. argocd-*)
+          examples:
+            - argocd-*
+          type: string
+      required:
+        - id
+        - owner_id
+        - slug_pattern
+        - shared_user_id
+        - role
+        - created_at
+      type: object
+    RegisterDeviceInputBody:
+      additionalProperties: false
+      properties:
+        apns_device_token:
+          description: APNs device token for alert notifications
+          maxLength: 200
+          type: string
+        device_id:
+          description: Unique device identifier
+          maxLength: 128
+          minLength: 1
+          type: string
+        push_to_start_token:
+          description: APNs push-to-start token for starting Live Activities
+          maxLength: 200
+          type: string
+      required:
+        - device_id
+      type: object
+    RotateTokenInputBody:
+      additionalProperties: false
+      properties:
+        device_id:
+          description: Device identifier to rotate the token for
+          maxLength: 128
+          minLength: 1
+          type: string
+      required:
+        - device_id
+      type: object
+    RotateTokenOutputBody:
+      additionalProperties: false
+      properties:
+        token:
+          type: string
+      required:
+        - token
+      type: object
+    RunDemoBody:
+      additionalProperties: false
+      properties:
+        mode:
+          enum:
+            - auto
+            - manual
+          type: string
+      type: object
+    ShareCodeResponse:
+      additionalProperties: false
+      properties:
+        code:
+          type: string
+        created_at:
+          format: date-time
+          type: string
+        expires_at:
+          format: date-time
+          type: string
+        id:
+          type: string
+        max_uses:
+          format: int64
+          type: integer
+        role:
+          type: string
+        share_url:
+          type: string
+        slug_pattern:
+          type: string
+        use_count:
+          format: int64
+          type: integer
+      required:
+        - id
+        - code
+        - role
+        - share_url
+        - use_count
+        - expires_at
+        - created_at
+      type: object
+    SignInWithAppleInputBody:
+      additionalProperties: false
+      properties:
+        device_id:
+          description: Unique device identifier
+          maxLength: 128
+          minLength: 1
+          type: string
+        identity_token:
+          description: Apple identity token (JWT) from Sign in with Apple
+          maxLength: 8192
+          minLength: 1
+          type: string
+      required:
+        - identity_token
+        - device_id
+      type: object
+    SignInWithAppleOutputBody:
+      additionalProperties: false
+      properties:
+        token:
+          type: string
+        user_id:
+          type: string
+      required:
+        - token
+        - user_id
+      type: object
+    StatusOutputBody:
+      additionalProperties: false
+      properties:
+        status:
+          type: string
+      required:
+        - status
+      type: object
+    Subscription:
+      additionalProperties: false
+      properties:
+        created_at:
+          format: date-time
+          type: string
+        expires_at:
+          format: date-time
+          type: string
+        id:
+          format: int64
+          type: integer
+        original_transaction_id:
+          type: string
+        product_id:
+          type: string
+        renewed_at:
+          format: date-time
+          type: string
+        status:
+          enum:
+            - active
+            - expired
+            - revoked
+            - grace_period
+            - billing_retry
+          type: string
+        updated_at:
+          format: date-time
+          type: string
+        user_id:
+          type: string
+      required:
+        - id
+        - user_id
+        - original_transaction_id
+        - product_id
+        - status
+        - created_at
+        - updated_at
+      type: object
+    Threshold:
+      additionalProperties: false
+      properties:
+        color:
+          type: string
+        label:
+          type: string
+        value:
+          format: double
+          type: number
+      required:
+        - value
+      type: object
+    UnreadCountOutputBody:
+      additionalProperties: false
+      properties:
+        count:
+          format: int64
+          type: integer
+      required:
+        - count
+      type: object
+    UpdateActivityRequest:
+      additionalProperties: false
+      properties:
+        content:
+          $ref: "#/components/schemas/Content"
+        priority:
+          format: int64
+          type: integer
+        state:
+          enum:
+            - ONGOING
+            - ENDED
+          type: string
+      required:
+        - state
+        - content
+      type: object
+    UpdateIntegrationKeyInputBody:
+      additionalProperties: false
+      properties:
+        activity_slugs:
+          items:
+            type: string
+          type: array
+        notifications:
+          description: Allow this key to create notifications
+          type: boolean
+        scope:
+          description: Permission scope
+          enum:
+            - activity:update
+            - activity:manage
+          type: string
+      type: object
+    UpdateNicknameInputBody:
+      additionalProperties: false
+      properties:
+        nickname:
+          description: Display name (null or empty to clear)
+          maxLength: 50
+          type: string
+      type: object
+    UpdatePushUpdateTokenInputBody:
+      additionalProperties: false
+      properties:
+        push_update_token:
+          description: APNs push-update token for sending Live Activity updates
+          maxLength: 200
+          minLength: 1
+          type: string
+      required:
+        - push_update_token
+      type: object
+    UpdateShareRoleInputBody:
+      additionalProperties: false
+      properties:
+        role:
+          enum:
+            - viewer
+            - editor
+          type: string
+      required:
+        - role
+      type: object
+    VerifySubscriptionInputBody:
+      additionalProperties: false
+      properties:
+        signed_transaction:
+          description: App Store JWS signed transaction
+          maxLength: 16384
+          minLength: 1
+          type: string
+      required:
+        - signed_transaction
+      type: object
+    WebhookInputBody:
+      additionalProperties: false
+      properties:
+        signedPayload:
+          description: Apple JWS notification payload
+          maxLength: 65536
+          minLength: 1
+          type: string
+      required:
+        - signedPayload
+      type: object
+  securitySchemes:
+    bearer:
+      bearerFormat: token
+      description: hla_ (full access) or hlk_ (integration key) token
+      scheme: bearer
+      type: http
+info:
+  description: |
+    PushWard is an APNs gateway for iOS Live Activities.
+    Start, update, and end Live Activities on any subscribed device with plain HTTP requests.
+
+    ## Authentication
+
+    All endpoints (except `/health`) require an API token in the `Authorization` header:
+
+    ```
+    Authorization: Bearer hla_aBcDeFgHiJkLmNoPqRsTuVwXyZ012345
+    ```
+
+    Tokens follow the format `hla_<base62>` (~36 characters). Only the SHA-256 hash is stored server-side.
+
+    **Integration keys** (`hlk_` prefix) can also be used in the `Authorization` header with scoped access:
+
+    - `activity:update` scope: `PATCH /activity/{slug}`, `POST /notifications`, `GET /activities`, `GET /activities/{slug}`, `GET /auth/me`
+    - `activity:manage` scope: All of the above, plus `POST /activities`, `DELETE /activities/{slug}`
+
+    All other endpoints require a full-access `hla_` token and return `403` if called with an integration key.
+
+    ## Subscription
+
+    Some endpoints require an active App Store subscription. Requests without a valid subscription receive a `403` with `"active subscription required"`.
+
+    **Subscription required:**
+    - `POST /activities` (create activity)
+    - `PATCH /activity/{slug}` (update activity)
+    - `POST /notifications` (create notification)
+    - `POST /integrations/keys` (create integration key)
+    - `POST /integrations/keys/{keyID}/roll` (roll integration key)
+    - All device subscription routes (`/devices/{deviceID}/subscribe/*`, `/devices/{deviceID}/subscriptions/*`)
+
+    **No subscription required:**
+    - `GET /activities`, `GET /activities/{slug}`, `DELETE /activities/{slug}`
+    - `GET /notifications`, `GET /notifications/unread-count`
+    - `GET /integrations/keys`, `DELETE /integrations/keys/{keyID}`, `PATCH /integrations/keys/{keyID}`
+    - Auth, health, device registration, and subscription management endpoints
+
+    ## Activity State Machine
+
+    Activities follow a state machine with three states:
+
+    | State | Description |
+    |---|---|
+    | `ENDED` | Inactive (default on creation) |
+    | `ONGOING` | Active Live Activity running on device |
+    | `PREEMPTED` | Server-evicted due to priority limits |
+
+    **Transitions via `PATCH /activity/{slug}`:**
+
+    | From → To | Push Action |
+    |---|---|
+    | ENDED → ONGOING | Push-to-start (starts Live Activity) |
+    | ONGOING → ONGOING | Push update (updates content) |
+    | ONGOING → ENDED | Push end (dismisses after 4 hours) |
+    | PREEMPTED → ONGOING | Push-to-start (restarts activity) |
+
+    `PREEMPTED` is server-internal and cannot be set via the API.
+
+    ## Priority & Eviction
+
+    When the ONGOING activity limit (default 5) is exceeded, the server evicts the lowest-priority, oldest activity. Evicted activities transition to `PREEMPTED` and can be restarted.
+
+    ## Countdown Lifecycle
+
+    Countdown activities with `end_date` are automatically managed by the server:
+
+    - **Warning push:** When `warning_threshold` seconds remain, the server sends an update with `accent_color: orange`
+    - **Completion push:** When `end_date` is reached, the server ends the activity with `completion_message` (or "Completed") and `progress: 1.0`
+
+    No client action is needed after the initial start -- the server handles the full lifecycle.
+
+    ## Colors
+
+    Templates support optional color fields (`accent_color`, `background_color`, `text_color`):
+
+    - **Named colors:** `red`, `orange`, `yellow`, `green`, `blue`, `purple`, `pink`, `indigo`, `teal`, `cyan`, `mint`, `brown`
+    - **Hex RGB:** `#FF5733` or `FF5733`
+    - **Hex RGBA:** `#FF573380` or `FF573380`
+  license:
+    name: MIT
+    url: https://github.com/mac-lucky/pushward-integrations/blob/main/LICENSE
+  title: PushWard API
+  version: 1.0.0
+openapi: 3.1.0
+paths:
+  /activities:
+    get:
+      operationId: listActivities
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                items:
+                  $ref: "#/components/schemas/ActivityWithSharing"
+                type:
+                  - array
+                  - "null"
+          description: OK
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HumaError"
+          description: Unauthorized
+        "429":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HumaError"
+          description: Too Many Requests
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HumaError"
+          description: Internal Server Error
+      security:
+        - bearer: []
+      summary: List activities
+      tags:
+        - Activities
+    post:
+      operationId: createActivity
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateActivityInputBody"
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Activity"
+          description: Created
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HumaError"
+          description: Bad Request
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HumaError"
+          description: Unauthorized
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HumaError"
+          description: Forbidden
+        "409":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HumaError"
+          description: Conflict
+        "422":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HumaError"
+          description: Unprocessable Entity
+        "429":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HumaError"
+          description: Too Many Requests
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HumaError"
+          description: Internal Server Error
+      security:
+        - bearer: []
+      summary: Create activity
+      tags:
+        - Activities
+  /activities/{slug}:
+    delete:
+      operationId: deleteActivity
+      parameters:
+        - in: path
+          name: slug
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: No Content
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HumaError"
+          description: Unauthorized
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HumaError"
+          description: Forbidden
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HumaError"
+          description: Not Found
+        "422":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HumaError"
+          description: Unprocessable Entity
+        "429":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HumaError"
+          description: Too Many Requests
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HumaError"
+          description: Internal Server Error
+      security:
+        - bearer: []
+      summary: Delete activity
+      tags:
+        - Activities
+    get:
+      operationId: getActivity
+      parameters:
+        - in: path
+          name: slug
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ActivityWithSharing"
+          description: OK
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HumaError"
+          description: Unauthorized
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HumaError"
+          description: Not Found
+        "422":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HumaError"
+          description: Unprocessable Entity
+        "429":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HumaError"
+          description: Too Many Requests
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HumaError"
+          description: Internal Server Error
+      security:
+        - bearer: []
+      summary: Get activity
+      tags:
+        - Activities
+  /activity/{slug}:
+    patch:
+      operationId: updateActivity
+      parameters:
+        - in: path
+          name: slug
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateActivityRequest"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Activity"
+          description: OK
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HumaError"
+          description: Bad Request
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HumaError"
+          description: Unauthorized
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HumaError"
+          description: Forbidden
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HumaError"
+          description: Not Found
+        "422":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HumaError"
+          description: Unprocessable Entity
+        "429":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HumaError"
+          description: Too Many Requests
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HumaError"
+          description: Internal Server Error
+      security:
+        - bearer: []
+      summary: Update activity
+      tags:
+        - Activities
+  /auth/me:
+    get:
+      operationId: getMe
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GetMeOutputBody"
+          description: OK
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HumaError"
+          description: Unauthorized
+        "404":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HumaError"
+          description: Not Found
+        "429":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HumaError"
+          description: Too Many Requests
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HumaError"
+          description: Internal Server Error
+      security:
+        - bearer: []
+      summary: Get current user profile
+      tags:
+        - Auth
+  /health:
+    get:
+      operationId: getHealth
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthOutputBody"
+          description: OK
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HumaError"
+          description: Internal Server Error
+        "503":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HumaError"
+          description: Service Unavailable
+      summary: Health check
+      tags:
+        - System
+  /notifications:
+    post:
+      operationId: createNotification
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateNotificationInputBody"
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CreateNotificationOutputBody"
+          description: Created
+        "400":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HumaError"
+          description: Bad Request
+        "401":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HumaError"
+          description: Unauthorized
+        "403":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HumaError"
+          description: Forbidden
+        "422":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HumaError"
+          description: Unprocessable Entity
+        "429":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HumaError"
+          description: Too Many Requests
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HumaError"
+          description: Internal Server Error
+      security:
+        - bearer: []
+      summary: Create notification
+      tags:
+        - Notifications
+servers:
+  - description: PushWard API
+    url: https://api.pushward.app
+tags:
+  - description: Server health check
+    name: System
+  - description: Authentication and account management
+    name: Auth
+  - description: Create, list, and manage trackable activities
+    name: Activities
+  - description: In-app notification inbox with optional APNs push delivery
+    name: Notifications
