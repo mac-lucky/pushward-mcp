@@ -177,12 +177,22 @@ func parseSpecJSON(data []byte, name string) *openAPISpec {
 
 // ---------- API tool building ----------
 
+// skipOperations lists operationIDs that are handled as composite tools
+// in composite.go instead of being generated. See composite.go for their
+// enhanced implementations.
+var skipOperations = map[string]bool{
+	"listActivities": true, // enhanced with state/source filtering and summary mode
+}
+
 func buildAPITools(spec *openAPISpec) []toolDef {
 	var tools []toolDef
 
 	for path, item := range spec.Paths {
 		for method, op := range item {
 			if op.OperationID == "" {
+				continue
+			}
+			if skipOperations[op.OperationID] {
 				continue
 			}
 			t := toolDef{

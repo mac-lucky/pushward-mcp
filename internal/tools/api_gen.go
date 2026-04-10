@@ -145,16 +145,6 @@ func registerAPITools(s *mcpserver.MCPServer, api *client.APIClient) {
 		},
 	)
 
-	// list_activities
-	s.AddTool(
-		mcp.NewTool("list_activities",
-			mcp.WithDescription("List activities"),
-		),
-		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-			return handleListActivities(ctx, req, api)
-		},
-	)
-
 	// update_activity
 	s.AddTool(
 		mcp.NewTool("update_activity",
@@ -283,14 +273,6 @@ func handleGetHealth(ctx context.Context, req mcp.CallToolRequest, api *client.A
 
 func handleGetMe(ctx context.Context, req mcp.CallToolRequest, api *client.APIClient) (*mcp.CallToolResult, error) {
 	raw, err := api.GetMe(ctx)
-	if err != nil {
-		return mcp.NewToolResultError(err.Error()), nil
-	}
-	return mcp.NewToolResultText(string(raw)), nil
-}
-
-func handleListActivities(ctx context.Context, req mcp.CallToolRequest, api *client.APIClient) (*mcp.CallToolResult, error) {
-	raw, err := api.ListActivities(ctx)
 	if err != nil {
 		return mcp.NewToolResultError(err.Error()), nil
 	}

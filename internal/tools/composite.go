@@ -5,11 +5,18 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/mark3labs/mcp-go/mcp"
 	mcpserver "github.com/mark3labs/mcp-go/server"
 
 	"github.com/mac-lucky/pushward-mcp/internal/client"
+)
+
+const (
+	stateOngoing   = "ONGOING"
+	stateEnded     = "ENDED"
+	defaultTemplate = "generic"
 )
 
 func registerCompositeTools(s *mcpserver.MCPServer, api *client.APIClient, relay *client.RelayClient) {
@@ -87,6 +94,72 @@ func registerCompositeTools(s *mcpserver.MCPServer, api *client.APIClient, relay
 			return handleTestRelayProvider(ctx, req, relay)
 		},
 	)
+
+	// end_activity
+	s.AddTool(
+		mcp.NewTool("end_activity",
+			mcp.WithDescription("End an activity by slug. Fetches the current content to preserve the template, then transitions to ENDED state."),
+			mcp.WithString("slug",
+				mcp.Required(),
+				mcp.Description("Activity slug to end"),
+			),
+			mcp.WithString("reason",
+				mcp.Description("Short reason shown as the activity's final state text (default: \"Ended manually\")"),
+			),
+			mcp.WithString("content_json",
+				mcp.Description("Optional full content JSON override. If omitted, the activity's existing content is preserved with only the state text updated."),
+			),
+		),
+		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			return handleEndActivity(ctx, req, api)
+		},
+	)
+
+	// list_activities (enhanced, replaces generated version)
+	s.AddTool(
+		mcp.NewTool("list_activities",
+			mcp.WithDescription("List activities with optional filtering and summary mode. Without parameters, returns all activities (full JSON)."),
+			mcp.WithString("state",
+				mcp.Description("Filter by activity state"),
+				mcp.Enum("ONGOING", "ENDED", "PREEMPTED"),
+			),
+			mcp.WithString("source",
+				mcp.Description("Filter by source (matches slug prefix, e.g. \"grafana\" matches slugs starting with \"grafana-\" or \"grafana_\")"),
+			),
+			mcp.WithBoolean("summary",
+				mcp.Description("Return compact summary instead of full JSON (slug, name, state, priority, age, template)"),
+			),
+			mcp.WithNumber("limit",
+				mcp.Description("Maximum number of activities to return"),
+			),
+		),
+		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			return handleListActivities(ctx, req, api)
+		},
+	)
+
+	// bulk_end_activities
+	s.AddTool(
+		mcp.NewTool("bulk_end_activities",
+			mcp.WithDescription("End multiple activities matching filters. At least one filter is required to prevent accidental bulk operations."),
+			mcp.WithString("state",
+				mcp.Description("Filter by current state (e.g. \"ONGOING\")"),
+				mcp.Enum("ONGOING", "ENDED", "PREEMPTED"),
+			),
+			mcp.WithString("source",
+				mcp.Description("Filter by source (slug prefix match, e.g. \"grafana\")"),
+			),
+			mcp.WithString("slug_prefix",
+				mcp.Description("Filter by explicit slug prefix"),
+			),
+			mcp.WithString("reason",
+				mcp.Description("Reason text for all ended activities (default: \"Ended in bulk\")"),
+			),
+		),
+		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			return handleBulkEndActivities(ctx, req, api)
+		},
+	)
 }
 
 func handleTestHealth(ctx context.Context, api *client.APIClient, relay *client.RelayClient) (*mcp.CallToolResult, error) {
@@ -119,11 +192,8 @@ func handleTestActivityLifecycle(ctx context.Context, req mcp.CallToolRequest, a
 		return mcp.NewToolResultError(err.Error()), nil
 	}
 
-	tmpl := req.GetString("template", "generic")
-	cleanup := true // default
-	if v := req.GetBool("cleanup", true); !v {
-		cleanup = false
-	}
+	tmpl := req.GetString("template", defaultTemplate)
+	cleanup := req.GetBool("cleanup", true)
 
 	var steps []string
 
@@ -140,7 +210,7 @@ func handleTestActivityLifecycle(ctx context.Context, req mcp.CallToolRequest, a
 	// Step 2: Update to ONGOING
 	ongoingContent := buildTestContent(tmpl, 0.5, "Testing...")
 	_, err = api.UpdateActivity(ctx, slug, client.UpdateActivityInput{
-		State:   "ONGOING",
+		State:   stateOngoing,
 		Content: ongoingContent,
 	})
 	if err != nil {
@@ -157,7 +227,7 @@ func handleTestActivityLifecycle(ctx context.Context, req mcp.CallToolRequest, a
 		var activity map[string]any
 		_ = json.Unmarshal(raw, &activity)
 		state, _ := activity["state"].(string)
-		if state == "ONGOING" {
+		if state == stateOngoing {
 			steps = append(steps, "3. Verified state=ONGOING: OK")
 		} else {
 			steps = append(steps, fmt.Sprintf("3. Verify ONGOING: expected ONGOING, got %s", state))
@@ -167,7 +237,7 @@ func handleTestActivityLifecycle(ctx context.Context, req mcp.CallToolRequest, a
 	// Step 4: Update to ENDED
 	endedContent := buildTestContent(tmpl, 1.0, "Done")
 	_, err = api.UpdateActivity(ctx, slug, client.UpdateActivityInput{
-		State:   "ENDED",
+		State:   stateEnded,
 		Content: endedContent,
 	})
 	if err != nil {
@@ -184,7 +254,7 @@ func handleTestActivityLifecycle(ctx context.Context, req mcp.CallToolRequest, a
 		var activity map[string]any
 		_ = json.Unmarshal(raw, &activity)
 		state, _ := activity["state"].(string)
-		if state == "ENDED" {
+		if state == stateEnded {
 			steps = append(steps, "5. Verified state=ENDED: OK")
 		} else {
 			steps = append(steps, fmt.Sprintf("5. Verify ENDED: expected ENDED, got %s", state))
@@ -271,6 +341,266 @@ func handleTestRelayProvider(ctx context.Context, req mcp.CallToolRequest, relay
 		return mcp.NewToolResultError(fmt.Sprintf("relay %s: %v", provider, err)), nil
 	}
 	return mcp.NewToolResultText(fmt.Sprintf("relay %s: %s", provider, string(raw))), nil
+}
+
+// ---------- end_activity ----------
+
+func handleEndActivity(ctx context.Context, req mcp.CallToolRequest, api *client.APIClient) (*mcp.CallToolResult, error) {
+	slug, err := req.RequireString("slug")
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
+
+	reason := req.GetString("reason", "Ended manually")
+	contentOverride := req.GetString("content_json", "")
+
+	// Fetch current activity
+	raw, err := api.GetActivity(ctx, slug)
+	if err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("fetching activity %q: %v", slug, err)), nil
+	}
+
+	var activity map[string]any
+	if err := json.Unmarshal(raw, &activity); err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("parsing activity: %v", err)), nil
+	}
+
+	// Check if already ended
+	if state, _ := activity["state"].(string); state == stateEnded {
+		return mcp.NewToolResultText(fmt.Sprintf("Activity %q is already ENDED", slug)), nil
+	}
+
+	// Build content
+	var content json.RawMessage
+	if contentOverride != "" {
+		if !json.Valid([]byte(contentOverride)) {
+			return mcp.NewToolResultError("content_json is not valid JSON"), nil
+		}
+		content = json.RawMessage(contentOverride)
+	} else {
+		content = buildEndContent(activity, reason)
+	}
+
+	// End the activity
+	_, err = api.UpdateActivity(ctx, slug, client.UpdateActivityInput{
+		State:   stateEnded,
+		Content: content,
+	})
+	if err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("ending activity %q: %v", slug, err)), nil
+	}
+
+	return mcp.NewToolResultText(fmt.Sprintf("Ended activity %q: %s", slug, reason)), nil
+}
+
+// buildEndContent preserves the activity's existing content and sets the state
+// text to the given reason. Returns a shallow-cloned content map to avoid
+// mutating the source data.
+func buildEndContent(activity map[string]any, reason string) json.RawMessage {
+	orig, _ := activity["content"].(map[string]any)
+	contentMap := make(map[string]any, len(orig)+1)
+	for k, v := range orig {
+		contentMap[k] = v
+	}
+	if _, ok := contentMap["template"]; !ok {
+		contentMap["template"] = defaultTemplate
+	}
+	contentMap["state"] = reason
+	data, _ := json.Marshal(contentMap)
+	return data
+}
+
+// ---------- list_activities (enhanced) ----------
+
+func handleListActivities(ctx context.Context, req mcp.CallToolRequest, api *client.APIClient) (*mcp.CallToolResult, error) {
+	raw, err := api.ListActivities(ctx)
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
+
+	stateFilter := req.GetString("state", "")
+	sourceFilter := req.GetString("source", "")
+	summary := req.GetBool("summary", false)
+	limit := max(int(req.GetFloat("limit", 0)), 0)
+
+	// No filters and no summary — return raw response (backwards compat)
+	if stateFilter == "" && sourceFilter == "" && !summary && limit == 0 {
+		return mcp.NewToolResultText(string(raw)), nil
+	}
+
+	var activities []map[string]any
+	if err := json.Unmarshal(raw, &activities); err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("parsing activities: %v", err)), nil
+	}
+
+	filtered := filterActivities(activities, stateFilter, sourceFilter, "")
+	if limit > 0 && len(filtered) > limit {
+		filtered = filtered[:limit]
+	}
+
+	if summary {
+		return mcp.NewToolResultText(formatSummary(filtered)), nil
+	}
+
+	out, _ := json.MarshalIndent(filtered, "", "  ")
+	return mcp.NewToolResultText(string(out)), nil
+}
+
+func matchesSource(slug, source string) bool {
+	prefix := source + "-"
+	prefixUnderscore := source + "_"
+	return strings.HasPrefix(slug, prefix) || strings.HasPrefix(slug, prefixUnderscore) || slug == source
+}
+
+func filterActivities(activities []map[string]any, state, source, slugPrefix string) []map[string]any {
+	var result []map[string]any
+	for _, a := range activities {
+		if state != "" {
+			if s, _ := a["state"].(string); s != state {
+				continue
+			}
+		}
+		slug, _ := a["slug"].(string)
+		if source != "" && !matchesSource(slug, source) {
+			continue
+		}
+		if slugPrefix != "" && !strings.HasPrefix(slug, slugPrefix) {
+			continue
+		}
+		result = append(result, a)
+	}
+	return result
+}
+
+func formatSummary(activities []map[string]any) string {
+	if len(activities) == 0 {
+		return "No activities found"
+	}
+
+	type summaryEntry struct {
+		Slug     string `json:"slug"`
+		Name     string `json:"name"`
+		State    string `json:"state"`
+		Priority int    `json:"priority"`
+		Age      string `json:"age"`
+		Template string `json:"template"`
+	}
+
+	entries := make([]summaryEntry, 0, len(activities))
+	for _, a := range activities {
+		slug, _ := a["slug"].(string)
+		name, _ := a["name"].(string)
+		state, _ := a["state"].(string)
+		priority, _ := a["priority"].(float64)
+
+		tmpl := defaultTemplate
+		if content, ok := a["content"].(map[string]any); ok {
+			if t, ok := content["template"].(string); ok {
+				tmpl = t
+			}
+		}
+
+		age := "unknown"
+		if createdStr, ok := a["created_at"].(string); ok {
+			if created, err := time.Parse(time.RFC3339, createdStr); err == nil {
+				age = formatDuration(time.Since(created))
+			}
+		}
+
+		entries = append(entries, summaryEntry{
+			Slug:     slug,
+			Name:     name,
+			State:    state,
+			Priority: int(priority),
+			Age:      age,
+			Template: tmpl,
+		})
+	}
+
+	out, _ := json.MarshalIndent(entries, "", "  ")
+	return string(out)
+}
+
+func formatDuration(d time.Duration) string {
+	d = d.Round(time.Second)
+	days := int(d.Hours()) / 24
+	hours := int(d.Hours()) % 24
+	minutes := int(d.Minutes()) % 60
+
+	switch {
+	case days > 0:
+		return fmt.Sprintf("%dd %dh", days, hours)
+	case hours > 0:
+		return fmt.Sprintf("%dh %dm", hours, minutes)
+	default:
+		return fmt.Sprintf("%dm", minutes)
+	}
+}
+
+// ---------- bulk_end_activities ----------
+
+func handleBulkEndActivities(ctx context.Context, req mcp.CallToolRequest, api *client.APIClient) (*mcp.CallToolResult, error) {
+	stateFilter := req.GetString("state", "")
+	sourceFilter := req.GetString("source", "")
+	slugPrefix := req.GetString("slug_prefix", "")
+	reason := req.GetString("reason", "Ended in bulk")
+
+	if stateFilter == "" && sourceFilter == "" && slugPrefix == "" {
+		return mcp.NewToolResultError("at least one filter (state, source, or slug_prefix) is required"), nil
+	}
+
+	// Fetch all activities
+	raw, err := api.ListActivities(ctx)
+	if err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("listing activities: %v", err)), nil
+	}
+
+	var activities []map[string]any
+	if err := json.Unmarshal(raw, &activities); err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("parsing activities: %v", err)), nil
+	}
+
+	// Filter to matching non-ENDED activities
+	candidates := filterActivities(activities, stateFilter, sourceFilter, slugPrefix)
+
+	// Only end activities that aren't already ENDED
+	var toEnd []map[string]any
+	for _, a := range candidates {
+		if s, _ := a["state"].(string); s != stateEnded {
+			toEnd = append(toEnd, a)
+		}
+	}
+
+	if len(toEnd) == 0 {
+		return mcp.NewToolResultText("No matching activities to end"), nil
+	}
+
+	var ended []string
+	var failed []string
+	for _, a := range toEnd {
+		slug, _ := a["slug"].(string)
+		content := buildEndContent(a, reason)
+
+		_, err := api.UpdateActivity(ctx, slug, client.UpdateActivityInput{
+			State:   stateEnded,
+			Content: content,
+		})
+		if err != nil {
+			failed = append(failed, fmt.Sprintf("%s (%v)", slug, err))
+		} else {
+			ended = append(ended, slug)
+		}
+	}
+
+	var parts []string
+	if len(ended) > 0 {
+		parts = append(parts, fmt.Sprintf("Ended %d activities: %s", len(ended), strings.Join(ended, ", ")))
+	}
+	if len(failed) > 0 {
+		parts = append(parts, fmt.Sprintf("Failed %d: %s", len(failed), strings.Join(failed, "; ")))
+	}
+
+	return mcp.NewToolResultText(strings.Join(parts, "\n")), nil
 }
 
 // testPayloads contains standard test payloads for each relay provider.

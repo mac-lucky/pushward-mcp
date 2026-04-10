@@ -9,6 +9,7 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/mark3labs/mcp-go/mcp"
 
@@ -433,6 +434,483 @@ func TestHandleTestRelayProvider_ValidProvider(t *testing.T) {
 }
 
 // ---------- testPayloads completeness ----------
+
+// ---------- handleEndActivity ----------
+
+func TestHandleEndActivity_HappyPath(t *testing.T) {
+	var patchBody map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, "/activities/"):
+			w.Write([]byte(`{"slug":"test-alert","state":"ONGOING","content":{"template":"alert","severity":"warning","state":"Firing"}}`))
+		case r.Method == http.MethodPatch && strings.HasPrefix(r.URL.Path, "/activity/"):
+			body, _ := io.ReadAll(r.Body)
+			json.Unmarshal(body, &patchBody)
+			w.Write(body)
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer srv.Close()
+
+	api := client.NewAPIClient(srv.URL, "test-token")
+	req := newReq(map[string]any{"slug": "test-alert"})
+
+	result, err := handleEndActivity(context.Background(), req, api)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	text := resultText(t, result)
+	if result.IsError {
+		t.Fatalf("expected success, got error: %s", text)
+	}
+	if !strings.Contains(text, "Ended activity") {
+		t.Errorf("expected 'Ended activity' in output, got: %s", text)
+	}
+
+	// Verify PATCH body preserved template and updated state
+	if patchBody["state"] != "ENDED" {
+		t.Errorf("expected state=ENDED in PATCH, got %v", patchBody["state"])
+	}
+	content, _ := patchBody["content"].(map[string]any)
+	if content == nil {
+		t.Fatal("missing content in PATCH body")
+	}
+	if content["template"] != "alert" {
+		t.Errorf("expected template preserved as 'alert', got %v", content["template"])
+	}
+	if content["state"] != "Ended manually" {
+		t.Errorf("expected state='Ended manually', got %v", content["state"])
+	}
+	if content["severity"] != "warning" {
+		t.Errorf("expected severity preserved as 'warning', got %v", content["severity"])
+	}
+}
+
+func TestHandleEndActivity_AlreadyEnded(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"slug":"test-done","state":"ENDED","content":{"template":"generic","state":"Done"}}`))
+	}))
+	defer srv.Close()
+
+	api := client.NewAPIClient(srv.URL, "test-token")
+	req := newReq(map[string]any{"slug": "test-done"})
+
+	result, err := handleEndActivity(context.Background(), req, api)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	text := resultText(t, result)
+	if !strings.Contains(text, "already ENDED") {
+		t.Errorf("expected 'already ENDED', got: %s", text)
+	}
+}
+
+func TestHandleEndActivity_CustomReason(t *testing.T) {
+	var patchBody map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodGet:
+			w.Write([]byte(`{"slug":"test-x","state":"ONGOING","content":{"template":"generic","state":"Running"}}`))
+		case r.Method == http.MethodPatch:
+			body, _ := io.ReadAll(r.Body)
+			json.Unmarshal(body, &patchBody)
+			w.Write(body)
+		}
+	}))
+	defer srv.Close()
+
+	api := client.NewAPIClient(srv.URL, "test-token")
+	req := newReq(map[string]any{"slug": "test-x", "reason": "Cancelled by operator"})
+
+	result, err := handleEndActivity(context.Background(), req, api)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	text := resultText(t, result)
+	if !strings.Contains(text, "Cancelled by operator") {
+		t.Errorf("expected custom reason in output, got: %s", text)
+	}
+	content, _ := patchBody["content"].(map[string]any)
+	if content["state"] != "Cancelled by operator" {
+		t.Errorf("expected state='Cancelled by operator', got %v", content["state"])
+	}
+}
+
+func TestHandleEndActivity_ContentOverride(t *testing.T) {
+	var patchBody map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodGet:
+			w.Write([]byte(`{"slug":"test-x","state":"ONGOING","content":{"template":"alert","state":"Firing"}}`))
+		case r.Method == http.MethodPatch:
+			body, _ := io.ReadAll(r.Body)
+			json.Unmarshal(body, &patchBody)
+			w.Write(body)
+		}
+	}))
+	defer srv.Close()
+
+	api := client.NewAPIClient(srv.URL, "test-token")
+	override := `{"template":"generic","state":"Custom end"}`
+	req := newReq(map[string]any{"slug": "test-x", "content_json": override})
+
+	result, err := handleEndActivity(context.Background(), req, api)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.IsError {
+		t.Fatalf("expected success, got error: %s", resultText(t, result))
+	}
+	content, _ := patchBody["content"].(map[string]any)
+	if content["template"] != "generic" {
+		t.Errorf("expected overridden template 'generic', got %v", content["template"])
+	}
+}
+
+// ---------- handleListActivities (enhanced) ----------
+
+func TestHandleListActivities_NoFilters(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`[{"slug":"a","state":"ONGOING"},{"slug":"b","state":"ENDED"}]`))
+	}))
+	defer srv.Close()
+
+	api := client.NewAPIClient(srv.URL, "test-token")
+	req := newReq(map[string]any{})
+
+	result, err := handleListActivities(context.Background(), req, api)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	text := resultText(t, result)
+	// Should return raw JSON (backwards compat)
+	if !strings.Contains(text, `"slug":"a"`) || !strings.Contains(text, `"slug":"b"`) {
+		t.Errorf("expected both activities in raw output, got: %s", text)
+	}
+}
+
+func TestHandleListActivities_StateFilter(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`[{"slug":"a","state":"ONGOING"},{"slug":"b","state":"ENDED"},{"slug":"c","state":"ONGOING"}]`))
+	}))
+	defer srv.Close()
+
+	api := client.NewAPIClient(srv.URL, "test-token")
+	req := newReq(map[string]any{"state": "ONGOING"})
+
+	result, err := handleListActivities(context.Background(), req, api)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	text := resultText(t, result)
+	var activities []map[string]any
+	if err := json.Unmarshal([]byte(text), &activities); err != nil {
+		t.Fatalf("invalid JSON: %v", err)
+	}
+	if len(activities) != 2 {
+		t.Errorf("expected 2 ONGOING activities, got %d", len(activities))
+	}
+	for _, a := range activities {
+		if a["state"] != "ONGOING" {
+			t.Errorf("expected state=ONGOING, got %v", a["state"])
+		}
+	}
+}
+
+func TestHandleListActivities_SourceFilter(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`[{"slug":"grafana-cpu","state":"ONGOING"},{"slug":"grafana_disk","state":"ONGOING"},{"slug":"argocd-deploy","state":"ONGOING"}]`))
+	}))
+	defer srv.Close()
+
+	api := client.NewAPIClient(srv.URL, "test-token")
+	req := newReq(map[string]any{"source": "grafana"})
+
+	result, err := handleListActivities(context.Background(), req, api)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	text := resultText(t, result)
+	var activities []map[string]any
+	if err := json.Unmarshal([]byte(text), &activities); err != nil {
+		t.Fatalf("invalid JSON: %v", err)
+	}
+	if len(activities) != 2 {
+		t.Errorf("expected 2 grafana activities, got %d", len(activities))
+	}
+}
+
+func TestHandleListActivities_Summary(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`[{"slug":"test-a","name":"Test A","state":"ONGOING","priority":5,"content":{"template":"alert"},"created_at":"2026-04-10T10:00:00Z"}]`))
+	}))
+	defer srv.Close()
+
+	api := client.NewAPIClient(srv.URL, "test-token")
+	req := newReq(map[string]any{"summary": true})
+
+	result, err := handleListActivities(context.Background(), req, api)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	text := resultText(t, result)
+	var summaries []map[string]any
+	if err := json.Unmarshal([]byte(text), &summaries); err != nil {
+		t.Fatalf("invalid JSON: %v", err)
+	}
+	if len(summaries) != 1 {
+		t.Fatalf("expected 1 summary, got %d", len(summaries))
+	}
+	s := summaries[0]
+	if s["slug"] != "test-a" {
+		t.Errorf("expected slug=test-a, got %v", s["slug"])
+	}
+	if s["template"] != "alert" {
+		t.Errorf("expected template=alert, got %v", s["template"])
+	}
+	if _, ok := s["age"]; !ok {
+		t.Error("missing age field in summary")
+	}
+	// Summary should NOT contain content (it's projected out)
+	if _, ok := s["content"]; ok {
+		t.Error("summary should not contain content field")
+	}
+}
+
+func TestHandleListActivities_Limit(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`[{"slug":"a","state":"ONGOING"},{"slug":"b","state":"ONGOING"},{"slug":"c","state":"ONGOING"}]`))
+	}))
+	defer srv.Close()
+
+	api := client.NewAPIClient(srv.URL, "test-token")
+	req := newReq(map[string]any{"state": "ONGOING", "limit": float64(2)})
+
+	result, err := handleListActivities(context.Background(), req, api)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	text := resultText(t, result)
+	var activities []map[string]any
+	if err := json.Unmarshal([]byte(text), &activities); err != nil {
+		t.Fatalf("invalid JSON: %v", err)
+	}
+	if len(activities) != 2 {
+		t.Errorf("expected 2 activities (limited), got %d", len(activities))
+	}
+}
+
+func TestHandleListActivities_CombinedFilters(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`[
+			{"slug":"grafana-cpu","state":"ONGOING"},
+			{"slug":"grafana-disk","state":"ENDED"},
+			{"slug":"argocd-deploy","state":"ONGOING"},
+			{"slug":"grafana-mem","state":"ONGOING"}
+		]`))
+	}))
+	defer srv.Close()
+
+	api := client.NewAPIClient(srv.URL, "test-token")
+	req := newReq(map[string]any{"state": "ONGOING", "source": "grafana", "limit": float64(1)})
+
+	result, err := handleListActivities(context.Background(), req, api)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	text := resultText(t, result)
+	var activities []map[string]any
+	if err := json.Unmarshal([]byte(text), &activities); err != nil {
+		t.Fatalf("invalid JSON: %v", err)
+	}
+	if len(activities) != 1 {
+		t.Errorf("expected 1 activity (ONGOING + grafana + limit 1), got %d", len(activities))
+	}
+}
+
+func TestHandleListActivities_EmptyResult(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`[{"slug":"a","state":"ENDED"}]`))
+	}))
+	defer srv.Close()
+
+	api := client.NewAPIClient(srv.URL, "test-token")
+	req := newReq(map[string]any{"state": "ONGOING", "summary": true})
+
+	result, err := handleListActivities(context.Background(), req, api)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	text := resultText(t, result)
+	if !strings.Contains(text, "No activities found") {
+		t.Errorf("expected 'No activities found', got: %s", text)
+	}
+}
+
+// ---------- handleBulkEndActivities ----------
+
+func TestHandleBulkEndActivities_NoFilter(t *testing.T) {
+	api := client.NewAPIClient("http://unused", "test-token")
+	req := newReq(map[string]any{})
+
+	result, err := handleBulkEndActivities(context.Background(), req, api)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !result.IsError {
+		t.Error("expected error when no filter provided")
+	}
+	text := resultText(t, result)
+	if !strings.Contains(text, "at least one filter") {
+		t.Errorf("expected filter error, got: %s", text)
+	}
+}
+
+func TestHandleBulkEndActivities_HappyPath(t *testing.T) {
+	var patchCount int
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/activities":
+			w.Write([]byte(`[
+				{"slug":"grafana-cpu","state":"ONGOING","content":{"template":"alert","state":"Firing"}},
+				{"slug":"grafana-disk","state":"ONGOING","content":{"template":"alert","state":"Firing"}},
+				{"slug":"argocd-deploy","state":"ONGOING","content":{"template":"steps"}}
+			]`))
+		case r.Method == http.MethodPatch:
+			patchCount++
+			body, _ := io.ReadAll(r.Body)
+			w.Write(body)
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer srv.Close()
+
+	api := client.NewAPIClient(srv.URL, "test-token")
+	req := newReq(map[string]any{"source": "grafana"})
+
+	result, err := handleBulkEndActivities(context.Background(), req, api)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	text := resultText(t, result)
+	if patchCount != 2 {
+		t.Errorf("expected 2 PATCH calls (grafana only), got %d", patchCount)
+	}
+	if !strings.Contains(text, "Ended 2 activities") {
+		t.Errorf("expected 'Ended 2 activities', got: %s", text)
+	}
+	if !strings.Contains(text, "grafana-cpu") || !strings.Contains(text, "grafana-disk") {
+		t.Errorf("expected both grafana slugs in output, got: %s", text)
+	}
+}
+
+func TestHandleBulkEndActivities_NoMatches(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`[{"slug":"argocd-deploy","state":"ONGOING","content":{"template":"steps"}}]`))
+	}))
+	defer srv.Close()
+
+	api := client.NewAPIClient(srv.URL, "test-token")
+	req := newReq(map[string]any{"source": "grafana"})
+
+	result, err := handleBulkEndActivities(context.Background(), req, api)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	text := resultText(t, result)
+	if !strings.Contains(text, "No matching activities") {
+		t.Errorf("expected 'No matching activities', got: %s", text)
+	}
+}
+
+func TestHandleBulkEndActivities_SkipsAlreadyEnded(t *testing.T) {
+	var patchCount int
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/activities":
+			w.Write([]byte(`[
+				{"slug":"grafana-cpu","state":"ONGOING","content":{"template":"alert"}},
+				{"slug":"grafana-disk","state":"ENDED","content":{"template":"alert"}}
+			]`))
+		case r.Method == http.MethodPatch:
+			patchCount++
+			body, _ := io.ReadAll(r.Body)
+			w.Write(body)
+		}
+	}))
+	defer srv.Close()
+
+	api := client.NewAPIClient(srv.URL, "test-token")
+	req := newReq(map[string]any{"source": "grafana"})
+
+	result, err := handleBulkEndActivities(context.Background(), req, api)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if patchCount != 1 {
+		t.Errorf("expected 1 PATCH (skip ENDED), got %d", patchCount)
+	}
+	text := resultText(t, result)
+	if !strings.Contains(text, "Ended 1 activities") {
+		t.Errorf("expected 'Ended 1 activities', got: %s", text)
+	}
+}
+
+// ---------- matchesSource ----------
+
+func TestMatchesSource(t *testing.T) {
+	tests := []struct {
+		slug, source string
+		want         bool
+	}{
+		{"grafana-cpu", "grafana", true},
+		{"grafana_disk", "grafana", true},
+		{"grafana", "grafana", true},
+		{"argocd-deploy", "grafana", false},
+		{"my-grafana-thing", "grafana", false},
+		{"grafana-", "grafana", true},
+	}
+	for _, tt := range tests {
+		if got := matchesSource(tt.slug, tt.source); got != tt.want {
+			t.Errorf("matchesSource(%q, %q) = %v, want %v", tt.slug, tt.source, got, tt.want)
+		}
+	}
+}
+
+// ---------- formatDuration ----------
+
+func TestFormatDuration(t *testing.T) {
+	tests := []struct {
+		d    time.Duration
+		want string
+	}{
+		{5 * time.Minute, "5m"},
+		{90 * time.Minute, "1h 30m"},
+		{25 * time.Hour, "1d 1h"},
+		{48*time.Hour + 30*time.Minute, "2d 0h"},
+	}
+	for _, tt := range tests {
+		if got := formatDuration(tt.d); got != tt.want {
+			t.Errorf("formatDuration(%v) = %q, want %q", tt.d, got, tt.want)
+		}
+	}
+}
+
+// ---------- testPayloads ----------
 
 func TestTestPayloads_AllProvidersPresent(t *testing.T) {
 	expected := []string{
