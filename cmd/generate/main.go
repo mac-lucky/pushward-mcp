@@ -4,6 +4,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"go/format"
@@ -16,6 +17,7 @@ import (
 	"sort"
 	"strings"
 	"text/template"
+	"time"
 	"unicode"
 
 	"gopkg.in/yaml.v3"
@@ -141,14 +143,20 @@ func findRootDir() string {
 
 // fetchOrRead tries to fetch data from a URL first; on failure falls back to a local file.
 func fetchOrRead(url, fallbackPath string) []byte {
-	resp, err := http.Get(url)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err == nil {
-		defer resp.Body.Close()
-		if resp.StatusCode == http.StatusOK {
-			data, err := io.ReadAll(resp.Body)
-			if err == nil {
-				fmt.Fprintf(os.Stderr, "fetched %s (%d bytes)\n", url, len(data))
-				return data
+		client := &http.Client{Timeout: 10 * time.Second}
+		resp, err := client.Do(req)
+		if err == nil {
+			defer resp.Body.Close()
+			if resp.StatusCode == http.StatusOK {
+				data, err := io.ReadAll(io.LimitReader(resp.Body, 10<<20))
+				if err == nil {
+					fmt.Fprintf(os.Stderr, "fetched %s (%d bytes)\n", url, len(data))
+					return data
+				}
 			}
 		}
 	}
