@@ -143,22 +143,8 @@ func findRootDir() string {
 
 // fetchOrRead tries to fetch data from a URL first; on failure falls back to a local file.
 func fetchOrRead(url, fallbackPath string) []byte {
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
-	if err == nil {
-		client := &http.Client{Timeout: 10 * time.Second}
-		resp, err := client.Do(req)
-		if err == nil {
-			defer resp.Body.Close()
-			if resp.StatusCode == http.StatusOK {
-				data, err := io.ReadAll(io.LimitReader(resp.Body, 10<<20))
-				if err == nil {
-					fmt.Fprintf(os.Stderr, "fetched %s (%d bytes)\n", url, len(data))
-					return data
-				}
-			}
-		}
+	if data, err := fetchURL(url); err == nil {
+		return data
 	}
 	fmt.Fprintf(os.Stderr, "fetch %s failed, falling back to %s\n", url, fallbackPath)
 	data, err := os.ReadFile(fallbackPath)
@@ -167,6 +153,29 @@ func fetchOrRead(url, fallbackPath string) []byte {
 		os.Exit(1)
 	}
 	return data
+}
+
+func fetchURL(url string) ([]byte, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := (&http.Client{}).Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("HTTP %d", resp.StatusCode)
+	}
+	data, err := io.ReadAll(io.LimitReader(resp.Body, 10<<20))
+	if err != nil {
+		return nil, err
+	}
+	fmt.Fprintf(os.Stderr, "fetched %s (%d bytes)\n", url, len(data))
+	return data, nil
 }
 
 // parseSpecJSON parses JSON or YAML OpenAPI spec data.
