@@ -141,7 +141,8 @@ func registerCompositeTools(s *mcpserver.MCPServer, api *client.APIClient, relay
 	// bulk_end_activities
 	s.AddTool(
 		mcp.NewTool("bulk_end_activities",
-			mcp.WithDescription("End multiple activities matching filters. At least one filter is required to prevent accidental bulk operations."),
+			mcp.WithDescription("End multiple activities matching filters. At least one filter is required. Defaults to dry-run — pass confirm=true to actually end matching activities."),
+			mcp.WithDestructiveHintAnnotation(true),
 			mcp.WithString("state",
 				mcp.Description("Filter by current state (e.g. \"ONGOING\")"),
 				mcp.Enum("ONGOING", "ENDED", "PREEMPTED"),
@@ -154,6 +155,9 @@ func registerCompositeTools(s *mcpserver.MCPServer, api *client.APIClient, relay
 			),
 			mcp.WithString("reason",
 				mcp.Description("Reason text for all ended activities (default: \"Ended in bulk\")"),
+			),
+			mcp.WithBoolean("confirm",
+				mcp.Description("Must be true to actually end matching activities. When false (default), returns a dry-run preview of how many activities would be ended."),
 			),
 		),
 		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -544,6 +548,7 @@ func handleBulkEndActivities(ctx context.Context, req mcp.CallToolRequest, api *
 	sourceFilter := req.GetString("source", "")
 	slugPrefix := req.GetString("slug_prefix", "")
 	reason := req.GetString("reason", "Ended in bulk")
+	confirm := req.GetBool("confirm", false)
 
 	if stateFilter == "" && sourceFilter == "" && slugPrefix == "" {
 		return mcp.NewToolResultError("at least one filter (state, source, or slug_prefix) is required"), nil
@@ -573,6 +578,27 @@ func handleBulkEndActivities(ctx context.Context, req mcp.CallToolRequest, api *
 
 	if len(toEnd) == 0 {
 		return mcp.NewToolResultText("No matching activities to end"), nil
+	}
+
+	// Dry-run gate: refuse to act unless caller explicitly confirms.
+	if !confirm {
+		const sampleLimit = 10
+		sample := make([]string, 0, sampleLimit)
+		for i, a := range toEnd {
+			if i >= sampleLimit {
+				break
+			}
+			slug, _ := a["slug"].(string)
+			sample = append(sample, slug)
+		}
+		more := ""
+		if len(toEnd) > sampleLimit {
+			more = fmt.Sprintf(" (+%d more)", len(toEnd)-sampleLimit)
+		}
+		return mcp.NewToolResultText(fmt.Sprintf(
+			"Dry run: %d activities match and would be ended.\nSample: %s%s\nRe-call with confirm=true to actually end them.",
+			len(toEnd), strings.Join(sample, ", "), more,
+		)), nil
 	}
 
 	var ended []string

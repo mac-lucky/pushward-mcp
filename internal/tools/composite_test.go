@@ -797,7 +797,7 @@ func TestHandleBulkEndActivities_HappyPath(t *testing.T) {
 	defer srv.Close()
 
 	api := client.NewAPIClient(srv.URL, "test-token")
-	req := newReq(map[string]any{"source": "grafana"})
+	req := newReq(map[string]any{"source": "grafana", "confirm": true})
 
 	result, err := handleBulkEndActivities(context.Background(), req, api)
 	if err != nil {
@@ -813,6 +813,41 @@ func TestHandleBulkEndActivities_HappyPath(t *testing.T) {
 	}
 	if !strings.Contains(text, "grafana-cpu") || !strings.Contains(text, "grafana-disk") {
 		t.Errorf("expected both grafana slugs in output, got: %s", text)
+	}
+}
+
+func TestHandleBulkEndActivities_DryRunByDefault(t *testing.T) {
+	var patchCount int
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/activities":
+			w.Write([]byte(`[
+				{"slug":"grafana-cpu","state":"ONGOING","content":{"template":"alert"}},
+				{"slug":"grafana-disk","state":"ONGOING","content":{"template":"alert"}}
+			]`))
+		case r.Method == http.MethodPatch:
+			patchCount++
+		}
+	}))
+	defer srv.Close()
+
+	api := client.NewAPIClient(srv.URL, "test-token")
+	req := newReq(map[string]any{"source": "grafana"}) // confirm omitted → dry-run
+
+	result, err := handleBulkEndActivities(context.Background(), req, api)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if patchCount != 0 {
+		t.Errorf("dry-run must not PATCH, got %d calls", patchCount)
+	}
+	text := resultText(t, result)
+	if !strings.Contains(text, "Dry run: 2 activities match") {
+		t.Errorf("expected dry-run preview, got: %s", text)
+	}
+	if !strings.Contains(text, "confirm=true") {
+		t.Errorf("expected hint about confirm=true, got: %s", text)
 	}
 }
 
@@ -854,7 +889,7 @@ func TestHandleBulkEndActivities_SkipsAlreadyEnded(t *testing.T) {
 	defer srv.Close()
 
 	api := client.NewAPIClient(srv.URL, "test-token")
-	req := newReq(map[string]any{"source": "grafana"})
+	req := newReq(map[string]any{"source": "grafana", "confirm": true})
 
 	result, err := handleBulkEndActivities(context.Background(), req, api)
 	if err != nil {
