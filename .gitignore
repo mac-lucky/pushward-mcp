@@ -1,5 +1,6 @@
 # Binaries
 pushward-mcp
+/generate
 *.exe
 
 # IDE
