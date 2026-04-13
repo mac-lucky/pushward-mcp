@@ -92,6 +92,12 @@ func (c *APIClient) GetHealth(ctx context.Context) (json.RawMessage, error) {
 	return raw, err
 }
 
+// GetReady returns the API readiness status.
+func (c *APIClient) GetReady(ctx context.Context) (json.RawMessage, error) {
+	raw, _, err := c.DoJSON(ctx, http.MethodGet, "/ready", nil)
+	return raw, err
+}
+
 // CreateNotificationInput is the request body for POST /notifications.
 type CreateNotificationInput struct {
 	Title             string            `json:"title"`

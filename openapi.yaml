@@ -793,6 +793,17 @@ components:
       required:
         - status
       type: object
+    ReadyOutputBody:
+      additionalProperties: false
+      properties:
+        status:
+          description: Readiness status
+          examples:
+            - ready
+          type: string
+      required:
+        - status
+      type: object
     HistoryPoint:
       additionalProperties: false
       properties:
@@ -1775,6 +1786,31 @@ paths:
                 $ref: "#/components/schemas/HumaError"
           description: Service Unavailable
       summary: Health check
+      tags:
+        - System
+  /ready:
+    get:
+      operationId: getReady
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReadyOutputBody"
+          description: OK
+        "500":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HumaError"
+          description: Internal Server Error
+        "503":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HumaError"
+          description: Service Unavailable
+      summary: Readiness check
       tags:
         - System
   /notifications:

@@ -145,6 +145,16 @@ func registerAPITools(s *mcpserver.MCPServer, api *client.APIClient) {
 		},
 	)
 
+	// get_ready
+	s.AddTool(
+		mcp.NewTool("get_ready",
+			mcp.WithDescription("Readiness check"),
+		),
+		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			return handleGetReady(ctx, req, api)
+		},
+	)
+
 	// update_activity
 	s.AddTool(
 		mcp.NewTool("update_activity",
@@ -273,6 +283,14 @@ func handleGetHealth(ctx context.Context, req mcp.CallToolRequest, api *client.A
 
 func handleGetMe(ctx context.Context, req mcp.CallToolRequest, api *client.APIClient) (*mcp.CallToolResult, error) {
 	raw, err := api.GetMe(ctx)
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
+	return mcp.NewToolResultText(string(raw)), nil
+}
+
+func handleGetReady(ctx context.Context, req mcp.CallToolRequest, api *client.APIClient) (*mcp.CallToolResult, error) {
+	raw, err := api.GetReady(ctx)
 	if err != nil {
 		return mcp.NewToolResultError(err.Error()), nil
 	}
