@@ -59,6 +59,9 @@ func registerAPITools(s *mcpserver.MCPServer, api *client.APIClient) {
 			mcp.WithString("collapse_id",
 				mcp.Description("Collapse ID for replacing notifications"),
 			),
+			mcp.WithString("icon_url",
+				mcp.Description("HTTPS URL for per-notification source avatar, shown as the Communication Notification avatar on iOS. Recommended ≤256×256 and ≤100 KB; responses larger than 512 KB are rejected by the iOS extension to protect the 24 MB memory budget."),
+			),
 			mcp.WithString("image_url",
 				mcp.Description("Image URL (must be HTTPS)"),
 			),
@@ -166,6 +169,10 @@ func registerAPITools(s *mcpserver.MCPServer, api *client.APIClient) {
 			mcp.WithNumber("priority",
 				mcp.Description("priority"),
 			),
+			mcp.WithString("sound",
+				mcp.Description("Optional Live Activity alert sound. 'default' uses the iOS system sound; other values must match a bundled sound."),
+				mcp.Enum("", "default", "chime", "alert", "success", "warning", "bell", "ding", "buzz", "notification"),
+			),
 			mcp.WithString("state",
 				mcp.Required(),
 				mcp.Description("state"),
@@ -216,6 +223,9 @@ func handleCreateNotification(ctx context.Context, req mcp.CallToolRequest, api 
 	}
 	if v := req.GetString("collapse_id", ""); v != "" {
 		input.CollapseID = v
+	}
+	if v := req.GetString("icon_url", ""); v != "" {
+		input.IconURL = v
 	}
 	if v := req.GetString("image_url", ""); v != "" {
 		input.ImageURL = v

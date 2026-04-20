@@ -69,6 +69,7 @@ type UpdateActivityInput struct {
 	State    string          `json:"state"`
 	Content  json.RawMessage `json:"content"`
 	Priority *float64        `json:"priority,omitempty"`
+	Sound    string          `json:"sound,omitempty"`
 }
 
 // UpdateActivity updates an activity's state and content.
@@ -109,6 +110,7 @@ type CreateNotificationInput struct {
 	ThreadID          string            `json:"thread_id,omitempty"`
 	CollapseID        string            `json:"collapse_id,omitempty"`
 	Level             string            `json:"level,omitempty"`
+	IconURL           string            `json:"icon_url,omitempty"`
 	ImageURL          string            `json:"image_url,omitempty"`
 	URL               string            `json:"url,omitempty"`
 	ActivitySlug      string            `json:"activity_slug,omitempty"`
