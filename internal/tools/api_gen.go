@@ -161,7 +161,7 @@ func registerAPITools(s *mcpserver.MCPServer, api *client.APIClient) {
 	// update_activity
 	s.AddTool(
 		mcp.NewTool("update_activity",
-			mcp.WithDescription("Update activity using RFC 7396 JSON Merge Patch. Omit state to inherit the stored state."),
+			mcp.WithDescription("Update activity"),
 			mcp.WithString("slug",
 				mcp.Required(),
 				mcp.Description("slug path parameter"),
@@ -171,11 +171,11 @@ func registerAPITools(s *mcpserver.MCPServer, api *client.APIClient) {
 			),
 			mcp.WithString("sound",
 				mcp.Description("Optional Live Activity alert sound. 'default' uses the iOS system sound; other values must match a bundled sound."),
-				mcp.Enum("", "default", "chime", "alert", "success", "warning", "bell", "ding", "buzz", "notification"),
+				mcp.Enum("default", "chime", "alert", "success", "warning", "bell", "ding", "buzz", "notification"),
 			),
 			mcp.WithString("state",
-				mcp.Description("Target state. Optional — if omitted, the stored state is kept. Required if the activity is currently PREEMPTED."),
-				mcp.Enum("", "ONGOING", "ENDED"),
+				mcp.Description("Target state. Optional — if omitted, the current stored state is kept. Setting ENDED on an ONGOING activity dismisses the Live Activity."),
+				mcp.Enum("ONGOING", "ENDED"),
 			),
 			mcp.WithString("content_json",
 				mcp.Required(),
@@ -319,11 +319,16 @@ func handleUpdateActivity(ctx context.Context, req mcp.CallToolRequest, api *cli
 		return mcp.NewToolResultError("content_json is not valid JSON"), nil
 	}
 	input := client.UpdateActivityInput{
-		State:   req.GetString("state", ""),
 		Content: json.RawMessage(contentStr),
 	}
 	if v := req.GetFloat("priority", math.NaN()); !math.IsNaN(v) {
 		input.Priority = &v
+	}
+	if v := req.GetString("sound", ""); v != "" {
+		input.Sound = v
+	}
+	if v := req.GetString("state", ""); v != "" {
+		input.State = v
 	}
 	raw, err := api.UpdateActivity(ctx, paramSlug, input)
 	if err != nil {

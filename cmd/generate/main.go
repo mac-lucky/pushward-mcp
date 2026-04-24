@@ -195,10 +195,13 @@ func parseSpecJSON(data []byte, name string) *openAPISpec {
 // ---------- API tool building ----------
 
 // skipOperations lists operationIDs that are handled as composite tools
-// in composite.go instead of being generated. See composite.go for their
-// enhanced implementations.
+// in composite.go instead of being generated, plus deprecated endpoints
+// that survived in the live OpenAPI spec but are gone from the public
+// surface post-merge-patch cleanup.
 var skipOperations = map[string]bool{
-	"listActivities": true, // enhanced with state/source filtering and summary mode
+	"listActivities":     true, // enhanced with state/source filtering and summary mode
+	"setActivityAlarm":   true, // removed from public surface — alarm is now a merge-patch field
+	"clearActivityAlarm": true, // same
 }
 
 func buildAPITools(spec *openAPISpec) []toolDef {
@@ -598,10 +601,16 @@ func handle{{ .FuncName }}(ctx context.Context, req mcp.CallToolRequest, api *cl
 		Content: json.RawMessage(contentStr),
 	}
 {{- range .Params }}
-{{- if and (not .Required) (eq .MCPType "Number") }}
+{{- if and (not .Required) (eq .MCPType "String") }}
+	if v := req.GetString({{ quote .Name }}, ""); v != "" {
+		input.{{ .GoName }} = v
+	}
+{{- else if and (not .Required) (eq .MCPType "Number") }}
 	if v := req.GetFloat({{ quote .Name }}, math.NaN()); !math.IsNaN(v) {
 		input.{{ .GoName }} = &v
 	}
+{{- else if and (not .Required) (eq .MCPType "Boolean") }}
+	input.{{ .GoName }} = req.GetBool({{ quote .Name }}, false)
 {{- end }}
 {{- end }}
 {{- end }}

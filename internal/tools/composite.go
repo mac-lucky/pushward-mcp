@@ -3,6 +3,7 @@ package tools
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -12,6 +13,10 @@ import (
 
 	"github.com/mac-lucky/pushward-mcp/internal/client"
 )
+
+const truncationNote = "\n\nNote: result truncated at the pagination cap (" +
+	"~2000 activities). Narrow your filter or list in smaller batches to " +
+	"see the rest."
 
 const (
 	stateOngoing   = "ONGOING"
@@ -118,7 +123,7 @@ func registerCompositeTools(s *mcpserver.MCPServer, api *client.APIClient, relay
 	// list_activities (enhanced, replaces generated version)
 	s.AddTool(
 		mcp.NewTool("list_activities",
-			mcp.WithDescription("List activities with optional filtering and summary mode. Without parameters, returns all activities (full JSON)."),
+			mcp.WithDescription("List activities with optional filtering and summary mode. Walks the server's cursor pagination automatically and returns the aggregated result (capped at ~2000 activities). Without parameters, returns the full JSON for every page concatenated."),
 			mcp.WithString("state",
 				mcp.Description("Filter by activity state"),
 				mcp.Enum("ONGOING", "ENDED", "PREEMPTED"),
@@ -417,8 +422,9 @@ func buildEndContent(activity map[string]any, reason string) json.RawMessage {
 // ---------- list_activities (enhanced) ----------
 
 func handleListActivities(ctx context.Context, req mcp.CallToolRequest, api *client.APIClient) (*mcp.CallToolResult, error) {
-	raw, err := api.ListActivities(ctx)
-	if err != nil {
+	raw, err := api.ListAllActivities(ctx)
+	truncated := errors.Is(err, client.ErrListActivitiesTruncated)
+	if err != nil && !truncated {
 		return mcp.NewToolResultError(err.Error()), nil
 	}
 
@@ -429,7 +435,7 @@ func handleListActivities(ctx context.Context, req mcp.CallToolRequest, api *cli
 
 	// No filters and no summary — return raw response (backwards compat)
 	if stateFilter == "" && sourceFilter == "" && !summary && limit == 0 {
-		return mcp.NewToolResultText(string(raw)), nil
+		return mcp.NewToolResultText(withTruncationNote(string(raw), truncated)), nil
 	}
 
 	var activities []map[string]any
@@ -443,11 +449,18 @@ func handleListActivities(ctx context.Context, req mcp.CallToolRequest, api *cli
 	}
 
 	if summary {
-		return mcp.NewToolResultText(formatSummary(filtered)), nil
+		return mcp.NewToolResultText(withTruncationNote(formatSummary(filtered), truncated)), nil
 	}
 
 	out, _ := json.MarshalIndent(filtered, "", "  ")
-	return mcp.NewToolResultText(string(out)), nil
+	return mcp.NewToolResultText(withTruncationNote(string(out), truncated)), nil
+}
+
+func withTruncationNote(body string, truncated bool) string {
+	if truncated {
+		return body + truncationNote
+	}
+	return body
 }
 
 func matchesSource(slug, source string) bool {
@@ -554,9 +567,10 @@ func handleBulkEndActivities(ctx context.Context, req mcp.CallToolRequest, api *
 		return mcp.NewToolResultError("at least one filter (state, source, or slug_prefix) is required"), nil
 	}
 
-	// Fetch all activities
-	raw, err := api.ListActivities(ctx)
-	if err != nil {
+	// Fetch all activities (walks pagination cursor internally)
+	raw, err := api.ListAllActivities(ctx)
+	truncated := errors.Is(err, client.ErrListActivitiesTruncated)
+	if err != nil && !truncated {
 		return mcp.NewToolResultError(fmt.Sprintf("listing activities: %v", err)), nil
 	}
 
@@ -577,7 +591,7 @@ func handleBulkEndActivities(ctx context.Context, req mcp.CallToolRequest, api *
 	}
 
 	if len(toEnd) == 0 {
-		return mcp.NewToolResultText("No matching activities to end"), nil
+		return mcp.NewToolResultText(withTruncationNote("No matching activities to end", truncated)), nil
 	}
 
 	// Dry-run gate: refuse to act unless caller explicitly confirms.
@@ -595,10 +609,11 @@ func handleBulkEndActivities(ctx context.Context, req mcp.CallToolRequest, api *
 		if len(toEnd) > sampleLimit {
 			more = fmt.Sprintf(" (+%d more)", len(toEnd)-sampleLimit)
 		}
-		return mcp.NewToolResultText(fmt.Sprintf(
+		body := fmt.Sprintf(
 			"Dry run: %d activities match and would be ended.\nSample: %s%s\nRe-call with confirm=true to actually end them.",
 			len(toEnd), strings.Join(sample, ", "), more,
-		)), nil
+		)
+		return mcp.NewToolResultText(withTruncationNote(body, truncated)), nil
 	}
 
 	var ended []string
@@ -626,7 +641,7 @@ func handleBulkEndActivities(ctx context.Context, req mcp.CallToolRequest, api *
 		parts = append(parts, fmt.Sprintf("Failed %d: %s", len(failed), strings.Join(failed, "; ")))
 	}
 
-	return mcp.NewToolResultText(strings.Join(parts, "\n")), nil
+	return mcp.NewToolResultText(withTruncationNote(strings.Join(parts, "\n"), truncated)), nil
 }
 
 // testPayloads contains standard test payloads for each relay provider.
