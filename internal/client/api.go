@@ -3,9 +3,12 @@ package client
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
+	"net/url"
 	"regexp"
+	"strconv"
 )
 
 var slugPattern = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$`)
@@ -25,10 +28,92 @@ func NewAPIClient(baseURL, token string) *APIClient {
 	return &APIClient{NewBase(baseURL, token)}
 }
 
-// ListActivities returns all activities for the authenticated user.
-func (c *APIClient) ListActivities(ctx context.Context) (json.RawMessage, error) {
-	raw, _, err := c.DoJSON(ctx, http.MethodGet, "/activities", nil)
-	return raw, err
+// ActivitiesPage is the paginated envelope returned by GET /activities (AIP-158).
+type ActivitiesPage struct {
+	Items      json.RawMessage `json:"items"`
+	NextCursor string          `json:"next_cursor"`
+	HasMore    bool            `json:"has_more"`
+}
+
+// ListActivitiesOptions controls pagination of GET /activities.
+// Limit is 1-100 (server default 50 when zero). After is an opaque cursor
+// from a prior page's NextCursor.
+type ListActivitiesOptions struct {
+	Limit int
+	After string
+}
+
+// ListActivitiesPage fetches a single page of activities.
+func (c *APIClient) ListActivitiesPage(ctx context.Context, opts ListActivitiesOptions) (*ActivitiesPage, error) {
+	path := "/activities"
+	q := url.Values{}
+	if opts.Limit > 0 {
+		q.Set("limit", strconv.Itoa(opts.Limit))
+	}
+	if opts.After != "" {
+		q.Set("after", opts.After)
+	}
+	if len(q) > 0 {
+		path += "?" + q.Encode()
+	}
+	raw, _, err := c.DoJSON(ctx, http.MethodGet, path, nil)
+	if err != nil {
+		return nil, err
+	}
+	var page ActivitiesPage
+	if err := json.Unmarshal(raw, &page); err != nil {
+		return nil, fmt.Errorf("parsing activities page: %w", err)
+	}
+	return &page, nil
+}
+
+// maxListActivitiesPages bounds ListAllActivities to 2000 items at limit=100.
+const maxListActivitiesPages = 20
+
+// ErrListActivitiesTruncated is returned by ListAllActivities alongside a
+// partial result when the server still has more pages after hitting the page
+// cap. Callers should treat the returned JSON as "first N activities" and
+// decide whether to warn the user.
+var ErrListActivitiesTruncated = errors.New("list activities truncated at page cap")
+
+// ListAllActivities walks the cursor until HasMore=false or the page cap is
+// reached, returning the concatenated items as a JSON array. If the cap is
+// hit while more pages remain, it returns the partial result along with
+// ErrListActivitiesTruncated so the caller can surface a warning.
+func (c *APIClient) ListAllActivities(ctx context.Context) (json.RawMessage, error) {
+	all := make([]json.RawMessage, 0, maxListActivitiesPages*100)
+	opts := ListActivitiesOptions{Limit: 100}
+	truncated := false
+	for i := 0; i < maxListActivitiesPages; i++ {
+		page, err := c.ListActivitiesPage(ctx, opts)
+		if err != nil {
+			return nil, err
+		}
+		if len(page.Items) > 0 {
+			var items []json.RawMessage
+			// Go's json.Unmarshal treats a literal "null" as a no-op on slices,
+			// so no explicit check is needed.
+			if err := json.Unmarshal(page.Items, &items); err != nil {
+				return nil, fmt.Errorf("parsing activities items: %w", err)
+			}
+			all = append(all, items...)
+		}
+		if !page.HasMore || page.NextCursor == "" {
+			break
+		}
+		opts.After = page.NextCursor
+		if i == maxListActivitiesPages-1 {
+			truncated = true
+		}
+	}
+	raw, err := json.Marshal(all)
+	if err != nil {
+		return nil, err
+	}
+	if truncated {
+		return raw, ErrListActivitiesTruncated
+	}
+	return raw, nil
 }
 
 // CreateActivityInput is the request body for POST /activities.
@@ -64,7 +149,7 @@ func (c *APIClient) DeleteActivity(ctx context.Context, slug string) error {
 	return err
 }
 
-// UpdateActivityInput is the request body for PATCH /activity/{slug}.
+// UpdateActivityInput is the request body for PATCH /activities/{slug}.
 // State is optional under RFC 7396 merge-patch semantics — omit to inherit
 // the stored state (unless the activity is PREEMPTED).
 type UpdateActivityInput struct {
@@ -79,7 +164,7 @@ func (c *APIClient) UpdateActivity(ctx context.Context, slug string, input Updat
 	if err := validateSlug(slug); err != nil {
 		return nil, err
 	}
-	raw, _, err := c.DoJSON(ctx, http.MethodPatch, "/activity/"+slug, input)
+	raw, _, err := c.DoJSON(ctx, http.MethodPatch, "/activities/"+slug, input)
 	return raw, err
 }
 

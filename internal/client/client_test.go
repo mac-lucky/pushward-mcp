@@ -3,6 +3,8 @@ package client
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -344,8 +346,8 @@ func TestAPIClient_UpdateActivity(t *testing.T) {
 		if r.Method != http.MethodPatch {
 			t.Errorf("expected PATCH, got %s", r.Method)
 		}
-		if r.URL.Path != "/activity/my-slug" {
-			t.Errorf("expected path /activity/my-slug, got %s", r.URL.Path)
+		if r.URL.Path != "/activities/my-slug" {
+			t.Errorf("expected path /activities/my-slug, got %s", r.URL.Path)
 		}
 
 		body, _ := io.ReadAll(r.Body)
@@ -476,7 +478,7 @@ func TestAPIClient_CreateNotification(t *testing.T) {
 	}
 }
 
-func TestAPIClient_ListActivities(t *testing.T) {
+func TestAPIClient_ListAllActivities_SinglePage(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
 			t.Errorf("expected GET, got %s", r.Method)
@@ -485,17 +487,115 @@ func TestAPIClient_ListActivities(t *testing.T) {
 			t.Errorf("expected path /activities, got %s", r.URL.Path)
 		}
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`[{"slug":"a"},{"slug":"b"}]`))
+		w.Write([]byte(`{"items":[{"slug":"a"},{"slug":"b"}],"has_more":false}`))
 	}))
 	defer srv.Close()
 
 	c := NewAPIClient(srv.URL, "tok")
-	raw, err := c.ListActivities(context.Background())
+	raw, err := c.ListAllActivities(context.Background())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if !strings.Contains(string(raw), `"slug":"a"`) {
-		t.Errorf("unexpected response: %s", raw)
+	// Result should be a flat array of items.
+	var activities []map[string]any
+	if err := json.Unmarshal(raw, &activities); err != nil {
+		t.Fatalf("result is not a JSON array: %v (%s)", err, raw)
+	}
+	if len(activities) != 2 {
+		t.Fatalf("expected 2 items, got %d", len(activities))
+	}
+	if activities[0]["slug"] != "a" || activities[1]["slug"] != "b" {
+		t.Errorf("unexpected items: %v", activities)
+	}
+}
+
+func TestAPIClient_ListAllActivities_MultiPage(t *testing.T) {
+	var calls int
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		after := r.URL.Query().Get("after")
+		w.WriteHeader(http.StatusOK)
+		switch after {
+		case "":
+			w.Write([]byte(`{"items":[{"slug":"a"},{"slug":"b"}],"next_cursor":"c1","has_more":true}`))
+		case "c1":
+			w.Write([]byte(`{"items":[{"slug":"c"}],"has_more":false}`))
+		default:
+			t.Errorf("unexpected cursor: %q", after)
+		}
+	}))
+	defer srv.Close()
+
+	c := NewAPIClient(srv.URL, "tok")
+	raw, err := c.ListAllActivities(context.Background())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if calls != 2 {
+		t.Errorf("expected 2 page fetches, got %d", calls)
+	}
+	var activities []map[string]any
+	if err := json.Unmarshal(raw, &activities); err != nil {
+		t.Fatalf("result is not a JSON array: %v", err)
+	}
+	if len(activities) != 3 {
+		t.Fatalf("expected 3 items across pages, got %d", len(activities))
+	}
+}
+
+func TestAPIClient_ListAllActivities_TruncatedAtCap(t *testing.T) {
+	// Server always reports has_more=true with a fresh cursor — ListAllActivities
+	// must stop at the page cap and return ErrListActivitiesTruncated.
+	var calls int
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		w.WriteHeader(http.StatusOK)
+		fmt.Fprintf(w, `{"items":[{"slug":"a%d"}],"next_cursor":"c%d","has_more":true}`, calls, calls)
+	}))
+	defer srv.Close()
+
+	c := NewAPIClient(srv.URL, "tok")
+	raw, err := c.ListAllActivities(context.Background())
+	if !errors.Is(err, ErrListActivitiesTruncated) {
+		t.Fatalf("expected ErrListActivitiesTruncated, got %v", err)
+	}
+	if calls != maxListActivitiesPages {
+		t.Errorf("expected %d fetches, got %d", maxListActivitiesPages, calls)
+	}
+	var activities []map[string]any
+	if jerr := json.Unmarshal(raw, &activities); jerr != nil {
+		t.Fatalf("partial result is not valid JSON: %v", jerr)
+	}
+	if len(activities) != maxListActivitiesPages {
+		t.Errorf("expected %d items in truncated result, got %d", maxListActivitiesPages, len(activities))
+	}
+}
+
+func TestExtractErrorMessage_ProblemBody(t *testing.T) {
+	body := []byte(`{"type":"about:blank","title":"Bad Request","status":400,"detail":"Activity slug must be unique.","code":"activity.slug.invalid"}`)
+	got := extractErrorMessage(body)
+	if !strings.Contains(got, "[activity.slug.invalid]") {
+		t.Errorf("expected code tag in message, got %q", got)
+	}
+	if !strings.Contains(got, "Activity slug must be unique.") {
+		t.Errorf("expected detail in message, got %q", got)
+	}
+}
+
+func TestExtractErrorMessage_RetryAfter(t *testing.T) {
+	body := []byte(`{"title":"Too Many Requests","status":429,"detail":"slow down","code":"rate.limited","retry_after_ms":3000}`)
+	got := extractErrorMessage(body)
+	if !strings.Contains(got, "retry_after_ms=3000") {
+		t.Errorf("expected retry_after_ms hint, got %q", got)
+	}
+}
+
+func TestExtractErrorMessage_Fallback(t *testing.T) {
+	// Unparseable body falls back to the raw snippet.
+	body := []byte(`not json at all`)
+	got := extractErrorMessage(body)
+	if got != "not json at all" {
+		t.Errorf("expected raw body, got %q", got)
 	}
 }
 

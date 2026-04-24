@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"time"
 )
 
@@ -59,15 +60,44 @@ func (b *Base) DoJSON(ctx context.Context, method, path string, body any) (json.
 	}
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		snippet := string(respBody)
-		if len(snippet) > 500 {
-			snippet = snippet[:500] + "..."
-		}
-		return nil, resp.StatusCode, fmt.Errorf("%s %s returned %d: %s", method, path, resp.StatusCode, snippet)
+		msg := extractErrorMessage(respBody)
+		return nil, resp.StatusCode, fmt.Errorf("%s %s returned %d: %s", method, path, resp.StatusCode, msg)
 	}
 
 	if len(respBody) == 0 {
 		return json.RawMessage(`{}`), resp.StatusCode, nil
 	}
 	return json.RawMessage(respBody), resp.StatusCode, nil
+}
+
+// extractErrorMessage pulls a human-friendly message from an RFC 9457 Problem
+// body, falling back to a truncated raw snippet if parsing fails.
+func extractErrorMessage(body []byte) string {
+	var p struct {
+		Title        string `json:"title"`
+		Detail       string `json:"detail"`
+		Code         string `json:"code"`
+		RetryAfterMs int64  `json:"retry_after_ms"`
+	}
+	if json.Unmarshal(body, &p) == nil && (p.Detail != "" || p.Title != "" || p.Code != "") {
+		var parts []string
+		if p.Code != "" {
+			parts = append(parts, "["+p.Code+"]")
+		}
+		switch {
+		case p.Detail != "":
+			parts = append(parts, p.Detail)
+		case p.Title != "":
+			parts = append(parts, p.Title)
+		}
+		if p.RetryAfterMs > 0 {
+			parts = append(parts, fmt.Sprintf("(retry_after_ms=%d)", p.RetryAfterMs))
+		}
+		return strings.Join(parts, " ")
+	}
+	snippet := string(body)
+	if len(snippet) > 500 {
+		snippet = snippet[:500] + "..."
+	}
+	return snippet
 }
