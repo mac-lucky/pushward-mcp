@@ -383,6 +383,32 @@ func TestAPIClient_UpdateActivity_InvalidSlug(t *testing.T) {
 	}
 }
 
+// Confirms the merge-patch contract: an empty State must not appear on the
+// wire so the server inherits the stored state rather than seeing "state":"".
+func TestAPIClient_UpdateActivity_OmitsEmptyState(t *testing.T) {
+	var wire map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		if err := json.Unmarshal(body, &wire); err != nil {
+			t.Fatalf("unmarshal: %v", err)
+		}
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{}`))
+	}))
+	defer srv.Close()
+
+	c := NewAPIClient(srv.URL, "tok")
+	_, err := c.UpdateActivity(context.Background(), "my-slug", UpdateActivityInput{
+		Content: json.RawMessage(`{"progress":0.5}`),
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if _, ok := wire["state"]; ok {
+		t.Errorf("state should be omitted when empty, got wire=%v", wire)
+	}
+}
+
 func TestAPIClient_DeleteActivity(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodDelete {

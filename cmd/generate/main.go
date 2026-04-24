@@ -521,7 +521,7 @@ func registerAPITools(s *mcpserver.MCPServer, api *client.APIClient) {
 {{- if .ContentJSON }}
 			mcp.WithString("content_json",
 				mcp.Required(),
-				mcp.Description("Activity content as JSON object. Fields: template (generic|countdown|steps|alert|gauge|timeline), progress (0.0-1.0), state, icon, subtitle, accent_color, background_color, text_color. Template-specific: countdown (duration, end_date, warning_threshold, completion_message), steps (current_step, total_steps, step_labels), alert (severity: critical|warning|info, fired_at), gauge (value, min_value, max_value, unit), timeline (value as {key:number}, history as {key:[{t,v}]}, scale, thresholds)."),
+				mcp.Description("Activity content as JSON object. PATCH endpoints apply RFC 7396 JSON Merge Patch semantics — only send the fields you want to change, null clears a field, absent preserves. Fields: template (generic|countdown|steps|alert|gauge|timeline), progress (0.0-1.0), state, icon, subtitle, accent_color, background_color, text_color. Template-specific: countdown (duration as integer seconds (60) or duration string (\"60s\", \"1h30m\"), end_date [unix timestamp], warning_threshold, completion_message, alarm; if both duration and end_date are sent, end_date wins), steps (current_step, total_steps, step_labels), alert (severity: critical|warning|info, fired_at), gauge (value, min_value, max_value, unit), timeline (value as {key:number}, history as {key:[{t,v}]}, scale, thresholds)."),
 			),
 {{- end }}
 		),

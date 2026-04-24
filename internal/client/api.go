@@ -65,8 +65,10 @@ func (c *APIClient) DeleteActivity(ctx context.Context, slug string) error {
 }
 
 // UpdateActivityInput is the request body for PATCH /activity/{slug}.
+// State is optional under RFC 7396 merge-patch semantics — omit to inherit
+// the stored state (unless the activity is PREEMPTED).
 type UpdateActivityInput struct {
-	State    string          `json:"state"`
+	State    string          `json:"state,omitempty"`
 	Content  json.RawMessage `json:"content"`
 	Priority *float64        `json:"priority,omitempty"`
 	Sound    string          `json:"sound,omitempty"`
