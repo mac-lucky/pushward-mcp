@@ -88,12 +88,14 @@ type toolDef struct {
 }
 
 type paramDef struct {
-	Name     string
-	GoName   string
-	MCPType  string // "String", "Number", "Boolean"
-	Desc     string
-	Required bool
-	Enum     []string
+	Name      string
+	GoName    string
+	MCPType   string // "String", "Number", "Boolean", "Object", "Array"
+	Desc      string
+	Required  bool
+	Enum      []string
+	GoType    string // Go type used in client struct for Object/Array params (e.g. "*client.MediaAttachment", "[]client.NotificationAction")
+	ItemsType string // Item type description (used for array property items schema)
 }
 
 // Live OpenAPI spec URLs.
@@ -280,8 +282,8 @@ func schemaToParams(spec *openAPISpec, schema schemaObj, bodyRequired bool) []pa
 	sort.Strings(propNames)
 
 	for _, name := range propNames {
-		prop := schema.Properties[name]
-		if prop.ReadOnly {
+		raw := schema.Properties[name]
+		if raw.ReadOnly {
 			continue
 		}
 
@@ -290,25 +292,71 @@ func schemaToParams(spec *openAPISpec, schema schemaObj, bodyRequired bool) []pa
 			continue
 		}
 
-		// Resolve $ref if needed
-		prop = resolveRef(spec, prop)
+		// Capture ref info before resolving so we can name nested types.
+		propRef := raw.Ref
+		var itemsRef string
+		if raw.Items != nil {
+			itemsRef = raw.Items.Ref
+		}
+		prop := resolveRef(spec, raw)
 
 		// Skip complex nested objects — they'll be handled as content_json
 		if name == "content" && hasNestedProperties(prop) {
 			continue
 		}
 
-		// Skip object-typed fields (e.g., metadata: map[string]string) — not representable as simple MCP params
-		if schemaType(prop) == "object" || (prop.AdditionalProperties != nil && len(prop.Properties) == 0) {
+		// Skip free-form object fields (e.g., metadata: map[string]string) without a typed schema —
+		// not representable as a typed MCP object param.
+		if propRef == "" && schemaType(prop) == "object" && len(prop.Properties) == 0 {
 			continue
+		}
+
+		// Property-level description wins over the resolved schema's description
+		// (a $ref'd schema's description is generic, the property-level one is contextual).
+		desc := raw.Desc
+		if desc == "" {
+			desc = prop.Desc
 		}
 
 		p := paramDef{
 			Name:     name,
 			GoName:   toPascalCase(name),
-			Desc:     prop.Desc,
+			Desc:     desc,
 			Required: requiredSet[name] && bodyRequired,
 			Enum:     prop.Enum,
+		}
+
+		// Handle ref'd object schemas as MCP object params, mapped to a hand-defined Go struct.
+		if propRef != "" && schemaType(prop) == "object" {
+			p.MCPType = "Object"
+			p.GoType = "*client." + refTypeName(propRef)
+			if p.Desc == "" {
+				p.Desc = name
+			}
+			params = append(params, p)
+			continue
+		}
+
+		// Handle array-of-ref'd-object schemas as MCP array params.
+		if schemaType(prop) == "array" && itemsRef != "" {
+			p.MCPType = "Array"
+			p.GoType = "[]client." + refTypeName(itemsRef)
+			p.ItemsType = refTypeName(itemsRef)
+			if p.Desc == "" {
+				p.Desc = name
+			}
+			params = append(params, p)
+			continue
+		}
+
+		// Skip remaining object-typed fields (free-form maps with additionalProperties).
+		if schemaType(prop) == "object" || (prop.AdditionalProperties != nil && len(prop.Properties) == 0) {
+			continue
+		}
+
+		// Skip array fields whose items are not ref'd schemas — no typed Go target available.
+		if schemaType(prop) == "array" {
+			continue
 		}
 
 		switch schemaType(prop) {
@@ -364,6 +412,15 @@ func resolveRef(spec *openAPISpec, s schemaObj) schemaObj {
 		return resolved
 	}
 	return s
+}
+
+// refTypeName extracts the schema name from a #/components/schemas/Foo $ref.
+func refTypeName(ref string) string {
+	parts := strings.Split(ref, "/")
+	if len(parts) == 0 {
+		return ""
+	}
+	return parts[len(parts)-1]
 }
 
 func schemaType(s schemaObj) string {
@@ -511,6 +568,22 @@ func registerAPITools(s *mcpserver.MCPServer, api *client.APIClient) {
 			),
 {{- end }}
 {{- range .Params }}
+{{- if eq .MCPType "Array" }}
+			mcp.WithArray({{ quote .Name }},
+{{- if .Required }}
+				mcp.Required(),
+{{- end }}
+				mcp.Description({{ quote .Desc }}),
+				mcp.Items(map[string]any{"type": "object"}),
+			),
+{{- else if eq .MCPType "Object" }}
+			mcp.WithObject({{ quote .Name }},
+{{- if .Required }}
+				mcp.Required(),
+{{- end }}
+				mcp.Description({{ quote .Desc }}),
+			),
+{{- else }}
 			mcp.With{{ .MCPType }}({{ quote .Name }},
 {{- if .Required }}
 				mcp.Required(),
@@ -520,6 +593,7 @@ func registerAPITools(s *mcpserver.MCPServer, api *client.APIClient) {
 				mcp.Enum({{ enumList . }}),
 {{- end }}
 			),
+{{- end }}
 {{- end }}
 {{- if .ContentJSON }}
 			mcp.WithString("content_json",
@@ -571,6 +645,30 @@ func handle{{ .FuncName }}(ctx context.Context, req mcp.CallToolRequest, api *cl
 {{- end }}
 {{- else if eq .MCPType "Boolean" }}
 	input.{{ .GoName }} = req.GetBool({{ quote .Name }}, false)
+{{- else if eq .MCPType "Object" }}
+	if v, ok := req.GetArguments()[{{ quote .Name }}]; ok && v != nil {
+		buf, err := json.Marshal(v)
+		if err != nil {
+			return mcp.NewToolResultError("encoding {{ .Name }}: " + err.Error()), nil
+		}
+		var parsed {{ .GoType }}
+		if err := json.Unmarshal(buf, &parsed); err != nil {
+			return mcp.NewToolResultError("parsing {{ .Name }}: " + err.Error()), nil
+		}
+		input.{{ .GoName }} = parsed
+	}
+{{- else if eq .MCPType "Array" }}
+	if v, ok := req.GetArguments()[{{ quote .Name }}]; ok && v != nil {
+		buf, err := json.Marshal(v)
+		if err != nil {
+			return mcp.NewToolResultError("encoding {{ .Name }}: " + err.Error()), nil
+		}
+		var parsed {{ .GoType }}
+		if err := json.Unmarshal(buf, &parsed); err != nil {
+			return mcp.NewToolResultError("parsing {{ .Name }}: " + err.Error()), nil
+		}
+		input.{{ .GoName }} = parsed
+	}
 {{- end }}
 {{- end }}
 {{- end }}

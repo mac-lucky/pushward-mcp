@@ -46,6 +46,10 @@ func registerAPITools(s *mcpserver.MCPServer, api *client.APIClient) {
 	s.AddTool(
 		mcp.NewTool("create_notification",
 			mcp.WithDescription("Create notification"),
+			mcp.WithArray("actions",
+				mcp.Description("Server-driven action buttons. Max 10 (Apple cap)."),
+				mcp.Items(map[string]any{"type": "object"}),
+			),
 			mcp.WithString("activity_slug",
 				mcp.Description("activity_slug"),
 			),
@@ -54,20 +58,20 @@ func registerAPITools(s *mcpserver.MCPServer, api *client.APIClient) {
 				mcp.Description("Notification body"),
 			),
 			mcp.WithString("category",
-				mcp.Description("Notification category"),
+				mcp.Description("Notification category. Cannot be combined with actions — when actions is set, the server computes a deterministic category id."),
 			),
 			mcp.WithString("collapse_id",
 				mcp.Description("Collapse ID for replacing notifications"),
 			),
 			mcp.WithString("icon_url",
-				mcp.Description("HTTPS URL for per-notification source avatar, shown as the Communication Notification avatar on iOS. Recommended ≤256×256 and ≤100 KB; responses larger than 512 KB are rejected by the iOS extension to protect the 24 MB memory budget."),
-			),
-			mcp.WithString("image_url",
-				mcp.Description("Image URL (must be HTTPS)"),
+				mcp.Description("http or https URL for per-notification source avatar, shown as the Communication Notification avatar on iOS. Recommended ≤256×256 and ≤100 KB; responses larger than 512 KB are rejected by the iOS extension to protect the 24 MB memory budget."),
 			),
 			mcp.WithString("level",
 				mcp.Description("Interruption level (default: active)"),
 				mcp.Enum("passive", "active", "time-sensitive", "critical"),
+			),
+			mcp.WithObject("media",
+				mcp.Description("Rich media attachment (image, video, or audio). HTTPS only."),
 			),
 			mcp.WithBoolean("push",
 				mcp.Description("push"),
@@ -214,6 +218,17 @@ func handleCreateNotification(ctx context.Context, req mcp.CallToolRequest, api 
 		Body:  func() string { v, _ := req.RequireString("body"); return v }(),
 		Title: func() string { v, _ := req.RequireString("title"); return v }(),
 	}
+	if v, ok := req.GetArguments()["actions"]; ok && v != nil {
+		buf, err := json.Marshal(v)
+		if err != nil {
+			return mcp.NewToolResultError("encoding actions: " + err.Error()), nil
+		}
+		var parsed []client.NotificationAction
+		if err := json.Unmarshal(buf, &parsed); err != nil {
+			return mcp.NewToolResultError("parsing actions: " + err.Error()), nil
+		}
+		input.Actions = parsed
+	}
 	if v := req.GetString("activity_slug", ""); v != "" {
 		input.ActivitySlug = v
 	}
@@ -226,11 +241,19 @@ func handleCreateNotification(ctx context.Context, req mcp.CallToolRequest, api 
 	if v := req.GetString("icon_url", ""); v != "" {
 		input.IconURL = v
 	}
-	if v := req.GetString("image_url", ""); v != "" {
-		input.ImageURL = v
-	}
 	if v := req.GetString("level", ""); v != "" {
 		input.Level = v
+	}
+	if v, ok := req.GetArguments()["media"]; ok && v != nil {
+		buf, err := json.Marshal(v)
+		if err != nil {
+			return mcp.NewToolResultError("encoding media: " + err.Error()), nil
+		}
+		var parsed *client.MediaAttachment
+		if err := json.Unmarshal(buf, &parsed); err != nil {
+			return mcp.NewToolResultError("parsing media: " + err.Error()), nil
+		}
+		input.Media = parsed
 	}
 	input.Push = req.GetBool("push", false)
 	if v := req.GetString("source", ""); v != "" {
