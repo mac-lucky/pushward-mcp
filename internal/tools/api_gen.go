@@ -223,11 +223,9 @@ func handleCreateNotification(ctx context.Context, req mcp.CallToolRequest, api 
 		if err != nil {
 			return mcp.NewToolResultError("encoding actions: " + err.Error()), nil
 		}
-		var parsed []client.NotificationAction
-		if err := json.Unmarshal(buf, &parsed); err != nil {
-			return mcp.NewToolResultError("parsing actions: " + err.Error()), nil
-		}
-		input.Actions = parsed
+		// Forward opaque JSON — server is the source of truth for the
+		// action schema, so new fields don't require an MCP rebuild.
+		input.Actions = json.RawMessage(buf)
 	}
 	if v := req.GetString("activity_slug", ""); v != "" {
 		input.ActivitySlug = v

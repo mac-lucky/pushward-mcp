@@ -193,37 +193,30 @@ type MediaAttachment struct {
 	Type string `json:"type"`
 }
 
-// NotificationAction is one server-driven action button attached to a
-// notification.
-type NotificationAction struct {
-	ID                     string `json:"id"`
-	Title                  string `json:"title"`
-	URL                    string `json:"url,omitempty"`
-	Foreground             bool   `json:"foreground,omitempty"`
-	Destructive            bool   `json:"destructive,omitempty"`
-	AuthenticationRequired bool   `json:"authentication_required,omitempty"`
-	Icon                   string `json:"icon,omitempty"`
-}
-
 // CreateNotificationInput is the request body for POST /notifications.
+//
+// `Actions` is forwarded as opaque `json.RawMessage` so new server-side action
+// fields (most recently `method`/`headers`/`body`) flow through without an MCP
+// rebuild. A typed struct silently dropped unknown fields on JSON unmarshal,
+// re-marshalling them away before the request reached the server.
 type CreateNotificationInput struct {
-	Title             string               `json:"title"`
-	Body              string               `json:"body"`
-	Subtitle          string               `json:"subtitle,omitempty"`
-	Source            string               `json:"source,omitempty"`
-	SourceDisplayName string               `json:"source_display_name,omitempty"`
-	Category          string               `json:"category,omitempty"`
-	ThreadID          string               `json:"thread_id,omitempty"`
-	CollapseID        string               `json:"collapse_id,omitempty"`
-	Level             string               `json:"level,omitempty"`
-	IconURL           string               `json:"icon_url,omitempty"`
-	Media             *MediaAttachment     `json:"media,omitempty"`
-	URL               string               `json:"url,omitempty"`
-	ActivitySlug      string               `json:"activity_slug,omitempty"`
-	Metadata          map[string]string    `json:"metadata,omitempty"`
-	Actions           []NotificationAction `json:"actions,omitempty"`
-	Push              bool                 `json:"push"`
-	Volume            *float64             `json:"volume,omitempty"`
+	Title             string            `json:"title"`
+	Body              string            `json:"body"`
+	Subtitle          string            `json:"subtitle,omitempty"`
+	Source            string            `json:"source,omitempty"`
+	SourceDisplayName string            `json:"source_display_name,omitempty"`
+	Category          string            `json:"category,omitempty"`
+	ThreadID          string            `json:"thread_id,omitempty"`
+	CollapseID        string            `json:"collapse_id,omitempty"`
+	Level             string            `json:"level,omitempty"`
+	IconURL           string            `json:"icon_url,omitempty"`
+	Media             *MediaAttachment  `json:"media,omitempty"`
+	URL               string            `json:"url,omitempty"`
+	ActivitySlug      string            `json:"activity_slug,omitempty"`
+	Metadata          map[string]string `json:"metadata,omitempty"`
+	Actions           json.RawMessage   `json:"actions,omitempty"`
+	Push              bool              `json:"push"`
+	Volume            *float64          `json:"volume,omitempty"`
 }
 
 // CreateNotification creates an in-app notification with optional APNs push.
