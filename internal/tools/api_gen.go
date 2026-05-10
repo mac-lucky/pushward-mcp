@@ -57,9 +57,6 @@ func registerAPITools(s *mcpserver.MCPServer, api *client.APIClient) {
 				mcp.Required(),
 				mcp.Description("Notification body"),
 			),
-			mcp.WithString("category",
-				mcp.Description("Notification category. Cannot be combined with actions — when actions is set, the server computes a deterministic category id."),
-			),
 			mcp.WithString("collapse_id",
 				mcp.Description("Collapse ID for replacing notifications"),
 			),
@@ -74,7 +71,7 @@ func registerAPITools(s *mcpserver.MCPServer, api *client.APIClient) {
 				mcp.Description("Rich media attachment (image, video, or audio). HTTPS only."),
 			),
 			mcp.WithBoolean("push",
-				mcp.Description("push"),
+				mcp.Description("Send as an APNs push to the user's devices. Defaults to true; set false to store in the inbox only."),
 			),
 			mcp.WithString("source",
 				mcp.Description("Source identifier"),
@@ -152,16 +149,6 @@ func registerAPITools(s *mcpserver.MCPServer, api *client.APIClient) {
 		},
 	)
 
-	// get_ready
-	s.AddTool(
-		mcp.NewTool("get_ready",
-			mcp.WithDescription("Readiness check"),
-		),
-		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-			return handleGetReady(ctx, req, api)
-		},
-	)
-
 	// update_activity
 	s.AddTool(
 		mcp.NewTool("update_activity",
@@ -224,14 +211,11 @@ func handleCreateNotification(ctx context.Context, req mcp.CallToolRequest, api 
 			return mcp.NewToolResultError("encoding actions: " + err.Error()), nil
 		}
 		// Forward opaque JSON — server is the source of truth for the
-		// action schema, so new fields don't require an MCP rebuild.
+		// actions schema, so new fields don't require an MCP rebuild.
 		input.Actions = json.RawMessage(buf)
 	}
 	if v := req.GetString("activity_slug", ""); v != "" {
 		input.ActivitySlug = v
-	}
-	if v := req.GetString("category", ""); v != "" {
-		input.Category = v
 	}
 	if v := req.GetString("collapse_id", ""); v != "" {
 		input.CollapseID = v
@@ -313,14 +297,6 @@ func handleGetHealth(ctx context.Context, req mcp.CallToolRequest, api *client.A
 
 func handleGetMe(ctx context.Context, req mcp.CallToolRequest, api *client.APIClient) (*mcp.CallToolResult, error) {
 	raw, err := api.GetMe(ctx)
-	if err != nil {
-		return mcp.NewToolResultError(err.Error()), nil
-	}
-	return mcp.NewToolResultText(string(raw)), nil
-}
-
-func handleGetReady(ctx context.Context, req mcp.CallToolRequest, api *client.APIClient) (*mcp.CallToolResult, error) {
-	raw, err := api.GetReady(ctx)
 	if err != nil {
 		return mcp.NewToolResultError(err.Error()), nil
 	}
