@@ -96,6 +96,15 @@ type paramDef struct {
 	Enum      []string
 	GoType    string // Go type used in client struct for Object/Array params (e.g. "*client.MediaAttachment", "[]client.NotificationAction")
 	ItemsType string // Item type description (used for array property items schema)
+	Opaque    bool   // forward as json.RawMessage instead of typed unmarshal — for fields whose schema drifts faster than the MCP rebuilds
+}
+
+// opaqueArrayFields lists request-body field names that must be forwarded as
+// raw JSON instead of unmarshalled into a typed slice. The server is the
+// source of truth for these schemas — typed parsing silently dropped unknown
+// fields the server had added since the last MCP rebuild (see commit 33912d9).
+var opaqueArrayFields = map[string]bool{
+	"actions": true,
 }
 
 // Live OpenAPI spec URLs.
@@ -228,9 +237,15 @@ func buildAPITools(spec *openAPISpec) []toolDef {
 			// Extract path parameters
 			t.PathParams = extractPathParams(path)
 
-			// Extract request body parameters
+			// Extract request body parameters. Huma serves PATCH endpoints
+			// with `application/merge-patch+json` (RFC 7396) — accept both so
+			// PATCH operations don't lose their body params.
 			if op.RequestBody != nil {
-				if ct, ok := op.RequestBody.Content["application/json"]; ok {
+				ct, ok := op.RequestBody.Content["application/json"]
+				if !ok {
+					ct, ok = op.RequestBody.Content["application/merge-patch+json"]
+				}
+				if ok {
 					schema := resolveRef(spec, ct.Schema)
 					t.HasBody = true
 					t.Params = schemaToParams(spec, schema, op.RequestBody.Required)
@@ -300,8 +315,12 @@ func schemaToParams(spec *openAPISpec, schema schemaObj, bodyRequired bool) []pa
 		}
 		prop := resolveRef(spec, raw)
 
-		// Skip complex nested objects — they'll be handled as content_json
-		if name == "content" && hasNestedProperties(prop) {
+		// Skip the `content` field — it's always emitted via the content_json
+		// string path (see buildAPITools). This applies whether the schema is a
+		// nested object, a $ref, or a discriminator/oneOf — the fallback
+		// `schemaType` would otherwise mislabel oneOf as "string" and emit a
+		// duplicate `Content` field in the input struct literal.
+		if name == "content" {
 			continue
 		}
 
@@ -340,7 +359,12 @@ func schemaToParams(spec *openAPISpec, schema schemaObj, bodyRequired bool) []pa
 		// Handle array-of-ref'd-object schemas as MCP array params.
 		if schemaType(prop) == "array" && itemsRef != "" {
 			p.MCPType = "Array"
-			p.GoType = "[]client." + refTypeName(itemsRef)
+			if opaqueArrayFields[name] {
+				p.Opaque = true
+				p.GoType = "json.RawMessage"
+			} else {
+				p.GoType = "[]client." + refTypeName(itemsRef)
+			}
 			p.ItemsType = refTypeName(itemsRef)
 			if p.Desc == "" {
 				p.Desc = name
@@ -663,11 +687,17 @@ func handle{{ .FuncName }}(ctx context.Context, req mcp.CallToolRequest, api *cl
 		if err != nil {
 			return mcp.NewToolResultError("encoding {{ .Name }}: " + err.Error()), nil
 		}
+{{- if .Opaque }}
+		// Forward opaque JSON — server is the source of truth for the
+		// {{ .Name }} schema, so new fields don't require an MCP rebuild.
+		input.{{ .GoName }} = json.RawMessage(buf)
+{{- else }}
 		var parsed {{ .GoType }}
 		if err := json.Unmarshal(buf, &parsed); err != nil {
 			return mcp.NewToolResultError("parsing {{ .Name }}: " + err.Error()), nil
 		}
 		input.{{ .GoName }} = parsed
+{{- end }}
 	}
 {{- end }}
 {{- end }}

@@ -205,7 +205,6 @@ type CreateNotificationInput struct {
 	Subtitle          string            `json:"subtitle,omitempty"`
 	Source            string            `json:"source,omitempty"`
 	SourceDisplayName string            `json:"source_display_name,omitempty"`
-	Category          string            `json:"category,omitempty"`
 	ThreadID          string            `json:"thread_id,omitempty"`
 	CollapseID        string            `json:"collapse_id,omitempty"`
 	Level             string            `json:"level,omitempty"`

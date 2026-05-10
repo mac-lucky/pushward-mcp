@@ -35,6 +35,22 @@ func registerCompositeTools(s *mcpserver.MCPServer, api *client.APIClient, relay
 		},
 	)
 
+	// get_ready — kept as a composite because /ready is filtered out of the
+	// public OpenAPI spec the generator consumes (PublicOperationIDs in
+	// pushward-server/internal/api/openapi_filter.go).
+	s.AddTool(
+		mcp.NewTool("get_ready",
+			mcp.WithDescription("Check API readiness (GET /ready)"),
+		),
+		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			raw, err := api.GetReady(ctx)
+			if err != nil {
+				return mcp.NewToolResultError(err.Error()), nil
+			}
+			return mcp.NewToolResultText(string(raw)), nil
+		},
+	)
+
 	// test_activity_lifecycle
 	s.AddTool(
 		mcp.NewTool("test_activity_lifecycle",
