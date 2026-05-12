@@ -118,14 +118,16 @@ const (
 func main() {
 	rootDir := findRootDir()
 	outDir := filepath.Join(rootDir, "internal", "tools")
+	// Any non-empty value opts in (so PUSHWARD_USE_LOCAL_SPEC=0 still means
+	// "use local"). Skip the network entirely when set — useful for testing
+	// spec changes that haven't been deployed yet.
+	useLocal := os.Getenv("PUSHWARD_USE_LOCAL_SPEC") != ""
 
-	// Fetch API spec from live URL, fall back to local file
-	apiData := fetchOrRead(apiSpecURL, filepath.Join(rootDir, "openapi.yaml"))
+	apiData := loadSpec(useLocal, apiSpecURL, filepath.Join(rootDir, "openapi.yaml"))
 	apiSpec := parseSpecJSON(apiData, "api")
 	apiTools := buildAPITools(apiSpec)
 
-	// Fetch Relay spec from live URL, fall back to local file
-	relayData := fetchOrRead(relaySpecURL, filepath.Join(rootDir, "relay-openapi.json"))
+	relayData := loadSpec(useLocal, relaySpecURL, filepath.Join(rootDir, "relay-openapi.json"))
 	relaySpec := parseSpecJSON(relayData, "relay")
 	relayTools := buildRelayTools(relaySpec)
 
@@ -152,12 +154,18 @@ func findRootDir() string {
 	}
 }
 
-// fetchOrRead tries to fetch data from a URL first; on failure falls back to a local file.
-func fetchOrRead(url, fallbackPath string) []byte {
-	if data, err := fetchURL(url); err == nil {
-		return data
+// loadSpec returns spec bytes from either the live URL (with on-failure
+// fallback to fallbackPath) or directly from fallbackPath when useLocal is
+// set. Exits the process if the local read fails.
+func loadSpec(useLocal bool, url, fallbackPath string) []byte {
+	if !useLocal {
+		if data, err := fetchURL(url); err == nil {
+			return data
+		}
+		fmt.Fprintf(os.Stderr, "fetch %s failed, falling back to %s\n", url, fallbackPath)
+	} else {
+		fmt.Fprintf(os.Stderr, "PUSHWARD_USE_LOCAL_SPEC set, reading %s\n", fallbackPath)
 	}
-	fmt.Fprintf(os.Stderr, "fetch %s failed, falling back to %s\n", url, fallbackPath)
 	data, err := os.ReadFile(fallbackPath)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "reading %s: %v\n", fallbackPath, err)

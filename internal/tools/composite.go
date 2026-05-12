@@ -70,6 +70,9 @@ func registerCompositeTools(s *mcpserver.MCPServer, api *client.APIClient, relay
 			mcp.WithBoolean("cleanup",
 				mcp.Description("Delete the activity after test (default: true)"),
 			),
+			mcp.WithString("tap_action_url",
+				mcp.Description("Optional. If set, the test content includes tap_action: {url: ...} so the lifecycle exercises Live Activity tap routing (foreground HTTPS URLs open in-app; custom schemes route cross-app; HTTP w/ method+headers+body fires a silent webhook)."),
+			),
 		),
 		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 			return handleTestActivityLifecycle(ctx, req, api)
@@ -219,6 +222,7 @@ func handleTestActivityLifecycle(ctx context.Context, req mcp.CallToolRequest, a
 
 	tmpl := req.GetString("template", defaultTemplate)
 	cleanup := req.GetBool("cleanup", true)
+	tapURL := req.GetString("tap_action_url", "")
 
 	var steps []string
 
@@ -233,7 +237,7 @@ func handleTestActivityLifecycle(ctx context.Context, req mcp.CallToolRequest, a
 	steps = append(steps, "1. Created activity: OK")
 
 	// Step 2: Update to ONGOING
-	ongoingContent := buildTestContent(tmpl, 0.5, "Testing...")
+	ongoingContent := buildTestContent(tmpl, 0.5, "Testing...", tapURL)
 	_, err = api.UpdateActivity(ctx, slug, client.UpdateActivityInput{
 		State:   stateOngoing,
 		Content: ongoingContent,
@@ -260,7 +264,7 @@ func handleTestActivityLifecycle(ctx context.Context, req mcp.CallToolRequest, a
 	}
 
 	// Step 4: Update to ENDED
-	endedContent := buildTestContent(tmpl, 1.0, "Done")
+	endedContent := buildTestContent(tmpl, 1.0, "Done", tapURL)
 	_, err = api.UpdateActivity(ctx, slug, client.UpdateActivityInput{
 		State:   stateEnded,
 		Content: endedContent,
@@ -301,7 +305,7 @@ func handleTestActivityLifecycle(ctx context.Context, req mcp.CallToolRequest, a
 	return mcp.NewToolResultText(strings.Join(steps, "\n")), nil
 }
 
-func buildTestContent(tmpl string, progress float64, state string) json.RawMessage {
+func buildTestContent(tmpl string, progress float64, state, tapURL string) json.RawMessage {
 	content := map[string]any{
 		"template":    tmpl,
 		"progress":    progress,
@@ -321,6 +325,10 @@ func buildTestContent(tmpl string, progress float64, state string) json.RawMessa
 		content["min_value"] = 0
 		content["max_value"] = 100
 		content["unit"] = "%"
+	}
+
+	if tapURL != "" {
+		content["tap_action"] = map[string]any{"url": tapURL}
 	}
 
 	data, _ := json.Marshal(content)
