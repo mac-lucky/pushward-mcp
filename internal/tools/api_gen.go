@@ -101,6 +101,36 @@ func registerAPITools(s *mcpserver.MCPServer, api *client.APIClient) {
 		},
 	)
 
+	// create_widget
+	s.AddTool(
+		mcp.NewTool("create_widget",
+			mcp.WithDescription("Create widget"),
+			mcp.WithString("name",
+				mcp.Required(),
+				mcp.Description("Human-readable widget name shown in the iOS configuration picker."),
+			),
+			mcp.WithNumber("push_throttle",
+				mcp.Description("Per-widget minimum seconds between pushes. (min: 1, max: 3600)"),
+			),
+			mcp.WithString("slug",
+				mcp.Required(),
+				mcp.Description("Unique widget identifier (alphanumeric, hyphens, underscores). Per-user namespace separate from activity slugs."),
+			),
+			mcp.WithString("template",
+				mcp.Required(),
+				mcp.Description("Visual style of the widget."),
+				mcp.Enum("value", "progress", "status", "gauge", "stat_list"),
+			),
+			mcp.WithString("content_json",
+				mcp.Required(),
+				mcp.Description("Activity content as JSON object. PATCH endpoints apply RFC 7396 JSON Merge Patch semantics — only send the fields you want to change, null clears a field, absent preserves. Fields: template (generic|countdown|steps|alert|gauge|timeline), progress (0.0-1.0), state, icon, subtitle, accent_color, background_color, text_color. Template-specific: countdown (duration as integer seconds (60) or duration string (\"60s\", \"1h30m\"), end_date [unix timestamp], warning_threshold, completion_message, alarm; if both duration and end_date are sent, end_date wins), steps (current_step, total_steps, step_labels), alert (severity: critical|warning|info, fired_at), gauge (value, min_value, max_value, unit), timeline (value as {key:number}, history as {key:[{t,v}]}, scale, thresholds)."),
+			),
+		),
+		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			return handleCreateWidget(ctx, req, api)
+		},
+	)
+
 	// delete_activity
 	s.AddTool(
 		mcp.NewTool("delete_activity",
@@ -112,6 +142,20 @@ func registerAPITools(s *mcpserver.MCPServer, api *client.APIClient) {
 		),
 		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 			return handleDeleteActivity(ctx, req, api)
+		},
+	)
+
+	// delete_widget
+	s.AddTool(
+		mcp.NewTool("delete_widget",
+			mcp.WithDescription("Delete widget"),
+			mcp.WithString("slug",
+				mcp.Required(),
+				mcp.Description("slug path parameter"),
+			),
+		),
+		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			return handleDeleteWidget(ctx, req, api)
 		},
 	)
 
@@ -149,6 +193,30 @@ func registerAPITools(s *mcpserver.MCPServer, api *client.APIClient) {
 		},
 	)
 
+	// get_widget
+	s.AddTool(
+		mcp.NewTool("get_widget",
+			mcp.WithDescription("Get widget"),
+			mcp.WithString("slug",
+				mcp.Required(),
+				mcp.Description("slug path parameter"),
+			),
+		),
+		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			return handleGetWidget(ctx, req, api)
+		},
+	)
+
+	// list_widgets
+	s.AddTool(
+		mcp.NewTool("list_widgets",
+			mcp.WithDescription("List widgets"),
+		),
+		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			return handleListWidgets(ctx, req, api)
+		},
+	)
+
 	// update_activity
 	s.AddTool(
 		mcp.NewTool("update_activity",
@@ -175,6 +243,33 @@ func registerAPITools(s *mcpserver.MCPServer, api *client.APIClient) {
 		),
 		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 			return handleUpdateActivity(ctx, req, api)
+		},
+	)
+
+	// update_widget
+	s.AddTool(
+		mcp.NewTool("update_widget",
+			mcp.WithDescription("Update widget"),
+			mcp.WithString("slug",
+				mcp.Required(),
+				mcp.Description("slug path parameter"),
+			),
+			mcp.WithString("name",
+				mcp.Description("name"),
+			),
+			mcp.WithNumber("push_throttle",
+				mcp.Description("push_throttle"),
+			),
+			mcp.WithString("template",
+				mcp.Description("template"),
+			),
+			mcp.WithString("content_json",
+				mcp.Required(),
+				mcp.Description("Activity content as JSON object. PATCH endpoints apply RFC 7396 JSON Merge Patch semantics — only send the fields you want to change, null clears a field, absent preserves. Fields: template (generic|countdown|steps|alert|gauge|timeline), progress (0.0-1.0), state, icon, subtitle, accent_color, background_color, text_color. Template-specific: countdown (duration as integer seconds (60) or duration string (\"60s\", \"1h30m\"), end_date [unix timestamp], warning_threshold, completion_message, alarm; if both duration and end_date are sent, end_date wins), steps (current_step, total_steps, step_labels), alert (severity: critical|warning|info, fired_at), gauge (value, min_value, max_value, unit), timeline (value as {key:number}, history as {key:[{t,v}]}, scale, thresholds)."),
+			),
+		),
+		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			return handleUpdateWidget(ctx, req, api)
 		},
 	)
 }
@@ -263,12 +358,60 @@ func handleCreateNotification(ctx context.Context, req mcp.CallToolRequest, api 
 	return mcp.NewToolResultText(string(raw)), nil
 }
 
+func handleCreateWidget(ctx context.Context, req mcp.CallToolRequest, api *client.APIClient) (*mcp.CallToolResult, error) {
+	contentStr, err := req.RequireString("content_json")
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
+	if !json.Valid([]byte(contentStr)) {
+		return mcp.NewToolResultError("content_json is not valid JSON"), nil
+	}
+	paramName, err := req.RequireString("name")
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
+	paramSlug, err := req.RequireString("slug")
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
+	paramTemplate, err := req.RequireString("template")
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
+	input := client.CreateWidgetInput{
+		Name:     paramName,
+		Slug:     paramSlug,
+		Template: paramTemplate,
+		Content:  json.RawMessage(contentStr),
+	}
+	if v := req.GetFloat("push_throttle", math.NaN()); !math.IsNaN(v) {
+		input.PushThrottle = &v
+	}
+	raw, err := api.CreateWidget(ctx, input)
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
+	return mcp.NewToolResultText(string(raw)), nil
+}
+
 func handleDeleteActivity(ctx context.Context, req mcp.CallToolRequest, api *client.APIClient) (*mcp.CallToolResult, error) {
 	paramSlug, err := req.RequireString("slug")
 	if err != nil {
 		return mcp.NewToolResultError(err.Error()), nil
 	}
 	err = api.DeleteActivity(ctx, paramSlug)
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
+	return mcp.NewToolResultText("deleted successfully"), nil
+}
+
+func handleDeleteWidget(ctx context.Context, req mcp.CallToolRequest, api *client.APIClient) (*mcp.CallToolResult, error) {
+	paramSlug, err := req.RequireString("slug")
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
+	err = api.DeleteWidget(ctx, paramSlug)
 	if err != nil {
 		return mcp.NewToolResultError(err.Error()), nil
 	}
@@ -303,6 +446,26 @@ func handleGetMe(ctx context.Context, req mcp.CallToolRequest, api *client.APICl
 	return mcp.NewToolResultText(string(raw)), nil
 }
 
+func handleGetWidget(ctx context.Context, req mcp.CallToolRequest, api *client.APIClient) (*mcp.CallToolResult, error) {
+	paramSlug, err := req.RequireString("slug")
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
+	raw, err := api.GetWidget(ctx, paramSlug)
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
+	return mcp.NewToolResultText(string(raw)), nil
+}
+
+func handleListWidgets(ctx context.Context, req mcp.CallToolRequest, api *client.APIClient) (*mcp.CallToolResult, error) {
+	raw, err := api.ListWidgets(ctx)
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
+	return mcp.NewToolResultText(string(raw)), nil
+}
+
 func handleUpdateActivity(ctx context.Context, req mcp.CallToolRequest, api *client.APIClient) (*mcp.CallToolResult, error) {
 	paramSlug, err := req.RequireString("slug")
 	if err != nil {
@@ -328,6 +491,37 @@ func handleUpdateActivity(ctx context.Context, req mcp.CallToolRequest, api *cli
 		input.State = v
 	}
 	raw, err := api.UpdateActivity(ctx, paramSlug, input)
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
+	return mcp.NewToolResultText(string(raw)), nil
+}
+
+func handleUpdateWidget(ctx context.Context, req mcp.CallToolRequest, api *client.APIClient) (*mcp.CallToolResult, error) {
+	paramSlug, err := req.RequireString("slug")
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
+	contentStr, err := req.RequireString("content_json")
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
+	if !json.Valid([]byte(contentStr)) {
+		return mcp.NewToolResultError("content_json is not valid JSON"), nil
+	}
+	input := client.UpdateWidgetInput{
+		Content: json.RawMessage(contentStr),
+	}
+	if v := req.GetString("name", ""); v != "" {
+		input.Name = v
+	}
+	if v := req.GetFloat("push_throttle", math.NaN()); !math.IsNaN(v) {
+		input.PushThrottle = &v
+	}
+	if v := req.GetString("template", ""); v != "" {
+		input.Template = v
+	}
+	raw, err := api.UpdateWidget(ctx, paramSlug, input)
 	if err != nil {
 		return mcp.NewToolResultError(err.Error()), nil
 	}

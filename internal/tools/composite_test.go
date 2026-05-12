@@ -37,7 +37,7 @@ func newReq(args map[string]any) mcp.CallToolRequest {
 // ---------- buildTestContent ----------
 
 func TestBuildTestContent_Generic(t *testing.T) {
-	raw := buildTestContent("generic", 0.5, "Testing...")
+	raw := buildTestContent("generic", 0.5, "Testing...", "")
 	var m map[string]any
 	if err := json.Unmarshal(raw, &m); err != nil {
 		t.Fatalf("invalid JSON: %v", err)
@@ -56,7 +56,7 @@ func TestBuildTestContent_Generic(t *testing.T) {
 }
 
 func TestBuildTestContent_Steps(t *testing.T) {
-	raw := buildTestContent("steps", 0.3, "Step 1")
+	raw := buildTestContent("steps", 0.3, "Step 1", "")
 	var m map[string]any
 	if err := json.Unmarshal(raw, &m); err != nil {
 		t.Fatalf("invalid JSON: %v", err)
@@ -75,7 +75,7 @@ func TestBuildTestContent_Steps(t *testing.T) {
 }
 
 func TestBuildTestContent_Alert(t *testing.T) {
-	raw := buildTestContent("alert", 0.0, "Firing")
+	raw := buildTestContent("alert", 0.0, "Firing", "")
 	var m map[string]any
 	if err := json.Unmarshal(raw, &m); err != nil {
 		t.Fatalf("invalid JSON: %v", err)
@@ -89,7 +89,7 @@ func TestBuildTestContent_Alert(t *testing.T) {
 }
 
 func TestBuildTestContent_Gauge(t *testing.T) {
-	raw := buildTestContent("gauge", 0.75, "Running")
+	raw := buildTestContent("gauge", 0.75, "Running", "")
 	var m map[string]any
 	if err := json.Unmarshal(raw, &m); err != nil {
 		t.Fatalf("invalid JSON: %v", err)
@@ -104,6 +104,33 @@ func TestBuildTestContent_Gauge(t *testing.T) {
 	}
 	if m["unit"] != "%" {
 		t.Errorf("unit = %v, want %%", m["unit"])
+	}
+}
+
+func TestBuildTestContent_TapAction(t *testing.T) {
+	const url = "https://example.com/widget"
+	raw := buildTestContent("generic", 0.5, "Testing...", url)
+	var m map[string]any
+	if err := json.Unmarshal(raw, &m); err != nil {
+		t.Fatalf("invalid JSON: %v", err)
+	}
+	tap, ok := m["tap_action"].(map[string]any)
+	if !ok {
+		t.Fatalf("tap_action missing or wrong type: %v", m["tap_action"])
+	}
+	if tap["url"] != url {
+		t.Errorf("tap_action.url = %v, want %s", tap["url"], url)
+	}
+
+	// Empty tap_action_url must NOT inject the field — kept backward-compatible
+	// for callers that don't opt in.
+	rawNo := buildTestContent("generic", 0.5, "Testing...", "")
+	var mNo map[string]any
+	if err := json.Unmarshal(rawNo, &mNo); err != nil {
+		t.Fatalf("invalid JSON: %v", err)
+	}
+	if _, present := mNo["tap_action"]; present {
+		t.Errorf("tap_action should be absent when URL is empty, got %v", mNo["tap_action"])
 	}
 }
 

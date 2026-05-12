@@ -223,3 +223,66 @@ func (c *APIClient) CreateNotification(ctx context.Context, input CreateNotifica
 	raw, _, err := c.DoJSON(ctx, http.MethodPost, "/notifications", input)
 	return raw, err
 }
+
+// CreateWidgetInput is the request body for POST /widgets. Requires an hlk_
+// integration key with the `widgets` permission flag.
+//
+// `Content` is forwarded as opaque `json.RawMessage` so new server-side widget
+// content fields flow through without an MCP rebuild — the server owns the
+// schema.
+type CreateWidgetInput struct {
+	Slug         string          `json:"slug"`
+	Name         string          `json:"name"`
+	Template     string          `json:"template"`
+	Content      json.RawMessage `json:"content"`
+	PushThrottle *float64        `json:"push_throttle,omitempty"`
+}
+
+// CreateWidget creates a new widget.
+func (c *APIClient) CreateWidget(ctx context.Context, input CreateWidgetInput) (json.RawMessage, error) {
+	raw, _, err := c.DoJSON(ctx, http.MethodPost, "/widgets", input)
+	return raw, err
+}
+
+// ListWidgets returns all widgets owned by the caller.
+func (c *APIClient) ListWidgets(ctx context.Context) (json.RawMessage, error) {
+	raw, _, err := c.DoJSON(ctx, http.MethodGet, "/widgets", nil)
+	return raw, err
+}
+
+// GetWidget returns a single widget by slug.
+func (c *APIClient) GetWidget(ctx context.Context, slug string) (json.RawMessage, error) {
+	if err := validateSlug(slug); err != nil {
+		return nil, err
+	}
+	raw, _, err := c.DoJSON(ctx, http.MethodGet, "/widgets/"+slug, nil)
+	return raw, err
+}
+
+// UpdateWidgetInput is the request body for PATCH /widgets/{slug}. Applied
+// with RFC 7396 JSON merge-patch semantics — omitted fields are preserved,
+// explicit `null` clears.
+type UpdateWidgetInput struct {
+	Name         string          `json:"name,omitempty"`
+	Template     string          `json:"template,omitempty"`
+	Content      json.RawMessage `json:"content"`
+	PushThrottle *float64        `json:"push_throttle,omitempty"`
+}
+
+// UpdateWidget partially updates a widget's content.
+func (c *APIClient) UpdateWidget(ctx context.Context, slug string, input UpdateWidgetInput) (json.RawMessage, error) {
+	if err := validateSlug(slug); err != nil {
+		return nil, err
+	}
+	raw, _, err := c.DoJSON(ctx, http.MethodPatch, "/widgets/"+slug, input)
+	return raw, err
+}
+
+// DeleteWidget removes a widget by slug.
+func (c *APIClient) DeleteWidget(ctx context.Context, slug string) error {
+	if err := validateSlug(slug); err != nil {
+		return err
+	}
+	_, _, err := c.DoJSON(ctx, http.MethodDelete, "/widgets/"+slug, nil)
+	return err
+}
