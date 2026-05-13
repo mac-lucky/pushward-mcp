@@ -233,7 +233,6 @@ func (c *APIClient) CreateNotification(ctx context.Context, input CreateNotifica
 type CreateWidgetInput struct {
 	Slug         string          `json:"slug"`
 	Name         string          `json:"name"`
-	Template     string          `json:"template"`
 	Content      json.RawMessage `json:"content"`
 	PushThrottle *float64        `json:"push_throttle,omitempty"`
 }
@@ -264,7 +263,6 @@ func (c *APIClient) GetWidget(ctx context.Context, slug string) (json.RawMessage
 // explicit `null` clears.
 type UpdateWidgetInput struct {
 	Name         string          `json:"name,omitempty"`
-	Template     string          `json:"template,omitempty"`
 	Content      json.RawMessage `json:"content"`
 	PushThrottle *float64        `json:"push_throttle,omitempty"`
 }
