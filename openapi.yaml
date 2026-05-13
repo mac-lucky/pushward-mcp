@@ -1363,19 +1363,9 @@ components:
           minLength: 1
           pattern: ^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$
           type: string
-        template:
-          description: Visual style of the widget.
-          enum:
-            - value
-            - progress
-            - status
-            - gauge
-            - stat_list
-          type: string
       required:
         - slug
         - name
-        - template
         - content
       type: object
     ErrorDetail:
@@ -1791,8 +1781,6 @@ components:
         push_throttle:
           format: int64
           type: integer
-        template:
-          type: string
       required:
         - content
       type: object
@@ -1851,16 +1839,6 @@ components:
           minLength: 1
           pattern: ^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$
           type: string
-        template:
-          enum:
-            - value
-            - progress
-            - status
-            - gauge
-            - stat_list
-          examples:
-            - progress
-          type: string
         updated_at:
           format: date-time
           readOnly: true
@@ -1868,7 +1846,6 @@ components:
       required:
         - slug
         - name
-        - template
         - content
         - created_at
         - updated_at
@@ -1904,6 +1881,17 @@ components:
           type: string
         tap_action:
           $ref: "#/components/schemas/TapAction"
+        template:
+          description: Visual style of the widget.
+          enum:
+            - value
+            - progress
+            - status
+            - gauge
+            - stat_list
+          examples:
+            - progress
+          type: string
         text_color:
           type: string
         trend:
@@ -1921,6 +1909,8 @@ components:
         value:
           format: double
           type: number
+      required:
+        - template
       type: object
   securitySchemes:
     bearer:

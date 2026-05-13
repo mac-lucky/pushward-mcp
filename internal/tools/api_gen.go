@@ -116,11 +116,6 @@ func registerAPITools(s *mcpserver.MCPServer, api *client.APIClient) {
 				mcp.Required(),
 				mcp.Description("Unique widget identifier (alphanumeric, hyphens, underscores). Per-user namespace separate from activity slugs."),
 			),
-			mcp.WithString("template",
-				mcp.Required(),
-				mcp.Description("Visual style of the widget."),
-				mcp.Enum("value", "progress", "status", "gauge", "stat_list"),
-			),
 			mcp.WithString("content_json",
 				mcp.Required(),
 				mcp.Description("Activity content as JSON object. PATCH endpoints apply RFC 7396 JSON Merge Patch semantics — only send the fields you want to change, null clears a field, absent preserves. Fields: template (generic|countdown|steps|alert|gauge|timeline), progress (0.0-1.0), state, icon, subtitle, accent_color, background_color, text_color. Template-specific: countdown (duration as integer seconds (60) or duration string (\"60s\", \"1h30m\"), end_date [unix timestamp], warning_threshold, completion_message, alarm; if both duration and end_date are sent, end_date wins), steps (current_step, total_steps, step_labels), alert (severity: critical|warning|info, fired_at), gauge (value, min_value, max_value, unit), timeline (value as {key:number}, history as {key:[{t,v}]}, scale, thresholds)."),
@@ -260,9 +255,6 @@ func registerAPITools(s *mcpserver.MCPServer, api *client.APIClient) {
 			mcp.WithNumber("push_throttle",
 				mcp.Description("push_throttle"),
 			),
-			mcp.WithString("template",
-				mcp.Description("template"),
-			),
 			mcp.WithString("content_json",
 				mcp.Required(),
 				mcp.Description("Activity content as JSON object. PATCH endpoints apply RFC 7396 JSON Merge Patch semantics — only send the fields you want to change, null clears a field, absent preserves. Fields: template (generic|countdown|steps|alert|gauge|timeline), progress (0.0-1.0), state, icon, subtitle, accent_color, background_color, text_color. Template-specific: countdown (duration as integer seconds (60) or duration string (\"60s\", \"1h30m\"), end_date [unix timestamp], warning_threshold, completion_message, alarm; if both duration and end_date are sent, end_date wins), steps (current_step, total_steps, step_labels), alert (severity: critical|warning|info, fired_at), gauge (value, min_value, max_value, unit), timeline (value as {key:number}, history as {key:[{t,v}]}, scale, thresholds)."),
@@ -374,15 +366,10 @@ func handleCreateWidget(ctx context.Context, req mcp.CallToolRequest, api *clien
 	if err != nil {
 		return mcp.NewToolResultError(err.Error()), nil
 	}
-	paramTemplate, err := req.RequireString("template")
-	if err != nil {
-		return mcp.NewToolResultError(err.Error()), nil
-	}
 	input := client.CreateWidgetInput{
-		Name:     paramName,
-		Slug:     paramSlug,
-		Template: paramTemplate,
-		Content:  json.RawMessage(contentStr),
+		Name:    paramName,
+		Slug:    paramSlug,
+		Content: json.RawMessage(contentStr),
 	}
 	if v := req.GetFloat("push_throttle", math.NaN()); !math.IsNaN(v) {
 		input.PushThrottle = &v
@@ -517,9 +504,6 @@ func handleUpdateWidget(ctx context.Context, req mcp.CallToolRequest, api *clien
 	}
 	if v := req.GetFloat("push_throttle", math.NaN()); !math.IsNaN(v) {
 		input.PushThrottle = &v
-	}
-	if v := req.GetString("template", ""); v != "" {
-		input.Template = v
 	}
 	raw, err := api.UpdateWidget(ctx, paramSlug, input)
 	if err != nil {
