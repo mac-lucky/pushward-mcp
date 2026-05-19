@@ -242,9 +242,9 @@ func TestHandleTestActivityLifecycle_HappyPath(t *testing.T) {
 		case r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, "/activities/"):
 			// Steps 3, 5: get - return state based on request order
 			if n <= 4 {
-				w.Write([]byte(`{"slug":"test-slug","state":"ONGOING"}`))
+				w.Write([]byte(`{"slug":"test-slug","state":"ongoing"}`))
 			} else {
-				w.Write([]byte(`{"slug":"test-slug","state":"ENDED"}`))
+				w.Write([]byte(`{"slug":"test-slug","state":"ended"}`))
 			}
 		case r.Method == http.MethodDelete && strings.HasPrefix(r.URL.Path, "/activities/"):
 			// Step 6: delete
@@ -327,7 +327,7 @@ func TestHandleTestActivityLifecycle_UpdateOngoingFails(t *testing.T) {
 	}
 
 	text := resultText(t, result)
-	if !strings.Contains(text, "ONGOING: FAIL") {
+	if !strings.Contains(text, "ongoing: FAIL") {
 		t.Errorf("expected step 2 FAIL, got: %s", text)
 	}
 	// When ONGOING update fails, the function returns early (only steps 1 and 2)
@@ -349,9 +349,9 @@ func TestHandleTestActivityLifecycle_CleanupSkipped(t *testing.T) {
 			w.Write(body)
 		case r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, "/activities/"):
 			if n <= 4 {
-				w.Write([]byte(`{"slug":"test-slug","state":"ONGOING"}`))
+				w.Write([]byte(`{"slug":"test-slug","state":"ongoing"}`))
 			} else {
-				w.Write([]byte(`{"slug":"test-slug","state":"ENDED"}`))
+				w.Write([]byte(`{"slug":"test-slug","state":"ended"}`))
 			}
 		default:
 			w.WriteHeader(http.StatusNotFound)
@@ -471,7 +471,7 @@ func TestHandleEndActivity_HappyPath(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, "/activities/"):
-			w.Write([]byte(`{"slug":"test-alert","state":"ONGOING","content":{"template":"alert","severity":"warning","state":"Firing"}}`))
+			w.Write([]byte(`{"slug":"test-alert","state":"ongoing","content":{"template":"alert","severity":"warning","state":"Firing"}}`))
 		case r.Method == http.MethodPatch && strings.HasPrefix(r.URL.Path, "/activities/"):
 			body, _ := io.ReadAll(r.Body)
 			json.Unmarshal(body, &patchBody)
@@ -499,8 +499,8 @@ func TestHandleEndActivity_HappyPath(t *testing.T) {
 	}
 
 	// Verify PATCH body preserved template and updated state
-	if patchBody["state"] != "ENDED" {
-		t.Errorf("expected state=ENDED in PATCH, got %v", patchBody["state"])
+	if patchBody["state"] != "ended" {
+		t.Errorf("expected state=ended in PATCH, got %v", patchBody["state"])
 	}
 	content, _ := patchBody["content"].(map[string]any)
 	if content == nil {
@@ -519,7 +519,7 @@ func TestHandleEndActivity_HappyPath(t *testing.T) {
 
 func TestHandleEndActivity_AlreadyEnded(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte(`{"slug":"test-done","state":"ENDED","content":{"template":"generic","state":"Done"}}`))
+		w.Write([]byte(`{"slug":"test-done","state":"ended","content":{"template":"generic","state":"Done"}}`))
 	}))
 	defer srv.Close()
 
@@ -532,8 +532,8 @@ func TestHandleEndActivity_AlreadyEnded(t *testing.T) {
 	}
 
 	text := resultText(t, result)
-	if !strings.Contains(text, "already ENDED") {
-		t.Errorf("expected 'already ENDED', got: %s", text)
+	if !strings.Contains(text, "already ended") {
+		t.Errorf("expected 'already ended', got: %s", text)
 	}
 }
 
@@ -542,7 +542,7 @@ func TestHandleEndActivity_CustomReason(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case r.Method == http.MethodGet:
-			w.Write([]byte(`{"slug":"test-x","state":"ONGOING","content":{"template":"generic","state":"Running"}}`))
+			w.Write([]byte(`{"slug":"test-x","state":"ongoing","content":{"template":"generic","state":"Running"}}`))
 		case r.Method == http.MethodPatch:
 			body, _ := io.ReadAll(r.Body)
 			json.Unmarshal(body, &patchBody)
@@ -573,7 +573,7 @@ func TestHandleEndActivity_ContentOverride(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case r.Method == http.MethodGet:
-			w.Write([]byte(`{"slug":"test-x","state":"ONGOING","content":{"template":"alert","state":"Firing"}}`))
+			w.Write([]byte(`{"slug":"test-x","state":"ongoing","content":{"template":"alert","state":"Firing"}}`))
 		case r.Method == http.MethodPatch:
 			body, _ := io.ReadAll(r.Body)
 			json.Unmarshal(body, &patchBody)
@@ -603,7 +603,7 @@ func TestHandleEndActivity_ContentOverride(t *testing.T) {
 
 func TestHandleListActivities_NoFilters(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte(`{"items":[{"slug":"a","state":"ONGOING"},{"slug":"b","state":"ENDED"}],"has_more":false}`))
+		w.Write([]byte(`{"items":[{"slug":"a","state":"ongoing"},{"slug":"b","state":"ended"}],"has_more":false}`))
 	}))
 	defer srv.Close()
 
@@ -624,12 +624,12 @@ func TestHandleListActivities_NoFilters(t *testing.T) {
 
 func TestHandleListActivities_StateFilter(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte(`{"items":[{"slug":"a","state":"ONGOING"},{"slug":"b","state":"ENDED"},{"slug":"c","state":"ONGOING"}],"has_more":false}`))
+		w.Write([]byte(`{"items":[{"slug":"a","state":"ongoing"},{"slug":"b","state":"ended"},{"slug":"c","state":"ongoing"}],"has_more":false}`))
 	}))
 	defer srv.Close()
 
 	api := client.NewAPIClient(srv.URL, "test-token")
-	req := newReq(map[string]any{"state": "ONGOING"})
+	req := newReq(map[string]any{"state": "ongoing"})
 
 	result, err := handleListActivities(context.Background(), req, api)
 	if err != nil {
@@ -642,18 +642,18 @@ func TestHandleListActivities_StateFilter(t *testing.T) {
 		t.Fatalf("invalid JSON: %v", err)
 	}
 	if len(activities) != 2 {
-		t.Errorf("expected 2 ONGOING activities, got %d", len(activities))
+		t.Errorf("expected 2 ongoing activities, got %d", len(activities))
 	}
 	for _, a := range activities {
-		if a["state"] != "ONGOING" {
-			t.Errorf("expected state=ONGOING, got %v", a["state"])
+		if a["state"] != "ongoing" {
+			t.Errorf("expected state=ongoing, got %v", a["state"])
 		}
 	}
 }
 
 func TestHandleListActivities_SourceFilter(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte(`{"items":[{"slug":"grafana-cpu","state":"ONGOING"},{"slug":"grafana_disk","state":"ONGOING"},{"slug":"argocd-deploy","state":"ONGOING"}],"has_more":false}`))
+		w.Write([]byte(`{"items":[{"slug":"grafana-cpu","state":"ongoing"},{"slug":"grafana_disk","state":"ongoing"},{"slug":"argocd-deploy","state":"ongoing"}],"has_more":false}`))
 	}))
 	defer srv.Close()
 
@@ -677,7 +677,7 @@ func TestHandleListActivities_SourceFilter(t *testing.T) {
 
 func TestHandleListActivities_Summary(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte(`{"items":[{"slug":"test-a","name":"Test A","state":"ONGOING","priority":5,"content":{"template":"alert"},"created_at":"2026-04-10T10:00:00Z"}],"has_more":false}`))
+		w.Write([]byte(`{"items":[{"slug":"test-a","name":"Test A","state":"ongoing","priority":5,"content":{"template":"alert"},"created_at":"2026-04-10T10:00:00Z"}],"has_more":false}`))
 	}))
 	defer srv.Close()
 
@@ -715,12 +715,12 @@ func TestHandleListActivities_Summary(t *testing.T) {
 
 func TestHandleListActivities_Limit(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte(`{"items":[{"slug":"a","state":"ONGOING"},{"slug":"b","state":"ONGOING"},{"slug":"c","state":"ONGOING"}],"has_more":false}`))
+		w.Write([]byte(`{"items":[{"slug":"a","state":"ongoing"},{"slug":"b","state":"ongoing"},{"slug":"c","state":"ongoing"}],"has_more":false}`))
 	}))
 	defer srv.Close()
 
 	api := client.NewAPIClient(srv.URL, "test-token")
-	req := newReq(map[string]any{"state": "ONGOING", "limit": float64(2)})
+	req := newReq(map[string]any{"state": "ongoing", "limit": float64(2)})
 
 	result, err := handleListActivities(context.Background(), req, api)
 	if err != nil {
@@ -740,16 +740,16 @@ func TestHandleListActivities_Limit(t *testing.T) {
 func TestHandleListActivities_CombinedFilters(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte(`{"items":[
-			{"slug":"grafana-cpu","state":"ONGOING"},
-			{"slug":"grafana-disk","state":"ENDED"},
-			{"slug":"argocd-deploy","state":"ONGOING"},
-			{"slug":"grafana-mem","state":"ONGOING"}
+			{"slug":"grafana-cpu","state":"ongoing"},
+			{"slug":"grafana-disk","state":"ended"},
+			{"slug":"argocd-deploy","state":"ongoing"},
+			{"slug":"grafana-mem","state":"ongoing"}
 		],"has_more":false}`))
 	}))
 	defer srv.Close()
 
 	api := client.NewAPIClient(srv.URL, "test-token")
-	req := newReq(map[string]any{"state": "ONGOING", "source": "grafana", "limit": float64(1)})
+	req := newReq(map[string]any{"state": "ongoing", "source": "grafana", "limit": float64(1)})
 
 	result, err := handleListActivities(context.Background(), req, api)
 	if err != nil {
@@ -762,18 +762,18 @@ func TestHandleListActivities_CombinedFilters(t *testing.T) {
 		t.Fatalf("invalid JSON: %v", err)
 	}
 	if len(activities) != 1 {
-		t.Errorf("expected 1 activity (ONGOING + grafana + limit 1), got %d", len(activities))
+		t.Errorf("expected 1 activity (ongoing + grafana + limit 1), got %d", len(activities))
 	}
 }
 
 func TestHandleListActivities_EmptyResult(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte(`{"items":[{"slug":"a","state":"ENDED"}],"has_more":false}`))
+		w.Write([]byte(`{"items":[{"slug":"a","state":"ended"}],"has_more":false}`))
 	}))
 	defer srv.Close()
 
 	api := client.NewAPIClient(srv.URL, "test-token")
-	req := newReq(map[string]any{"state": "ONGOING", "summary": true})
+	req := newReq(map[string]any{"state": "ongoing", "summary": true})
 
 	result, err := handleListActivities(context.Background(), req, api)
 	if err != nil {
@@ -811,9 +811,9 @@ func TestHandleBulkEndActivities_HappyPath(t *testing.T) {
 		switch {
 		case r.Method == http.MethodGet && r.URL.Path == "/activities":
 			w.Write([]byte(`{"items":[
-				{"slug":"grafana-cpu","state":"ONGOING","content":{"template":"alert","state":"Firing"}},
-				{"slug":"grafana-disk","state":"ONGOING","content":{"template":"alert","state":"Firing"}},
-				{"slug":"argocd-deploy","state":"ONGOING","content":{"template":"steps"}}
+				{"slug":"grafana-cpu","state":"ongoing","content":{"template":"alert","state":"Firing"}},
+				{"slug":"grafana-disk","state":"ongoing","content":{"template":"alert","state":"Firing"}},
+				{"slug":"argocd-deploy","state":"ongoing","content":{"template":"steps"}}
 			],"has_more":false}`))
 		case r.Method == http.MethodPatch:
 			patchCount++
@@ -851,8 +851,8 @@ func TestHandleBulkEndActivities_DryRunByDefault(t *testing.T) {
 		switch {
 		case r.Method == http.MethodGet && r.URL.Path == "/activities":
 			w.Write([]byte(`{"items":[
-				{"slug":"grafana-cpu","state":"ONGOING","content":{"template":"alert"}},
-				{"slug":"grafana-disk","state":"ONGOING","content":{"template":"alert"}}
+				{"slug":"grafana-cpu","state":"ongoing","content":{"template":"alert"}},
+				{"slug":"grafana-disk","state":"ongoing","content":{"template":"alert"}}
 			],"has_more":false}`))
 		case r.Method == http.MethodPatch:
 			patchCount++
@@ -882,7 +882,7 @@ func TestHandleBulkEndActivities_DryRunByDefault(t *testing.T) {
 
 func TestHandleBulkEndActivities_NoMatches(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte(`{"items":[{"slug":"argocd-deploy","state":"ONGOING","content":{"template":"steps"}}],"has_more":false}`))
+		w.Write([]byte(`{"items":[{"slug":"argocd-deploy","state":"ongoing","content":{"template":"steps"}}],"has_more":false}`))
 	}))
 	defer srv.Close()
 
@@ -906,8 +906,8 @@ func TestHandleBulkEndActivities_SkipsAlreadyEnded(t *testing.T) {
 		switch {
 		case r.Method == http.MethodGet && r.URL.Path == "/activities":
 			w.Write([]byte(`{"items":[
-				{"slug":"grafana-cpu","state":"ONGOING","content":{"template":"alert"}},
-				{"slug":"grafana-disk","state":"ENDED","content":{"template":"alert"}}
+				{"slug":"grafana-cpu","state":"ongoing","content":{"template":"alert"}},
+				{"slug":"grafana-disk","state":"ended","content":{"template":"alert"}}
 			],"has_more":false}`))
 		case r.Method == http.MethodPatch:
 			patchCount++
