@@ -19,8 +19,9 @@ const truncationNote = "\n\nNote: result truncated at the pagination cap (" +
 	"see the rest."
 
 const (
-	stateOngoing   = "ONGOING"
-	stateEnded     = "ENDED"
+	stateOngoing    = "ongoing"
+	stateEnded      = "ended"
+	statePreempted  = "preempted"
 	defaultTemplate = "generic"
 )
 
@@ -54,7 +55,7 @@ func registerCompositeTools(s *mcpserver.MCPServer, api *client.APIClient, relay
 	// test_activity_lifecycle
 	s.AddTool(
 		mcp.NewTool("test_activity_lifecycle",
-			mcp.WithDescription("Run a full activity lifecycle: create -> start (ONGOING) -> end (ENDED) -> verify -> optionally delete"),
+			mcp.WithDescription("Run a full activity lifecycle: create -> start (ongoing) -> end (ended) -> verify -> optionally delete"),
 			mcp.WithString("slug",
 				mcp.Required(),
 				mcp.Description("Activity slug (must be unique)"),
@@ -122,7 +123,7 @@ func registerCompositeTools(s *mcpserver.MCPServer, api *client.APIClient, relay
 	// end_activity
 	s.AddTool(
 		mcp.NewTool("end_activity",
-			mcp.WithDescription("End an activity by slug. Fetches the current content to preserve the template, then transitions to ENDED state."),
+			mcp.WithDescription("End an activity by slug. Fetches the current content to preserve the template, then transitions to ended state."),
 			mcp.WithString("slug",
 				mcp.Required(),
 				mcp.Description("Activity slug to end"),
@@ -145,7 +146,7 @@ func registerCompositeTools(s *mcpserver.MCPServer, api *client.APIClient, relay
 			mcp.WithDescription("List activities with optional filtering and summary mode. Walks the server's cursor pagination automatically and returns the aggregated result (capped at ~2000 activities). Without parameters, returns the full JSON for every page concatenated."),
 			mcp.WithString("state",
 				mcp.Description("Filter by activity state"),
-				mcp.Enum("ONGOING", "ENDED", "PREEMPTED"),
+				mcp.Enum(stateOngoing, stateEnded, statePreempted),
 			),
 			mcp.WithString("source",
 				mcp.Description("Filter by source (matches slug prefix, e.g. \"grafana\" matches slugs starting with \"grafana-\" or \"grafana_\")"),
@@ -168,8 +169,8 @@ func registerCompositeTools(s *mcpserver.MCPServer, api *client.APIClient, relay
 			mcp.WithDescription("End multiple activities matching filters. At least one filter is required. Defaults to dry-run — pass confirm=true to actually end matching activities."),
 			mcp.WithDestructiveHintAnnotation(true),
 			mcp.WithString("state",
-				mcp.Description("Filter by current state (e.g. \"ONGOING\")"),
-				mcp.Enum("ONGOING", "ENDED", "PREEMPTED"),
+				mcp.Description("Filter by current state (e.g. \"ongoing\")"),
+				mcp.Enum(stateOngoing, stateEnded, statePreempted),
 			),
 			mcp.WithString("source",
 				mcp.Description("Filter by source (slug prefix match, e.g. \"grafana\")"),
@@ -236,57 +237,57 @@ func handleTestActivityLifecycle(ctx context.Context, req mcp.CallToolRequest, a
 	}
 	steps = append(steps, "1. Created activity: OK")
 
-	// Step 2: Update to ONGOING
+	// Step 2: Update to ongoing
 	ongoingContent := buildTestContent(tmpl, 0.5, "Testing...", tapURL)
 	_, err = api.UpdateActivity(ctx, slug, client.UpdateActivityInput{
 		State:   stateOngoing,
 		Content: ongoingContent,
 	})
 	if err != nil {
-		steps = append(steps, fmt.Sprintf("2. Update ONGOING: FAIL (%v)", err))
+		steps = append(steps, fmt.Sprintf("2. Update %s: FAIL (%v)", stateOngoing, err))
 		return mcp.NewToolResultText(strings.Join(steps, "\n")), nil
 	}
-	steps = append(steps, "2. Updated to ONGOING: OK")
+	steps = append(steps, fmt.Sprintf("2. Updated to %s: OK", stateOngoing))
 
-	// Step 3: Verify ONGOING
+	// Step 3: Verify ongoing
 	raw, err := api.GetActivity(ctx, slug)
 	if err != nil {
-		steps = append(steps, fmt.Sprintf("3. Verify ONGOING: FAIL (%v)", err))
+		steps = append(steps, fmt.Sprintf("3. Verify %s: FAIL (%v)", stateOngoing, err))
 	} else {
 		var activity map[string]any
 		_ = json.Unmarshal(raw, &activity)
 		state, _ := activity["state"].(string)
 		if state == stateOngoing {
-			steps = append(steps, "3. Verified state=ONGOING: OK")
+			steps = append(steps, fmt.Sprintf("3. Verified state=%s: OK", stateOngoing))
 		} else {
-			steps = append(steps, fmt.Sprintf("3. Verify ONGOING: expected ONGOING, got %s", state))
+			steps = append(steps, fmt.Sprintf("3. Verify %s: expected %s, got %s", stateOngoing, stateOngoing, state))
 		}
 	}
 
-	// Step 4: Update to ENDED
+	// Step 4: Update to ended
 	endedContent := buildTestContent(tmpl, 1.0, "Done", tapURL)
 	_, err = api.UpdateActivity(ctx, slug, client.UpdateActivityInput{
 		State:   stateEnded,
 		Content: endedContent,
 	})
 	if err != nil {
-		steps = append(steps, fmt.Sprintf("4. Update ENDED: FAIL (%v)", err))
+		steps = append(steps, fmt.Sprintf("4. Update %s: FAIL (%v)", stateEnded, err))
 		return mcp.NewToolResultText(strings.Join(steps, "\n")), nil
 	}
-	steps = append(steps, "4. Updated to ENDED: OK")
+	steps = append(steps, fmt.Sprintf("4. Updated to %s: OK", stateEnded))
 
-	// Step 5: Verify ENDED
+	// Step 5: Verify ended
 	raw, err = api.GetActivity(ctx, slug)
 	if err != nil {
-		steps = append(steps, fmt.Sprintf("5. Verify ENDED: FAIL (%v)", err))
+		steps = append(steps, fmt.Sprintf("5. Verify %s: FAIL (%v)", stateEnded, err))
 	} else {
 		var activity map[string]any
 		_ = json.Unmarshal(raw, &activity)
 		state, _ := activity["state"].(string)
 		if state == stateEnded {
-			steps = append(steps, "5. Verified state=ENDED: OK")
+			steps = append(steps, fmt.Sprintf("5. Verified state=%s: OK", stateEnded))
 		} else {
-			steps = append(steps, fmt.Sprintf("5. Verify ENDED: expected ENDED, got %s", state))
+			steps = append(steps, fmt.Sprintf("5. Verify %s: expected %s, got %s", stateEnded, stateEnded, state))
 		}
 	}
 
@@ -400,7 +401,7 @@ func handleEndActivity(ctx context.Context, req mcp.CallToolRequest, api *client
 
 	// Check if already ended
 	if state, _ := activity["state"].(string); state == stateEnded {
-		return mcp.NewToolResultText(fmt.Sprintf("Activity %q is already ENDED", slug)), nil
+		return mcp.NewToolResultText(fmt.Sprintf("Activity %q is already %s", slug, stateEnded)), nil
 	}
 
 	// Build content
