@@ -13,4 +13,5 @@ func RegisterAll(s *mcpserver.MCPServer, api *client.APIClient, relay *client.Re
 	registerAPITools(s, api)
 	registerRelayTools(s, relay)
 	registerCompositeTools(s, api, relay)
+	registerDocsTools(s)
 }
