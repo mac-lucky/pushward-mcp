@@ -28,7 +28,10 @@ func main() {
 		server.WithInstructions("PushWard MCP server for testing push notifications. "+
 			"Use API tools to manage activities and notifications on api.pushward.app. "+
 			"Use relay tools to simulate external service webhooks on relay.pushward.app. "+
-			"Use composite test_ tools for common test workflows."),
+			"Use composite test_ tools for common test workflows. "+
+			"Before writing any code that integrates with PushWard, call get_pushward_docs "+
+			"(start with kind=index) and get_pushward_best_practices to load the API reference, "+
+			"OpenAPI schemas, and integration best practices into context."),
 	)
 
 	tools.RegisterAll(s, apiClient, relayClient)

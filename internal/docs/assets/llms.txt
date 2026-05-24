@@ -1,0 +1,58 @@
+# PushWard
+
+> PushWard is a push notification platform that delivers iOS Live Activities and standard push notifications via a simple REST API. Developers authenticate with an integration key, register activities from external services, and watch them update in real time on the Dynamic Island and Lock Screen.
+
+The API is hosted at `https://api.pushward.app`. An OpenAPI specification is served at `https://api.pushward.app/openapi.yaml` and can be explored interactively at `https://pushward.app/api`.
+
+A fully-expanded Markdown bundle of every docs page lives at [/llms-full.txt](https://pushward.app/llms-full.txt) for bulk ingestion.
+
+## Getting Started
+
+- [Getting Started](https://pushward.app/docs/getting-started): Start sending push notifications to your iPhone in under 5 minutes.
+- [API Reference](https://pushward.app/api): Interactive OpenAPI explorer for every endpoint
+- [Playground](https://pushward.app/playground): Interactive iPhone simulator for previewing PushWard widgets
+
+## Live Activities
+
+- [Live Activities](https://pushward.app/docs/live-activities): PushWard provides six Live Activity templates. Each template has a distinct layout optimized for different use cases.
+- [Generic Template](https://pushward.app/docs/live-activities/generic): A flexible progress-based template suitable for builds, downloads, deployments, and any long-running task.
+- [Countdown Template](https://pushward.app/docs/live-activities/countdown): A timer-based template with server-managed lifecycle. Set it and forget it -- the server handles warning and completion pushes automatically.
+- [Steps Template](https://pushward.app/docs/live-activities/steps): A step-based template designed for CI/CD pipelines and multi-stage workflows. Visualizes parallel jobs with a matrix indicator.
+- [Alert Template](https://pushward.app/docs/live-activities/alert): A severity-based template for monitoring alerts. Displays firing alerts with deep-link buttons to dashboards and alert rules.
+- [Gauge Template](https://pushward.app/docs/live-activities/gauge): A range-based template for monitoring numeric values. Displays the current value with unit, and shows min/max labels on the progress bar endpoints. Progress is auto-calculated by the server.
+- [Timeline Template](https://pushward.app/docs/live-activities/timeline): A real-time sparkline chart for tracking values over time. Each push sends a data point; the server accumulates history and delivers the sparkline data to iOS via push notifications.
+
+## Widgets
+
+- [Widgets](https://pushward.app/docs/widgets): Push-driven iOS Home Screen, Lock Screen, and StandBy widgets. Declare a widget once, update its content with a PATCH, and the user's WidgetKit instances refresh automatically.
+- [Widgets API](https://pushward.app/docs/widgets/api): Register, update, list, and delete widgets via REST. Widgets are push-driven — each PATCH triggers a thin APNs payload that reloads the iOS extension's timeline.
+
+## Integrations
+
+- [Integrations](https://pushward.app/docs/integrations): Connect PushWard to your existing tools and services. Each integration uses a dedicated integration key for scoped access.
+- [Relay](https://pushward.app/docs/integrations/relay): The easiest way to connect your services to PushWard. Point webhooks at relay.pushward.app — no Docker containers, no self-hosting, no per-user configuration needed.
+- [Grafana](https://pushward.app/docs/integrations/grafana): Turn Grafana alerts into timeline sparklines on your Lock Screen. See metric history at a glance with real-time updates while alerts are firing.
+- [Home Assistant](https://pushward.app/docs/integrations/home-assistant): A native HACS integration that bridges Home Assistant entity state changes to PushWard Live Activities on your iPhone.
+- [GitHub Actions](https://pushward.app/docs/integrations/github-actions): Track CI/CD workflow progress in real-time on your Lock Screen using the steps template.
+- [SABnzbd](https://pushward.app/docs/integrations/sabnzbd): Track download progress on your Lock Screen. See file names, speed, ETA, and post-processing phases in real-time.
+- [Bambu Lab](https://pushward.app/docs/integrations/bambulab): Track 3D print progress with layer counts, nozzle temperature, and ETA on your Lock Screen via local MQTT.
+- [Unraid](https://pushward.app/docs/integrations/unraid): Monitor parity checks, array state changes, disk alerts, and UPS events on your Lock Screen via Unraid's GraphQL WebSocket API.
+
+## API Reference
+
+- [API Reference](https://pushward.app/docs/api): The PushWard API is a REST API for managing iOS Live Activities via Apple Push Notification service (APNs).
+- [Authentication](https://pushward.app/docs/api/authentication): PushWard uses Bearer token authentication. When you sign in with Apple ID, a default integration key (hlk_) is automatically created -- copy it from the app's settings to start using the API immediately. You can also create additional scoped integration keys for individual services.
+- [Activities](https://pushward.app/docs/api/activities): Activities are the core resource in PushWard. Each activity represents a trackable item that can be displayed as a Live Activity on subscribed devices.
+
+## Examples & Limits
+
+- [Examples](https://pushward.app/docs/examples): Complete code examples for creating, starting, updating, and ending activities in curl, Python, Go, and JavaScript.
+- [Limits](https://pushward.app/docs/limits): Understanding the limits of Live Activities, Apple Push Notification service, and the PushWard API.
+
+## Optional
+
+- [Colors](https://pushward.app/docs/colors): PushWard templates support named colors and hex values for accent_color, background_color, and text_color fields.
+- [Status](https://pushward.app/status): API and integration uptime
+- [Support](https://pushward.app/support): Contact and support channels
+- [Privacy Policy](https://pushward.app/privacy): Privacy policy
+- [Terms of Service](https://pushward.app/terms): Terms of service

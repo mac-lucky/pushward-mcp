@@ -113,6 +113,17 @@ const (
 	relaySpecURL = "https://relay.pushward.app/openapi.json"
 )
 
+// Published reference docs embedded into the binary and served by the
+// get_pushward_docs tool. Fetched at generate time (see refreshAsset). The API
+// spec is fetched as YAML here — distinct from apiSpecURL's JSON used for tool
+// generation — so the embedded copy matches what api.pushward.app serves.
+const (
+	llmsIndexURL     = "https://pushward.app/llms.txt"
+	llmsFullURL      = "https://pushward.app/llms-full.txt"
+	apiSpecYAMLURL   = "https://api.pushward.app/openapi.yaml"
+	relaySpecJSONURL = "https://relay.pushward.app/openapi.json"
+)
+
 // ---------- main ----------
 
 func main() {
@@ -135,7 +146,42 @@ func main() {
 	writeGenFile(filepath.Join(outDir, "api_gen.go"), apiToolsTemplate, apiTools)
 	writeGenFile(filepath.Join(outDir, "relay_gen.go"), relayToolsTemplate, relayTools)
 
+	// Refresh the reference docs embedded into the binary and served by the
+	// get_pushward_docs tool. Additive to tool generation. best-practices.md is
+	// hand-authored and intentionally absent here, so it is never overwritten.
+	assetsDir := filepath.Join(rootDir, "internal", "docs", "assets")
+	if err := os.MkdirAll(assetsDir, 0o755); err != nil {
+		fmt.Fprintf(os.Stderr, "creating %s: %v\n", assetsDir, err)
+		os.Exit(1)
+	}
+	refreshAsset(useLocal, llmsIndexURL, filepath.Join(assetsDir, "llms.txt"))
+	refreshAsset(useLocal, llmsFullURL, filepath.Join(assetsDir, "llms-full.txt"))
+	refreshAsset(useLocal, apiSpecYAMLURL, filepath.Join(assetsDir, "api-openapi.yaml"))
+	refreshAsset(useLocal, relaySpecJSONURL, filepath.Join(assetsDir, "relay-openapi.json"))
+
 	fmt.Printf("Generated %d API tools and %d relay tools\n", len(apiTools), len(relayTools))
+}
+
+// refreshAsset fetches url and overwrites destPath with the response, refreshing
+// a reference doc embedded into the binary. On fetch failure — or when useLocal
+// is set — it logs and leaves the committed asset in place (offline-safe: the
+// embedded copy is the fallback). A write failure is fatal: it means a broken
+// source tree.
+func refreshAsset(useLocal bool, url, destPath string) {
+	if useLocal {
+		fmt.Fprintf(os.Stderr, "PUSHWARD_USE_LOCAL_SPEC set, keeping %s\n", destPath)
+		return
+	}
+	data, err := fetchURL(url)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "refresh %s failed (%v); keeping committed %s\n", url, err, destPath)
+		return
+	}
+	if err := os.WriteFile(destPath, data, 0o644); err != nil {
+		fmt.Fprintf(os.Stderr, "writing %s: %v\n", destPath, err)
+		os.Exit(1)
+	}
+	fmt.Fprintf(os.Stderr, "refreshed %s (%d bytes)\n", destPath, len(data))
 }
 
 func findRootDir() string {
