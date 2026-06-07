@@ -185,9 +185,10 @@ func TestDoJSON_ErrorBodyTruncation(t *testing.T) {
 	}
 }
 
-func TestDoJSON_ResponseBodyCappedAt1MB(t *testing.T) {
-	// Serve 2MB of data; DoJSON should only read up to 1MB
-	bigBody := strings.Repeat("a", 2<<20) // 2MB
+func TestDoJSON_ResponseBodyOverCapErrors(t *testing.T) {
+	// A success body larger than the cap would be truncated mid-JSON, so DoJSON
+	// must return an error rather than hand back corrupt, unparseable data.
+	bigBody := strings.Repeat("a", 2<<20) // 2MB > 1MB cap
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte(bigBody))
@@ -195,12 +196,43 @@ func TestDoJSON_ResponseBodyCappedAt1MB(t *testing.T) {
 	defer srv.Close()
 
 	b := NewBase(srv.URL, "tok")
+	raw, status, err := b.DoJSON(context.Background(), http.MethodGet, "/test", nil)
+	if err == nil {
+		t.Fatalf("expected an error for an over-cap response, got nil (raw=%d bytes)", len(raw))
+	}
+	if !strings.Contains(err.Error(), "exceeds") {
+		t.Errorf("expected error to mention the cap, got: %v", err)
+	}
+	if status != http.StatusOK {
+		t.Errorf("expected status 200 to be reported, got %d", status)
+	}
+	if raw != nil {
+		t.Errorf("expected nil body on over-cap error, got %d bytes", len(raw))
+	}
+}
+
+func TestDoJSON_ResponseBodyAtCapSucceeds(t *testing.T) {
+	// A body of *exactly* maxRespBytes (1MB) must be returned intact — this pins
+	// the `len > maxRespBytes` boundary so an off-by-one regression to `>=`
+	// (which would wrongly reject a legitimate 1MB body) is caught.
+	const cap = 1 << 20
+	body := `{"k":"` + strings.Repeat("a", cap-8) + `"}` // 6 + (cap-8) + 2 == cap
+	if len(body) != cap {
+		t.Fatalf("test body is %d bytes, want exactly %d; adjust padding", len(body), cap)
+	}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(body))
+	}))
+	defer srv.Close()
+
+	b := NewBase(srv.URL, "tok")
 	raw, _, err := b.DoJSON(context.Background(), http.MethodGet, "/test", nil)
 	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+		t.Fatalf("unexpected error for at-cap body: %v", err)
 	}
-	if len(raw) > 1<<20 {
-		t.Errorf("response should be capped at 1MB, got %d bytes", len(raw))
+	if len(raw) != cap {
+		t.Errorf("expected full %d-byte body, got %d", cap, len(raw))
 	}
 }
 
@@ -455,7 +487,7 @@ func TestAPIClient_CreateNotification(t *testing.T) {
 		if input.Title != "Test" || input.Body != "Hello" {
 			t.Errorf("unexpected input: %+v", input)
 		}
-		if !input.Push {
+		if input.Push == nil || !*input.Push {
 			t.Error("expected push to be true")
 		}
 
@@ -465,16 +497,44 @@ func TestAPIClient_CreateNotification(t *testing.T) {
 	defer srv.Close()
 
 	c := NewAPIClient(srv.URL, "tok")
+	push := true
 	raw, err := c.CreateNotification(context.Background(), CreateNotificationInput{
 		Title: "Test",
 		Body:  "Hello",
-		Push:  true,
+		Push:  &push,
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if !strings.Contains(string(raw), "notif-1") {
 		t.Errorf("response should contain notif id: %s", raw)
+	}
+}
+
+// TestAPIClient_CreateNotification_PushOmitted verifies that a nil Push pointer
+// omits the "push" key entirely, so the server-side default (true) applies
+// instead of the request forcing push=false.
+func TestAPIClient_CreateNotification_PushOmitted(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		var raw map[string]json.RawMessage
+		if err := json.Unmarshal(body, &raw); err != nil {
+			t.Fatalf("failed to unmarshal: %v", err)
+		}
+		if _, present := raw["push"]; present {
+			t.Errorf("expected no \"push\" key when Push is nil, got body: %s", body)
+		}
+		w.WriteHeader(http.StatusCreated)
+		w.Write([]byte(`{"id":"notif-2"}`))
+	}))
+	defer srv.Close()
+
+	c := NewAPIClient(srv.URL, "tok")
+	if _, err := c.CreateNotification(context.Background(), CreateNotificationInput{
+		Title: "Test",
+		Body:  "Hello",
+	}); err != nil {
+		t.Fatalf("unexpected error: %v", err)
 	}
 }
 
@@ -568,6 +628,40 @@ func TestAPIClient_ListAllActivities_TruncatedAtCap(t *testing.T) {
 	}
 	if len(activities) != maxListActivitiesPages {
 		t.Errorf("expected %d items in truncated result, got %d", maxListActivitiesPages, len(activities))
+	}
+}
+
+func TestAPIClient_ListAllActivities_MoreButNoCursor(t *testing.T) {
+	// Server reports has_more=true but gives no next_cursor — we cannot fetch the
+	// rest, so the result must be flagged as truncated rather than silently
+	// treated as complete.
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{"items":[{"slug":"a"}],"next_cursor":"","has_more":true}`))
+	}))
+	defer srv.Close()
+
+	c := NewAPIClient(srv.URL, "tok")
+	raw, err := c.ListAllActivities(context.Background())
+	if !errors.Is(err, ErrListActivitiesTruncated) {
+		t.Fatalf("expected ErrListActivitiesTruncated, got %v", err)
+	}
+	var activities []map[string]any
+	if jerr := json.Unmarshal(raw, &activities); jerr != nil {
+		t.Fatalf("partial result is not valid JSON: %v", jerr)
+	}
+	if len(activities) != 1 {
+		t.Errorf("expected the single fetched item, got %d", len(activities))
+	}
+}
+
+func TestExtractErrorMessage_TitleOnly(t *testing.T) {
+	// A Problem body with a title but no detail and no code should surface the
+	// title (and no "[]" code tag).
+	body := []byte(`{"title":"Not Found","status":404}`)
+	got := extractErrorMessage(body)
+	if got != "Not Found" {
+		t.Errorf("expected title-only message %q, got %q", "Not Found", got)
 	}
 }
 

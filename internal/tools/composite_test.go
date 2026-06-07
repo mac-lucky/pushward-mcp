@@ -134,6 +134,99 @@ func TestBuildTestContent_TapAction(t *testing.T) {
 	}
 }
 
+func TestBuildTestContent_Countdown(t *testing.T) {
+	raw := buildTestContent("countdown", 0.5, "Counting", "")
+	var m map[string]any
+	if err := json.Unmarshal(raw, &m); err != nil {
+		t.Fatalf("invalid JSON: %v", err)
+	}
+	// countdown requires a duration/end_date — without it the server rejects the
+	// PATCH, so the lifecycle tool must supply one.
+	if m["duration"] != "5m" {
+		t.Errorf("duration = %v, want 5m", m["duration"])
+	}
+}
+
+func TestBuildTestContent_Timeline(t *testing.T) {
+	raw := buildTestContent("timeline", 0.4, "Trending", "")
+	var m map[string]any
+	if err := json.Unmarshal(raw, &m); err != nil {
+		t.Fatalf("invalid JSON: %v", err)
+	}
+	// timeline value must be a labeled map, not a scalar.
+	val, ok := m["value"].(map[string]any)
+	if !ok {
+		t.Fatalf("timeline value = %v (%T), want map", m["value"], m["value"])
+	}
+	if val["Value"] != float64(40) {
+		t.Errorf("timeline value[Value] = %v, want 40", val["Value"])
+	}
+}
+
+func TestBuildTestContent_AllLifecycleTemplatesValidJSON(t *testing.T) {
+	// Every template the lifecycle tool advertises must produce parseable JSON
+	// carrying its required template-specific fields.
+	required := map[string][]string{
+		"generic":   {"template"},
+		"countdown": {"template", "duration"},
+		"steps":     {"template", "current_step", "total_steps"},
+		"alert":     {"template", "severity"},
+		"gauge":     {"template", "value", "min_value", "max_value"},
+		"timeline":  {"template", "value"},
+	}
+	// Parity: the assertions below must cover exactly the templates the tool
+	// advertises in lifecycleTemplates — adding one to the enum without a fixture
+	// here (or a buildTestContent case) should fail this test, not ship silently.
+	if len(required) != len(lifecycleTemplates) {
+		t.Errorf("required has %d templates, lifecycleTemplates has %d", len(required), len(lifecycleTemplates))
+	}
+	for _, tmpl := range lifecycleTemplates {
+		if _, ok := required[tmpl]; !ok {
+			t.Errorf("lifecycleTemplates has %q with no required-fields assertion", tmpl)
+		}
+	}
+	for tmpl, keys := range required {
+		raw := buildTestContent(tmpl, 0.5, "x", "")
+		var m map[string]any
+		if err := json.Unmarshal(raw, &m); err != nil {
+			t.Errorf("%s: invalid JSON: %v", tmpl, err)
+			continue
+		}
+		for _, k := range keys {
+			if _, ok := m[k]; !ok {
+				t.Errorf("%s: missing required key %q", tmpl, k)
+			}
+		}
+	}
+}
+
+// ---------- formatDuration ----------
+
+func TestFormatDuration(t *testing.T) {
+	cases := []struct {
+		name string
+		d    time.Duration
+		want string
+	}{
+		{"zero", 0, "0m"},
+		{"sub-minute", 30 * time.Second, "0m"},
+		{"exact minute", time.Minute, "1m"},
+		{"minutes", 45 * time.Minute, "45m"},
+		{"exact hour", time.Hour, "1h 0m"},
+		{"hours-minutes", 2*time.Hour + 5*time.Minute, "2h 5m"},
+		{"exact day", 24 * time.Hour, "1d 0h"},
+		{"days-hours", 49 * time.Hour, "2d 1h"},
+		{"negative clamps to zero", -3 * time.Hour, "0m"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if got := formatDuration(c.d); got != c.want {
+				t.Errorf("formatDuration(%v) = %q, want %q", c.d, got, c.want)
+			}
+		})
+	}
+}
+
 // ---------- handleTestHealth ----------
 
 func TestHandleTestHealth_BothHealthy(t *testing.T) {
@@ -327,6 +420,9 @@ func TestHandleTestActivityLifecycle_UpdateOngoingFails(t *testing.T) {
 	}
 
 	text := resultText(t, result)
+	if !result.IsError {
+		t.Errorf("expected IsError=true when the ongoing update fails, got: %s", text)
+	}
 	if !strings.Contains(text, "ongoing: FAIL") {
 		t.Errorf("expected step 2 FAIL, got: %s", text)
 	}
@@ -334,6 +430,77 @@ func TestHandleTestActivityLifecycle_UpdateOngoingFails(t *testing.T) {
 	lines := strings.Split(strings.TrimSpace(text), "\n")
 	if len(lines) != 2 {
 		t.Errorf("expected 2 lines (early return after ONGOING fail), got %d:\n%s", len(lines), text)
+	}
+}
+
+// TestHandleTestActivityLifecycle_VerifyMismatchIsError ensures a state
+// mismatch during verification is reported as an MCP error, not a success
+// result with a buried failure line.
+func TestHandleTestActivityLifecycle_VerifyMismatchIsError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodPost && r.URL.Path == "/activities":
+			w.Write([]byte(`{"slug":"test-slug","name":"Test"}`))
+		case r.Method == http.MethodPatch:
+			w.Write([]byte(`{"slug":"test-slug","state":"ongoing"}`))
+		case r.Method == http.MethodGet:
+			// Always report the wrong state so verification mismatches.
+			w.Write([]byte(`{"slug":"test-slug","state":"preempted"}`))
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer srv.Close()
+
+	api := client.NewAPIClient(srv.URL, "test-token")
+	req := newReq(map[string]any{"slug": "test-slug", "name": "Test", "cleanup": false})
+
+	result, err := handleTestActivityLifecycle(context.Background(), req, api)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	text := resultText(t, result)
+	if !result.IsError {
+		t.Errorf("expected IsError=true on a verification mismatch, got: %s", text)
+	}
+	if !strings.Contains(text, "expected ongoing, got preempted") {
+		t.Errorf("expected mismatch detail in output, got: %s", text)
+	}
+}
+
+// TestHandleTestActivityLifecycle_VerifyFetchErrorIsError covers the
+// verifyActivityState fetch-error branch: a 500 on the verification GET must
+// mark the lifecycle as an MCP error with a FAIL step line.
+func TestHandleTestActivityLifecycle_VerifyFetchErrorIsError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodPost && r.URL.Path == "/activities":
+			w.Write([]byte(`{"slug":"test-slug","name":"Test"}`))
+		case r.Method == http.MethodPatch:
+			w.Write([]byte(`{"slug":"test-slug","state":"ongoing"}`))
+		case r.Method == http.MethodGet:
+			// Verification GET fails server-side.
+			w.WriteHeader(http.StatusInternalServerError)
+			w.Write([]byte(`{"title":"Internal Server Error","status":500}`))
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer srv.Close()
+
+	api := client.NewAPIClient(srv.URL, "test-token")
+	req := newReq(map[string]any{"slug": "test-slug", "name": "Test", "cleanup": false})
+
+	result, err := handleTestActivityLifecycle(context.Background(), req, api)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	text := resultText(t, result)
+	if !result.IsError {
+		t.Errorf("expected IsError=true when the verification GET fails, got: %s", text)
+	}
+	if !strings.Contains(text, "Verify ongoing: FAIL") {
+		t.Errorf("expected a verify FAIL step, got: %s", text)
 	}
 }
 
@@ -845,6 +1012,124 @@ func TestHandleBulkEndActivities_HappyPath(t *testing.T) {
 	}
 }
 
+func TestHandleBulkEndActivities_PartialFailure(t *testing.T) {
+	// One PATCH succeeds, one fails — the result must report both the Ended and
+	// the Failed counts so a partial bulk operation is visible to the caller.
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/activities":
+			w.Write([]byte(`{"items":[
+				{"slug":"grafana-cpu","state":"ongoing","content":{"template":"alert"}},
+				{"slug":"grafana-disk","state":"ongoing","content":{"template":"alert"}}
+			],"has_more":false}`))
+		case r.Method == http.MethodPatch:
+			if strings.Contains(r.URL.Path, "grafana-disk") {
+				w.Header().Set("Content-Type", "application/problem+json")
+				w.WriteHeader(http.StatusInternalServerError)
+				w.Write([]byte(`{"title":"Internal Server Error","status":500,"detail":"boom"}`))
+				return
+			}
+			w.Write([]byte(`{"slug":"grafana-cpu","state":"ended"}`))
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer srv.Close()
+
+	api := client.NewAPIClient(srv.URL, "test-token")
+	req := newReq(map[string]any{"source": "grafana", "confirm": true})
+
+	result, err := handleBulkEndActivities(context.Background(), req, api)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	text := resultText(t, result)
+	if !strings.Contains(text, "Ended 1 activities") {
+		t.Errorf("expected 'Ended 1 activities', got: %s", text)
+	}
+	if !strings.Contains(text, "Failed 1") || !strings.Contains(text, "grafana-disk") {
+		t.Errorf("expected 'Failed 1' with grafana-disk, got: %s", text)
+	}
+}
+
+func TestHandleBulkEndActivities_SlugPrefixFilter(t *testing.T) {
+	// Exercises the slug_prefix filter branch of filterActivities.
+	var patched []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/activities":
+			w.Write([]byte(`{"items":[
+				{"slug":"deploy-api","state":"ongoing","content":{"template":"steps"}},
+				{"slug":"deploy-web","state":"ongoing","content":{"template":"steps"}},
+				{"slug":"alert-cpu","state":"ongoing","content":{"template":"alert"}}
+			],"has_more":false}`))
+		case r.Method == http.MethodPatch:
+			patched = append(patched, r.URL.Path)
+			w.Write([]byte(`{"state":"ended"}`))
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer srv.Close()
+
+	api := client.NewAPIClient(srv.URL, "test-token")
+	req := newReq(map[string]any{"slug_prefix": "deploy-", "confirm": true})
+
+	result, err := handleBulkEndActivities(context.Background(), req, api)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(patched) != 2 {
+		t.Errorf("expected 2 PATCHes (deploy- prefix only), got %d: %v", len(patched), patched)
+	}
+	text := resultText(t, result)
+	if strings.Contains(text, "alert-cpu") {
+		t.Errorf("alert-cpu should not match slug_prefix=deploy-, got: %s", text)
+	}
+}
+
+func TestHandleBulkEndActivities_ContextCancelled(t *testing.T) {
+	// Cancelling mid-run must trip the loop's ctx.Err() guard so the remaining
+	// activities are not patched. cancel() runs inside the PATCH handler before
+	// the response is written, so it is observed before the next iteration's
+	// guard check — making "fewer than all" PATCHes deterministic.
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	var patchCount atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/activities":
+			w.Write([]byte(`{"items":[
+				{"slug":"a","state":"ongoing","content":{"template":"alert"}},
+				{"slug":"b","state":"ongoing","content":{"template":"alert"}},
+				{"slug":"c","state":"ongoing","content":{"template":"alert"}}
+			],"has_more":false}`))
+		case r.Method == http.MethodPatch:
+			patchCount.Add(1)
+			cancel()
+			w.Write([]byte(`{"state":"ended"}`))
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer srv.Close()
+
+	api := client.NewAPIClient(srv.URL, "test-token")
+	req := newReq(map[string]any{"state": "ongoing", "confirm": true})
+
+	result, err := handleBulkEndActivities(ctx, req, api)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if n := patchCount.Load(); n < 1 || n >= 3 {
+		t.Errorf("expected the loop to abort after the first PATCH (1 <= n < 3), got %d", n)
+	}
+	text := resultText(t, result)
+	if !strings.Contains(text, "(aborted after") {
+		t.Errorf("expected an abort note in the output, got: %s", text)
+	}
+}
+
 func TestHandleBulkEndActivities_DryRunByDefault(t *testing.T) {
 	var patchCount int
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -955,39 +1240,14 @@ func TestMatchesSource(t *testing.T) {
 	}
 }
 
-// ---------- formatDuration ----------
-
-func TestFormatDuration(t *testing.T) {
-	tests := []struct {
-		d    time.Duration
-		want string
-	}{
-		{5 * time.Minute, "5m"},
-		{90 * time.Minute, "1h 30m"},
-		{25 * time.Hour, "1d 1h"},
-		{48*time.Hour + 30*time.Minute, "2d 0h"},
-	}
-	for _, tt := range tests {
-		if got := formatDuration(tt.d); got != tt.want {
-			t.Errorf("formatDuration(%v) = %q, want %q", tt.d, got, tt.want)
-		}
-	}
-}
-
 // ---------- testPayloads ----------
 
 func TestTestPayloads_AllProvidersPresent(t *testing.T) {
-	expected := []string{
-		"argocd", "backrest", "bazarr", "changedetection", "gatus",
-		"grafana", "jellyfin", "overseerr", "paperless", "prowlarr",
-		"proxmox", "radarr", "sonarr", "unmanic", "uptimekuma",
+	if len(testPayloads) != len(relayTestProviders) {
+		t.Errorf("testPayloads has %d entries, want %d (relayTestProviders)", len(testPayloads), len(relayTestProviders))
 	}
 
-	if len(testPayloads) != len(expected) {
-		t.Errorf("testPayloads has %d entries, want %d", len(testPayloads), len(expected))
-	}
-
-	for _, provider := range expected {
+	for _, provider := range relayTestProviders {
 		payload, ok := testPayloads[provider]
 		if !ok {
 			t.Errorf("testPayloads missing provider %q", provider)

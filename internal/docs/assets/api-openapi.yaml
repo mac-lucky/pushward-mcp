@@ -90,6 +90,13 @@ components:
           maximum: 2592000
           minimum: 1
           type: integer
+        id:
+          description: Stable surrogate identifier — globally unique and immutable. Use this to address an activity unambiguously (e.g. the same slug owned by you and shared to you). The slug remains the owner's human-facing key.
+          examples:
+            - 550e8400-e29b-41d4-a716-446655440000
+          format: uuid
+          readOnly: true
+          type: string
         kind:
           description: "Discriminator: 'owned' for activities the caller owns, 'shared' for activities shared with the caller."
           enum:
@@ -139,6 +146,7 @@ components:
           type: string
       required:
         - kind
+        - id
         - slug
         - name
         - state
@@ -1731,6 +1739,12 @@ components:
     GetDeviceSubscriptionsOutputBody:
       additionalProperties: false
       properties:
+        activity_ids:
+          items:
+            type: string
+          type:
+            - array
+            - "null"
         items:
           items:
             type: string
@@ -1739,6 +1753,7 @@ components:
             - "null"
       required:
         - items
+        - activity_ids
       type: object
     GetPurchaseTokenOutputBody:
       additionalProperties: false

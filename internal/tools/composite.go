@@ -19,17 +19,48 @@ const truncationNote = "\n\nNote: result truncated at the pagination cap (" +
 	"see the rest."
 
 const (
-	stateOngoing    = "ongoing"
-	stateEnded      = "ended"
-	statePreempted  = "preempted"
-	defaultTemplate = "generic"
+	stateOngoing   = "ongoing"
+	stateEnded     = "ended"
+	statePreempted = "preempted"
 )
+
+// Activity content template names. defaultTemplate is the lifecycle tool's
+// fallback when the caller gives none.
+const (
+	tmplGeneric   = "generic"
+	tmplCountdown = "countdown"
+	tmplSteps     = "steps"
+	tmplAlert     = "alert"
+	tmplGauge     = "gauge"
+	tmplTimeline  = "timeline"
+
+	defaultTemplate = tmplGeneric
+)
+
+// lifecycleTemplates is the set of content templates the test_activity_lifecycle
+// tool advertises and that buildTestContent knows how to populate. Single source
+// so the enum, the switch, and the parity test can't drift — mirrors the
+// relayTestProviders pattern.
+var lifecycleTemplates = []string{
+	tmplGeneric, tmplCountdown, tmplSteps, tmplAlert, tmplGauge, tmplTimeline,
+}
+
+// relayTestProviders is the set of providers accepted by the test_relay_provider
+// tool's enum. Every entry must have a fixture in testPayloads — enforced by
+// TestTestPayloads_AllProvidersPresent so the two lists can never drift.
+var relayTestProviders = []string{
+	"argocd", "backrest", "bazarr", "changedetection", "gatus",
+	"grafana", "jellyfin", "overseerr", "paperless", "prowlarr",
+	"proxmox", "radarr", "sonarr", "unmanic", "uptimekuma",
+}
 
 func registerCompositeTools(s *mcpserver.MCPServer, api *client.APIClient, relay *client.RelayClient) {
 	// test_health
 	s.AddTool(
 		mcp.NewTool("test_health",
 			mcp.WithDescription("Check health of both PushWard API and Relay endpoints"),
+			mcp.WithReadOnlyHintAnnotation(true),
+			mcp.WithOpenWorldHintAnnotation(true),
 		),
 		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 			return handleTestHealth(ctx, api, relay)
@@ -42,6 +73,8 @@ func registerCompositeTools(s *mcpserver.MCPServer, api *client.APIClient, relay
 	s.AddTool(
 		mcp.NewTool("get_ready",
 			mcp.WithDescription("Check API readiness (GET /ready)"),
+			mcp.WithReadOnlyHintAnnotation(true),
+			mcp.WithOpenWorldHintAnnotation(true),
 		),
 		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 			raw, err := api.GetReady(ctx)
@@ -56,6 +89,11 @@ func registerCompositeTools(s *mcpserver.MCPServer, api *client.APIClient, relay
 	s.AddTool(
 		mcp.NewTool("test_activity_lifecycle",
 			mcp.WithDescription("Run a full activity lifecycle: create -> start (ongoing) -> end (ended) -> verify -> optionally delete"),
+			// Deletes the activity it created (cleanup defaults to true), so the
+			// destructive default is correct here; keep it explicit alongside the
+			// idempotent/open-world hints.
+			mcp.WithDestructiveHintAnnotation(true),
+			mcp.WithOpenWorldHintAnnotation(true),
 			mcp.WithString("slug",
 				mcp.Required(),
 				mcp.Description("Activity slug (must be unique)"),
@@ -66,13 +104,13 @@ func registerCompositeTools(s *mcpserver.MCPServer, api *client.APIClient, relay
 			),
 			mcp.WithString("template",
 				mcp.Description("Content template (default: generic)"),
-				mcp.Enum("generic", "countdown", "steps", "alert", "gauge", "timeline"),
+				mcp.Enum(lifecycleTemplates...),
 			),
 			mcp.WithBoolean("cleanup",
 				mcp.Description("Delete the activity after test (default: true)"),
 			),
 			mcp.WithString("tap_action_url",
-				mcp.Description("Optional. If set, the test content includes tap_action: {url: ...} so the lifecycle exercises Live Activity tap routing (foreground HTTPS URLs open in-app; custom schemes route cross-app; HTTP w/ method+headers+body fires a silent webhook)."),
+				mcp.Description("Optional. If set, the test content includes tap_action: {url: ...} so the lifecycle exercises Live Activity tap routing (foreground HTTPS URLs open in-app; custom schemes route cross-app)."),
 			),
 		),
 		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -84,6 +122,8 @@ func registerCompositeTools(s *mcpserver.MCPServer, api *client.APIClient, relay
 	s.AddTool(
 		mcp.NewTool("test_notification",
 			mcp.WithDescription("Create a test notification with standard fields"),
+			mcp.WithDestructiveHintAnnotation(false),
+			mcp.WithOpenWorldHintAnnotation(true),
 			mcp.WithString("title",
 				mcp.Required(),
 				mcp.Description("Notification title"),
@@ -105,14 +145,12 @@ func registerCompositeTools(s *mcpserver.MCPServer, api *client.APIClient, relay
 	s.AddTool(
 		mcp.NewTool("test_relay_provider",
 			mcp.WithDescription("Send a standard test payload to a relay provider and verify the response"),
+			mcp.WithDestructiveHintAnnotation(false),
+			mcp.WithOpenWorldHintAnnotation(true),
 			mcp.WithString("provider",
 				mcp.Required(),
 				mcp.Description("Relay provider name"),
-				mcp.Enum(
-					"argocd", "backrest", "bazarr", "changedetection", "gatus",
-					"grafana", "jellyfin", "overseerr", "paperless", "prowlarr",
-					"proxmox", "radarr", "sonarr", "unmanic", "uptimekuma",
-				),
+				mcp.Enum(relayTestProviders...),
 			),
 		),
 		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -124,6 +162,11 @@ func registerCompositeTools(s *mcpserver.MCPServer, api *client.APIClient, relay
 	s.AddTool(
 		mcp.NewTool("end_activity",
 			mcp.WithDescription("End an activity by slug. Fetches the current content to preserve the template, then transitions to ended state."),
+			// A state transition, not a data deletion; re-ending an ended activity
+			// is a no-op, so this is non-destructive and idempotent.
+			mcp.WithDestructiveHintAnnotation(false),
+			mcp.WithIdempotentHintAnnotation(true),
+			mcp.WithOpenWorldHintAnnotation(true),
 			mcp.WithString("slug",
 				mcp.Required(),
 				mcp.Description("Activity slug to end"),
@@ -144,6 +187,8 @@ func registerCompositeTools(s *mcpserver.MCPServer, api *client.APIClient, relay
 	s.AddTool(
 		mcp.NewTool("list_activities",
 			mcp.WithDescription("List activities with optional filtering and summary mode. Walks the server's cursor pagination automatically and returns the aggregated result (capped at ~2000 activities). Without parameters, returns the full JSON for every page concatenated."),
+			mcp.WithReadOnlyHintAnnotation(true),
+			mcp.WithOpenWorldHintAnnotation(true),
 			mcp.WithString("state",
 				mcp.Description("Filter by activity state"),
 				mcp.Enum(stateOngoing, stateEnded, statePreempted),
@@ -168,9 +213,10 @@ func registerCompositeTools(s *mcpserver.MCPServer, api *client.APIClient, relay
 		mcp.NewTool("bulk_end_activities",
 			mcp.WithDescription("End multiple activities matching filters. At least one filter is required. Defaults to dry-run — pass confirm=true to actually end matching activities."),
 			mcp.WithDestructiveHintAnnotation(true),
+			mcp.WithOpenWorldHintAnnotation(true),
 			mcp.WithString("state",
-				mcp.Description("Filter by current state (e.g. \"ongoing\")"),
-				mcp.Enum(stateOngoing, stateEnded, statePreempted),
+				mcp.Description("Filter by current state. \"ended\" is omitted because already-ended activities are skipped, making it a no-op filter."),
+				mcp.Enum(stateOngoing, statePreempted),
 			),
 			mcp.WithString("source",
 				mcp.Description("Filter by source (slug prefix match, e.g. \"grafana\")"),
@@ -226,6 +272,7 @@ func handleTestActivityLifecycle(ctx context.Context, req mcp.CallToolRequest, a
 	tapURL := req.GetString("tap_action_url", "")
 
 	var steps []string
+	failed := false
 
 	// Step 1: Create activity
 	_, err = api.CreateActivity(ctx, client.CreateActivityInput{
@@ -239,63 +286,41 @@ func handleTestActivityLifecycle(ctx context.Context, req mcp.CallToolRequest, a
 
 	// Step 2: Update to ongoing
 	ongoingContent := buildTestContent(tmpl, 0.5, "Testing...", tapURL)
-	_, err = api.UpdateActivity(ctx, slug, client.UpdateActivityInput{
+	if _, err = api.UpdateActivity(ctx, slug, client.UpdateActivityInput{
 		State:   stateOngoing,
 		Content: ongoingContent,
-	})
-	if err != nil {
+	}); err != nil {
 		steps = append(steps, fmt.Sprintf("2. Update %s: FAIL (%v)", stateOngoing, err))
-		return mcp.NewToolResultText(strings.Join(steps, "\n")), nil
+		return mcp.NewToolResultError(strings.Join(steps, "\n")), nil
 	}
 	steps = append(steps, fmt.Sprintf("2. Updated to %s: OK", stateOngoing))
 
 	// Step 3: Verify ongoing
-	raw, err := api.GetActivity(ctx, slug)
-	if err != nil {
-		steps = append(steps, fmt.Sprintf("3. Verify %s: FAIL (%v)", stateOngoing, err))
-	} else {
-		var activity map[string]any
-		_ = json.Unmarshal(raw, &activity)
-		state, _ := activity["state"].(string)
-		if state == stateOngoing {
-			steps = append(steps, fmt.Sprintf("3. Verified state=%s: OK", stateOngoing))
-		} else {
-			steps = append(steps, fmt.Sprintf("3. Verify %s: expected %s, got %s", stateOngoing, stateOngoing, state))
-		}
-	}
+	line, ok := verifyActivityState(ctx, api, slug, stateOngoing, 3)
+	steps = append(steps, line)
+	failed = failed || !ok
 
 	// Step 4: Update to ended
 	endedContent := buildTestContent(tmpl, 1.0, "Done", tapURL)
-	_, err = api.UpdateActivity(ctx, slug, client.UpdateActivityInput{
+	if _, err = api.UpdateActivity(ctx, slug, client.UpdateActivityInput{
 		State:   stateEnded,
 		Content: endedContent,
-	})
-	if err != nil {
+	}); err != nil {
 		steps = append(steps, fmt.Sprintf("4. Update %s: FAIL (%v)", stateEnded, err))
-		return mcp.NewToolResultText(strings.Join(steps, "\n")), nil
+		return mcp.NewToolResultError(strings.Join(steps, "\n")), nil
 	}
 	steps = append(steps, fmt.Sprintf("4. Updated to %s: OK", stateEnded))
 
 	// Step 5: Verify ended
-	raw, err = api.GetActivity(ctx, slug)
-	if err != nil {
-		steps = append(steps, fmt.Sprintf("5. Verify %s: FAIL (%v)", stateEnded, err))
-	} else {
-		var activity map[string]any
-		_ = json.Unmarshal(raw, &activity)
-		state, _ := activity["state"].(string)
-		if state == stateEnded {
-			steps = append(steps, fmt.Sprintf("5. Verified state=%s: OK", stateEnded))
-		} else {
-			steps = append(steps, fmt.Sprintf("5. Verify %s: expected %s, got %s", stateEnded, stateEnded, state))
-		}
-	}
+	line, ok = verifyActivityState(ctx, api, slug, stateEnded, 5)
+	steps = append(steps, line)
+	failed = failed || !ok
 
 	// Step 6: Cleanup
 	if cleanup {
-		err = api.DeleteActivity(ctx, slug)
-		if err != nil {
+		if err = api.DeleteActivity(ctx, slug); err != nil {
 			steps = append(steps, fmt.Sprintf("6. Cleanup: FAIL (%v)", err))
+			failed = true
 		} else {
 			steps = append(steps, "6. Cleanup (deleted): OK")
 		}
@@ -303,29 +328,61 @@ func handleTestActivityLifecycle(ctx context.Context, req mcp.CallToolRequest, a
 		steps = append(steps, "6. Cleanup: skipped (cleanup=false)")
 	}
 
-	return mcp.NewToolResultText(strings.Join(steps, "\n")), nil
+	out := strings.Join(steps, "\n")
+	if failed {
+		return mcp.NewToolResultError(out), nil
+	}
+	return mcp.NewToolResultText(out), nil
+}
+
+// verifyActivityState fetches the activity and confirms its state equals want,
+// returning a numbered step line and whether the check passed. A false result
+// (fetch error, parse error, or state mismatch) tells the caller to report the
+// lifecycle as an MCP error rather than burying a failure in a success result.
+func verifyActivityState(ctx context.Context, api *client.APIClient, slug, want string, step int) (string, bool) {
+	raw, err := api.GetActivity(ctx, slug)
+	if err != nil {
+		return fmt.Sprintf("%d. Verify %s: FAIL (%v)", step, want, err), false
+	}
+	var activity map[string]any
+	if err := json.Unmarshal(raw, &activity); err != nil {
+		return fmt.Sprintf("%d. Verify %s: FAIL (parsing activity: %v)", step, want, err), false
+	}
+	got, _ := activity["state"].(string)
+	if got == want {
+		return fmt.Sprintf("%d. Verified state=%s: OK", step, want), true
+	}
+	return fmt.Sprintf("%d. Verify %s: expected %s, got %s", step, want, want, got), false
 }
 
 func buildTestContent(tmpl string, progress float64, state, tapURL string) json.RawMessage {
 	content := map[string]any{
-		"template":    tmpl,
-		"progress":    progress,
-		"state":       state,
-		"icon":        "checkmark.circle",
+		"template":     tmpl,
+		"progress":     progress,
+		"state":        state,
+		"icon":         "checkmark.circle",
 		"accent_color": "blue",
 	}
 
 	switch tmpl {
-	case "steps":
+	case tmplSteps:
 		content["current_step"] = 1
 		content["total_steps"] = 2
-	case "alert":
+	case tmplAlert:
 		content["severity"] = "info"
-	case "gauge":
+	case tmplGauge:
 		content["value"] = progress * 100
 		content["min_value"] = 0
 		content["max_value"] = 100
 		content["unit"] = "%"
+	case tmplCountdown:
+		// countdown requires an end_date; the server resolves a duration string
+		// into start/end dates, so this satisfies validation on both PATCHes.
+		content["duration"] = "5m"
+	case tmplTimeline:
+		// timeline value must be a labeled map ({key: number}), not a scalar —
+		// the server rejects a bare number for this template.
+		content["value"] = map[string]any{"Value": progress * 100}
 	}
 
 	if tapURL != "" {
@@ -351,7 +408,7 @@ func handleTestNotification(ctx context.Context, req mcp.CallToolRequest, api *c
 		Title:  title,
 		Body:   body,
 		Source: "pushward-mcp",
-		Push:   push,
+		Push:   &push,
 	})
 	if err != nil {
 		return mcp.NewToolResultError(err.Error()), nil
@@ -564,6 +621,11 @@ func formatSummary(activities []map[string]any) string {
 }
 
 func formatDuration(d time.Duration) string {
+	// A future created_at (clock skew between client and server) yields a
+	// negative age; clamp it so it renders as "0m" rather than "-1h -3m".
+	if d < 0 {
+		d = 0
+	}
 	d = d.Round(time.Second)
 	days := int(d.Hours()) / 24
 	hours := int(d.Hours()) % 24
@@ -644,6 +706,11 @@ func handleBulkEndActivities(ctx context.Context, req mcp.CallToolRequest, api *
 	var ended []string
 	var failed []string
 	for _, a := range toEnd {
+		// Stop early if the caller cancelled — don't keep firing PATCHes.
+		if err := ctx.Err(); err != nil {
+			failed = append(failed, fmt.Sprintf("(aborted after %d: %v)", len(ended), err))
+			break
+		}
 		slug, _ := a["slug"].(string)
 		content := buildEndContent(a, reason)
 
@@ -666,7 +733,15 @@ func handleBulkEndActivities(ctx context.Context, req mcp.CallToolRequest, api *
 		parts = append(parts, fmt.Sprintf("Failed %d: %s", len(failed), strings.Join(failed, "; ")))
 	}
 
-	return mcp.NewToolResultText(withTruncationNote(strings.Join(parts, "\n"), truncated)), nil
+	out := withTruncationNote(strings.Join(parts, "\n"), truncated)
+	// Nothing ended but failures occurred (every PATCH failed or the caller
+	// cancelled before the first success) — surface it as an MCP error so the
+	// agent can detect total failure via IsError, mirroring the lifecycle tool,
+	// instead of having to parse the text.
+	if len(ended) == 0 && len(failed) > 0 {
+		return mcp.NewToolResultError(out), nil
+	}
+	return mcp.NewToolResultText(out), nil
 }
 
 // testPayloads contains standard test payloads for each relay provider.
@@ -697,12 +772,12 @@ var testPayloads = map[string]any{
 		"release":   map[string]any{"quality": "HDTV-720p"},
 	},
 	"prowlarr": map[string]any{
-		"eventType":       "Health",
-		"level":           "warning",
-		"message":         "MCP test health check",
-		"type":            "IndexerStatusCheck",
-		"wikiUrl":         "https://wiki.servarr.com",
-		"applicationUrl":  "",
+		"eventType":      "Health",
+		"level":          "warning",
+		"message":        "MCP test health check",
+		"type":           "IndexerStatusCheck",
+		"wikiUrl":        "https://wiki.servarr.com",
+		"applicationUrl": "",
 	},
 	"bazarr": map[string]any{
 		"version": "1", "title": "MCP Test", "message": "Test subtitle download", "type": "info",
@@ -711,9 +786,9 @@ var testPayloads = map[string]any{
 		"version": "1", "title": "MCP Test", "message": "Test transcoding complete", "type": "info",
 	},
 	"jellyfin": map[string]any{
-		"NotificationType": "PlaybackStart",
-		"Name":             "MCP Test Movie",
-		"DeviceName":       "MCP Test Device",
+		"NotificationType":     "PlaybackStart",
+		"Name":                 "MCP Test Movie",
+		"DeviceName":           "MCP Test Device",
 		"NotificationUsername": "testuser",
 	},
 	"paperless": map[string]any{
@@ -731,7 +806,7 @@ var testPayloads = map[string]any{
 	"overseerr": map[string]any{
 		"notification_type": "MEDIA_PENDING", "event": "media.pending",
 		"subject": "MCP Test Movie Requested", "message": "A new movie was requested",
-		"media": map[string]any{"media_type": "movie", "tmdbId": "12345", "status": "PENDING"},
+		"media":   map[string]any{"media_type": "movie", "tmdbId": "12345", "status": "PENDING"},
 		"request": map[string]any{"request_id": "1", "requestedBy_username": "testuser"},
 	},
 	"uptimekuma": map[string]any{

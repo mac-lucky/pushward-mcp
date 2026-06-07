@@ -56,6 +56,13 @@ components:
           maximum: 2592000
           minimum: 1
           type: integer
+        id:
+          description: Stable surrogate identifier — globally unique and immutable. Use this to address an activity unambiguously (e.g. the same slug owned by you and shared to you). The slug remains the owner's human-facing key.
+          examples:
+            - 550e8400-e29b-41d4-a716-446655440000
+          format: uuid
+          readOnly: true
+          type: string
         kind:
           description: "Discriminator: 'owned' for activities the caller owns, 'shared' for activities shared with the caller."
           enum:
@@ -90,13 +97,13 @@ components:
           minimum: 1
           type: integer
         state:
-          description: Current state. PREEMPTED is server-set only — appears when an activity was evicted to make room for a higher-priority one. Clients can only PATCH the state to ONGOING or ENDED.
+          description: Current state. preempted is server-set only — appears when an activity was evicted to make room for a higher-priority one. Clients can only PATCH the state to ongoing or ended.
           enum:
-            - ENDED
-            - ONGOING
-            - PREEMPTED
+            - ended
+            - ongoing
+            - preempted
           examples:
-            - ONGOING
+            - ongoing
           type: string
         updated_at:
           description: Timestamp of the most recent update.
@@ -105,6 +112,7 @@ components:
           type: string
       required:
         - kind
+        - id
         - slug
         - name
         - state
@@ -374,6 +382,11 @@ components:
           required:
             - url
           type: object
+        snooze_seconds:
+          description: How many seconds POST /activities/{slug}/snooze extends end_date, and the iOS AlarmKit postAlert (snooze) window. Defaults to 300 (5 min) when omitted. Only meaningful with alarm:true.
+          maximum: 3600
+          minimum: 60
+          type: integer
         snoozed_until:
           description: Server-set unix timestamp marking the new end_date after the most recent snooze. Non-nil and >= now means the activity is currently snoozed.
           readOnly: true
@@ -1394,15 +1407,15 @@ components:
     HistoryPoint:
       additionalProperties: false
       properties:
-        t:
+        timestamp:
           format: int64
           type: integer
-        v:
+        value:
           format: double
           type: number
       required:
-        - t
-        - v
+        - timestamp
+        - value
       type: object
     ListActivitiesPage:
       additionalProperties: false
@@ -1548,12 +1561,8 @@ components:
       required:
         - id
         - title
-        - subtitle
         - body
-        - thread_id
         - level
-        - source
-        - activity_slug
         - pushed
         - created_at
       type: object
@@ -1763,10 +1772,7 @@ components:
             - notification
           type: string
         state:
-          description: Target state. Optional — if omitted, the current stored state is kept. Setting ENDED on an ONGOING activity dismisses the Live Activity.
-          enum:
-            - ONGOING
-            - ENDED
+          description: Target state. Accepts ongoing or ended (case-insensitive). Optional — if omitted, the current stored state is kept. Setting ended on an ongoing activity dismisses the Live Activity.
           type: string
       required:
         - content
@@ -1802,6 +1808,16 @@ components:
           type:
             - string
             - "null"
+        notifications_used_month:
+          description: "Paid-tier only: month-to-date notifications count. Free tier reads notifications_used (which already carries the monthly value)."
+          format: int64
+          readOnly: true
+          type: integer
+        quota_resets_day_at:
+          description: "Paid-tier only: instant the daily counters reset — next UTC midnight."
+          format: date-time
+          readOnly: true
+          type: string
         subscribed:
           description: Whether the user has an active App Store subscription. Required for create/update activity calls.
           readOnly: true
@@ -1998,16 +2014,12 @@ paths:
           schema:
             description: Opaque pagination cursor from a previous response's next_cursor. Omit to start from the beginning.
             type: string
-        - description: Optional filter on activity state (lowercase). Omit to return all states.
+        - description: Optional filter on activity state. Accepts ongoing, ended, or preempted (case-insensitive). Omit to return all states.
           explode: false
           in: query
           name: state
           schema:
-            description: Optional filter on activity state (lowercase). Omit to return all states.
-            enum:
-              - ongoing
-              - ended
-              - preempted
+            description: Optional filter on activity state. Accepts ongoing, ended, or preempted (case-insensitive). Omit to return all states.
             type: string
       responses:
         "200":
@@ -2046,6 +2058,12 @@ paths:
               schema:
                 $ref: "#/components/schemas/Problem"
           description: Internal Server Error
+        "503":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Service Unavailable
       security:
         - bearer: []
       summary: List activities

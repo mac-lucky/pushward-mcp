@@ -35,15 +35,16 @@ type heading struct {
 func Section(doc, section string) (text string, ok bool, topLevel []string) {
 	doc = strings.ReplaceAll(doc, "\r\n", "\n")
 	headings := parseHeadings(doc)
-	topLevel = navigableHeadings(headings)
 
+	// topLevel is only consumed by the caller on a no-match; compute it lazily so
+	// the common match / whole-doc paths don't pay for it on every call.
 	if strings.TrimSpace(section) == "" {
-		return doc, true, topLevel
+		return doc, true, navigableHeadings(headings)
 	}
 
 	idx := matchHeading(headings, section)
 	if idx < 0 {
-		return "", false, topLevel
+		return "", false, navigableHeadings(headings)
 	}
 
 	start := headings[idx].start

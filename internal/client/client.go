@@ -11,6 +11,9 @@ import (
 	"time"
 )
 
+// maxRespBytes caps how much of a response body DoJSON will read into memory.
+const maxRespBytes = 1 << 20 // 1MB
+
 // Base is the shared HTTP client for both API and relay requests.
 type Base struct {
 	httpClient *http.Client
@@ -54,14 +57,26 @@ func (b *Base) DoJSON(ctx context.Context, method, path string, body any) (json.
 	}
 	defer resp.Body.Close()
 
-	respBody, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20)) // 1MB cap
+	// Read one byte past the cap so we can distinguish "exactly at the cap" from
+	// "truncated". A truncated success body is no longer valid JSON.
+	respBody, err := io.ReadAll(io.LimitReader(resp.Body, maxRespBytes+1))
 	if err != nil {
 		return nil, resp.StatusCode, fmt.Errorf("reading response: %w", err)
+	}
+	overLimit := len(respBody) > maxRespBytes
+	if overLimit {
+		respBody = respBody[:maxRespBytes]
 	}
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		msg := extractErrorMessage(respBody)
 		return nil, resp.StatusCode, fmt.Errorf("%s %s returned %d: %s", method, path, resp.StatusCode, msg)
+	}
+
+	// A success body that overflowed the cap was truncated mid-JSON; return a
+	// clear error instead of handing back corrupt data that fails to parse.
+	if overLimit {
+		return nil, resp.StatusCode, fmt.Errorf("%s %s response exceeds the %d-byte cap", method, path, maxRespBytes)
 	}
 
 	if len(respBody) == 0 {

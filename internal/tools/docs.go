@@ -25,6 +25,9 @@ func registerDocsTools(s *mcpserver.MCPServer) {
 				"Call this BEFORE writing any code that integrates with PushWard, creates Live Activities, sends notifications, or posts to the relay. "+
 				"Start with kind=\"index\" to see what exists, then pull kind=\"full\" (optionally narrowed with section) for guides and examples, "+
 				"or kind=\"api_openapi\" / kind=\"relay_openapi\" for exact request/response schemas. Content is embedded and offline-safe."),
+			mcp.WithReadOnlyHintAnnotation(true),
+			// Serves go:embed bundled content — no network, closed domain.
+			mcp.WithOpenWorldHintAnnotation(false),
 			mcp.WithString("kind",
 				mcp.Required(),
 				mcp.Enum("index", "full", "api_openapi", "relay_openapi"),
@@ -49,6 +52,9 @@ func registerDocsTools(s *mcpserver.MCPServer) {
 			mcp.WithDescription("Return PushWard's curated best-practices guide for writing correct integration code. "+
 				"Call this BEFORE implementing a PushWard integration, a Live Activity, or a relay provider hookup. "+
 				"Omit topic for the whole guide, or pass a topic to get just that part."),
+			mcp.WithReadOnlyHintAnnotation(true),
+			// Serves go:embed bundled content — no network, closed domain.
+			mcp.WithOpenWorldHintAnnotation(false),
 			mcp.WithString("topic",
 				mcp.Enum(bestPracticeTopics...),
 				mcp.Description("Optional. Narrow to one area: \"integration\" (general API integration), "+
