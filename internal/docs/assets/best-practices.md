@@ -91,6 +91,28 @@ Wiring an external service's webhook to PushWard through the relay
   `relay_<provider>`) to send a representative payload and confirm the response
   before pointing real traffic at it.
 
+## email
+
+Sending transactional email through `POST /emails`.
+
+- **Recipients must be verified.** Email only delivers to an address that is
+  registered **and** double-opt-in verified on the account, and not
+  unsubscribed. Registering/verifying recipients is an account-owner (`hla_`) /
+  dashboard operation — it is **not** reachable with an `hlk_` integration key,
+  so a bridge (or this MCP) can send to an existing verified recipient but
+  cannot add one.
+- **Provide a body.** `subject` and `to` are required; send `html_body`,
+  `text_body`, or both.
+- **Read the send outcome, don't trust the HTTP status.** The response is an
+  email-log record: `status` is `sent` / `bounced` / `complained` / `failed` /
+  `suppressed`, and `delivery` is `all` or `none`. When `delivery` is `none`,
+  `reason` explains it (`suppressed` = recipient not verified or unsubscribed;
+  `send_failed` = provider error). A `2xx` does not guarantee delivery — inspect
+  `status`.
+- **Test it.** Use the MCP `test_email` tool (or `send_email`) with a known
+  verified recipient and confirm a `sent` status before pointing real traffic
+  at it.
+
 ## references
 
 - PushWard docs index: <https://pushward.app/llms.txt> (and the full bundle

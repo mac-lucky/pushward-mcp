@@ -141,6 +141,28 @@ func registerCompositeTools(s *mcpserver.MCPServer, api *client.APIClient, relay
 		},
 	)
 
+	// test_email
+	s.AddTool(
+		mcp.NewTool("test_email",
+			mcp.WithDescription("Send a test transactional email (plain text) to a verified recipient. The `to` address must already be a verified, non-unsubscribed recipient of the account."),
+			mcp.WithDestructiveHintAnnotation(false),
+			mcp.WithOpenWorldHintAnnotation(true),
+			mcp.WithString("to",
+				mcp.Required(),
+				mcp.Description("Recipient address. Must be a verified, non-unsubscribed recipient of the calling account."),
+			),
+			mcp.WithString("subject",
+				mcp.Description("Email subject (default: \"PushWard MCP test email\")"),
+			),
+			mcp.WithString("body",
+				mcp.Description("Plain-text body (default: \"This is a test email from the PushWard MCP server.\")"),
+			),
+		),
+		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			return handleTestEmail(ctx, req, api)
+		},
+	)
+
 	// test_relay_provider
 	s.AddTool(
 		mcp.NewTool("test_relay_provider",
@@ -409,6 +431,25 @@ func handleTestNotification(ctx context.Context, req mcp.CallToolRequest, api *c
 		Body:   body,
 		Source: "pushward-mcp",
 		Push:   &push,
+	})
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
+	return mcp.NewToolResultText(string(raw)), nil
+}
+
+func handleTestEmail(ctx context.Context, req mcp.CallToolRequest, api *client.APIClient) (*mcp.CallToolResult, error) {
+	to, err := req.RequireString("to")
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
+	subject := req.GetString("subject", "PushWard MCP test email")
+	body := req.GetString("body", "This is a test email from the PushWard MCP server.")
+
+	raw, err := api.SendEmail(ctx, client.SendEmailInput{
+		To:       to,
+		Subject:  subject,
+		TextBody: body,
 	})
 	if err != nil {
 		return mcp.NewToolResultError(err.Error()), nil

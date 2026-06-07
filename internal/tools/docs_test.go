@@ -104,7 +104,7 @@ func TestHandleGetPushwardBestPractices_Full(t *testing.T) {
 		t.Fatalf("unexpected error: %s", resultText(t, result))
 	}
 	text := resultText(t, result)
-	for _, topic := range []string{"integration", "live-activity", "relay-provider"} {
+	for _, topic := range bestPracticeTopics {
 		if !strings.Contains(text, "## "+topic) {
 			t.Errorf("full guide missing %q section", topic)
 		}

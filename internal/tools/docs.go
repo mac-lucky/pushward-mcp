@@ -14,7 +14,7 @@ import (
 // bestPracticeTopics are the get_pushward_best_practices "topic" enum values.
 // They map 1:1 to H2 headings in assets/best-practices.md (e.g. "## integration"),
 // so a topic is passed straight to docs.Section — no mapping table to drift.
-var bestPracticeTopics = []string{"integration", "live-activity", "relay-provider"}
+var bestPracticeTopics = []string{"integration", "live-activity", "relay-provider", "email"}
 
 // registerDocsTools registers the embedded-content reference tools. These serve
 // bundled docs/specs and need no API or relay client.
@@ -59,7 +59,8 @@ func registerDocsTools(s *mcpserver.MCPServer) {
 				mcp.Enum(bestPracticeTopics...),
 				mcp.Description("Optional. Narrow to one area: \"integration\" (general API integration), "+
 					"\"live-activity\" (Live Activity content, templates, lifecycle), "+
-					"\"relay-provider\" (wiring external-service webhooks through the relay). Omit for the full guide."),
+					"\"relay-provider\" (wiring external-service webhooks through the relay), "+
+					"\"email\" (sending transactional email via POST /emails). Omit for the full guide."),
 			),
 		),
 		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
