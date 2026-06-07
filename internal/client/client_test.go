@@ -538,6 +538,86 @@ func TestAPIClient_CreateNotification_PushOmitted(t *testing.T) {
 	}
 }
 
+func TestAPIClient_SendEmail(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			t.Errorf("expected POST, got %s", r.Method)
+		}
+		if r.URL.Path != "/emails" {
+			t.Errorf("expected path /emails, got %s", r.URL.Path)
+		}
+
+		body, _ := io.ReadAll(r.Body)
+		var raw map[string]json.RawMessage
+		if err := json.Unmarshal(body, &raw); err != nil {
+			t.Fatalf("failed to unmarshal: %v", err)
+		}
+		var input SendEmailInput
+		if err := json.Unmarshal(body, &input); err != nil {
+			t.Fatalf("failed to unmarshal into SendEmailInput: %v", err)
+		}
+		if input.To != "user@example.com" || input.Subject != "Hi" || input.TextBody != "Hello" {
+			t.Errorf("unexpected input: %+v", input)
+		}
+		// html_body is empty here; omitempty must drop the key entirely so the
+		// server treats it as text-only rather than receiving an empty HTML body.
+		if _, present := raw["html_body"]; present {
+			t.Errorf("expected no \"html_body\" key when HTMLBody is empty, got body: %s", body)
+		}
+
+		w.WriteHeader(http.StatusCreated)
+		w.Write([]byte(`{"id":1,"to":"user@example.com","subject":"Hi","status":"sent","delivery":"all","created_at":"2026-06-07T00:00:00Z"}`))
+	}))
+	defer srv.Close()
+
+	c := NewAPIClient(srv.URL, "tok")
+	raw, err := c.SendEmail(context.Background(), SendEmailInput{
+		To:       "user@example.com",
+		Subject:  "Hi",
+		TextBody: "Hello",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(string(raw), `"status":"sent"`) {
+		t.Errorf("response should pass through the email log: %s", raw)
+	}
+}
+
+// TestAPIClient_SendEmail_HTMLBody covers the omitempty path's complement: when
+// HTMLBody is set it must be serialized and present on the wire (the sibling test
+// only asserts its absence).
+func TestAPIClient_SendEmail_HTMLBody(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		// Decode into the value (not raw bytes): json.Marshal HTML-escapes < and >
+		// to </> on the wire, which the server's parser decodes back — so
+		// assert the decoded value the server actually receives, not the escaping.
+		var raw map[string]any
+		if err := json.Unmarshal(body, &raw); err != nil {
+			t.Fatalf("failed to unmarshal: %v", err)
+		}
+		got, present := raw["html_body"]
+		if !present {
+			t.Errorf("expected html_body key to be present when HTMLBody is set, got body: %s", body)
+		} else if got != "<p>hi</p>" {
+			t.Errorf("unexpected html_body value: %v", got)
+		}
+		w.WriteHeader(http.StatusCreated)
+		w.Write([]byte(`{"id":1,"status":"sent"}`))
+	}))
+	defer srv.Close()
+
+	c := NewAPIClient(srv.URL, "tok")
+	if _, err := c.SendEmail(context.Background(), SendEmailInput{
+		To:       "user@example.com",
+		Subject:  "Hi",
+		HTMLBody: "<p>hi</p>",
+	}); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
 func TestAPIClient_ListAllActivities_SinglePage(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {

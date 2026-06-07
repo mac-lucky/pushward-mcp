@@ -260,6 +260,36 @@ func registerAPITools(s *mcpserver.MCPServer, api *client.APIClient) {
 		},
 	)
 
+	// send_email
+	s.AddTool(
+		mcp.NewTool("send_email",
+			mcp.WithDescription("Send transactional email"),
+			// Create/send is additive, not destructive; override the destructiveHint:true
+			// default so clients don't treat it as a data-clobbering operation.
+			mcp.WithDestructiveHintAnnotation(false),
+			// Every tool proxies an external REST API (api.pushward.app), so its
+			// results cross a trust boundary — keep the open-world hint explicit.
+			mcp.WithOpenWorldHintAnnotation(true),
+			mcp.WithString("html_body",
+				mcp.Description("HTML body. Provide html_body, text_body, or both."),
+			),
+			mcp.WithString("subject",
+				mcp.Required(),
+				mcp.Description("Email subject line."),
+			),
+			mcp.WithString("text_body",
+				mcp.Description("Plain-text body. Provide html_body, text_body, or both."),
+			),
+			mcp.WithString("to",
+				mcp.Required(),
+				mcp.Description("Recipient address. Must be a verified, non-unsubscribed recipient of the calling account."),
+			),
+		),
+		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			return handleSendEmail(ctx, req, api)
+		},
+	)
+
 	// update_activity
 	s.AddTool(
 		mcp.NewTool("update_activity",
@@ -534,6 +564,32 @@ func handleGetWidget(ctx context.Context, req mcp.CallToolRequest, api *client.A
 
 func handleListWidgets(ctx context.Context, req mcp.CallToolRequest, api *client.APIClient) (*mcp.CallToolResult, error) {
 	raw, err := api.ListWidgets(ctx)
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
+	return mcp.NewToolResultText(string(raw)), nil
+}
+
+func handleSendEmail(ctx context.Context, req mcp.CallToolRequest, api *client.APIClient) (*mcp.CallToolResult, error) {
+	paramSubject, err := req.RequireString("subject")
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
+	paramTo, err := req.RequireString("to")
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
+	input := client.SendEmailInput{
+		Subject: paramSubject,
+		To:      paramTo,
+	}
+	if v := req.GetString("html_body", ""); v != "" {
+		input.HTMLBody = v
+	}
+	if v := req.GetString("text_body", ""); v != "" {
+		input.TextBody = v
+	}
+	raw, err := api.SendEmail(ctx, input)
 	if err != nil {
 		return mcp.NewToolResultError(err.Error()), nil
 	}

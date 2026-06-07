@@ -230,6 +230,23 @@ func (c *APIClient) CreateNotification(ctx context.Context, input CreateNotifica
 	return raw, err
 }
 
+// SendEmailInput is the request body for POST /emails. `To` must already be a
+// verified, non-unsubscribed recipient of the calling account — registering and
+// verifying recipients is an hla_/dashboard operation, not reachable with the
+// hlk_ integration key this MCP uses. Provide HTMLBody, TextBody, or both.
+type SendEmailInput struct {
+	To       string `json:"to"`
+	Subject  string `json:"subject"`
+	HTMLBody string `json:"html_body,omitempty"`
+	TextBody string `json:"text_body,omitempty"`
+}
+
+// SendEmail sends a transactional email to a verified recipient.
+func (c *APIClient) SendEmail(ctx context.Context, input SendEmailInput) (json.RawMessage, error) {
+	raw, _, err := c.DoJSON(ctx, http.MethodPost, "/emails", input)
+	return raw, err
+}
+
 // CreateWidgetInput is the request body for POST /widgets. Requires an hlk_
 // integration key with the `widgets` permission flag.
 //

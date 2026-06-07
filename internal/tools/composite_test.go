@@ -598,6 +598,112 @@ func TestHandleTestNotification_PushFalseInBody(t *testing.T) {
 	}
 }
 
+// ---------- handleTestEmail ----------
+
+func TestHandleTestEmail_Success(t *testing.T) {
+	var receivedBody map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost || r.URL.Path != "/emails" {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		body, _ := io.ReadAll(r.Body)
+		json.Unmarshal(body, &receivedBody)
+		w.WriteHeader(http.StatusCreated)
+		w.Write([]byte(`{"id":1,"status":"sent","delivery":"all"}`))
+	}))
+	defer srv.Close()
+
+	api := client.NewAPIClient(srv.URL, "test-token")
+	req := newReq(map[string]any{"to": "user@example.com", "subject": "Hi", "body": "Hello"})
+
+	result, err := handleTestEmail(context.Background(), req, api)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Assert the param->body mapping on the wire so a regression (e.g. body sent
+	// as subject, or a dropped `to`) fails here instead of passing against the
+	// static stub response.
+	if receivedBody["to"] != "user@example.com" {
+		t.Errorf("expected to=user@example.com, got %v", receivedBody["to"])
+	}
+	if receivedBody["subject"] != "Hi" {
+		t.Errorf("expected subject=Hi, got %v", receivedBody["subject"])
+	}
+	if receivedBody["text_body"] != "Hello" {
+		t.Errorf("expected text_body=Hello, got %v", receivedBody["text_body"])
+	}
+
+	text := resultText(t, result)
+	if !strings.Contains(text, `"status":"sent"`) {
+		t.Errorf("expected status:sent in response, got: %s", text)
+	}
+}
+
+func TestHandleTestEmail_Defaults(t *testing.T) {
+	var receivedBody map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		json.Unmarshal(body, &receivedBody)
+		w.WriteHeader(http.StatusCreated)
+		w.Write([]byte(`{"id":2,"status":"sent"}`))
+	}))
+	defer srv.Close()
+
+	api := client.NewAPIClient(srv.URL, "test-token")
+	// Only `to` provided — subject and body must fall back to the defaults.
+	req := newReq(map[string]any{"to": "user@example.com"})
+
+	if _, err := handleTestEmail(context.Background(), req, api); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if receivedBody == nil {
+		t.Fatal("server did not receive a body")
+	}
+	if receivedBody["subject"] != "PushWard MCP test email" {
+		t.Errorf("expected default subject, got %v", receivedBody["subject"])
+	}
+	if receivedBody["text_body"] != "This is a test email from the PushWard MCP server." {
+		t.Errorf("expected default text_body, got %v", receivedBody["text_body"])
+	}
+}
+
+func TestHandleTestEmail_MissingToIsError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Error("server must not be called when required `to` is missing")
+		w.WriteHeader(http.StatusBadRequest)
+	}))
+	defer srv.Close()
+
+	api := client.NewAPIClient(srv.URL, "test-token")
+	result, err := handleTestEmail(context.Background(), newReq(map[string]any{"subject": "Hi"}), api)
+	if err != nil {
+		t.Fatalf("expected a nil Go error, got: %v", err)
+	}
+	if !result.IsError {
+		t.Errorf("expected IsError=true when `to` is missing, got: %s", resultText(t, result))
+	}
+}
+
+func TestHandleTestEmail_ServerError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte(`{"title":"boom"}`))
+	}))
+	defer srv.Close()
+
+	api := client.NewAPIClient(srv.URL, "test-token")
+	result, err := handleTestEmail(context.Background(), newReq(map[string]any{"to": "user@example.com"}), api)
+	if err != nil {
+		t.Fatalf("expected a nil Go error, got: %v", err)
+	}
+	if !result.IsError {
+		t.Errorf("expected IsError=true when the server returns 500, got: %s", resultText(t, result))
+	}
+}
+
 // ---------- handleTestRelayProvider ----------
 
 func TestHandleTestRelayProvider_ValidProvider(t *testing.T) {

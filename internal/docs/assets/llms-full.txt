@@ -2,7 +2,7 @@
 
 > Full Markdown bundle of every PushWard docs page, auto-generated from the prerendered HTML at build time. Source: https://pushward.app
 
-> Generated: 2026-05-20T09:25:50.078Z
+> Generated: 2026-05-27T22:15:27.886Z
 
 ---
 <!-- source: https://pushward.app/docs/getting-started -->
@@ -1148,7 +1148,7 @@ The public relay supports all 12+ providers listed above. If you prefer to self-
 
 ## How It Works
 
-`pushward-relay` extracts the `hlk_` integration key from each incoming webhook request. One relay instance serves unlimited users simultaneously.
+`pushward-relay` extracts the `hlk_` integration key from each incoming webhook request. The relay infrastructure scales horizontally — one instance can serve many users concurrently. Per-user usage is bounded by your account's plan (free tier monthly quotas; unlimited on paid).
 
 1.  **Receive** — external services send webhooks to provider-specific routes
 2.  **Authenticate** — the integration key is extracted from the `Authorization: Bearer hlk_...` header (or Basic Auth password for Radarr/Sonarr/Prowlarr)
@@ -1921,7 +1921,12 @@ All API endpoints are rate-limited per IP address:
 
 ⚠ Warning
 
-Exceeding the rate limit returns HTTP `429 Too Many Requests` with an `application/problem+json` body (`code: "rate_limit.exceeded"`) plus a `Retry-After` response header and a `retry_after_ms` extension. Back off accordingly. See [Errors](https://pushward.app/docs/api/activities#errors) for the full Problem Details shape.
+HTTP `429 Too Many Requests` is returned in two cases — distinguish them via the `code` field on the `application/problem+json` body:
+
+-   `code: "rate_limit.exceeded"` — per-IP request rate limit (the table above). Transient; back off using `Retry-After` (typically a few seconds) and retry.
+-   `code: "quota.exceeded"` — authenticated user's free-tier monthly allowance is exhausted (100 notifications/month + 250 Live Activity updates/month, calendar-month UTC reset). The body includes `kind`, `used`, `limit`, and `reset_at`; `Retry-After` is the seconds until the quota resets. Retrying before `reset_at` on the free tier will keep failing — surface an upgrade prompt instead.
+
+See [Errors](https://pushward.app/docs/api/activities#errors) for the full Problem Details shape and a `quota.exceeded` example response.
 
 ## Endpoints
 
@@ -2053,6 +2058,8 @@ curl -X POST https://api.pushward.app/activities \
 
 ```
 {
+  "id": "550e8400-e29b-41d4-a716-446655440000",
+  "kind": "owned",
   "slug": "dishwasher",
   "name": "Dishwasher",
   "state": "ended",
@@ -2092,7 +2099,7 @@ List activities for the current user, including activities shared with you. Retu
 | --- | --- | --- | --- |
 | `limit` | integer | 50 | Page size, between `1` and `100`. |
 | `after` | string | — | Opaque base64url cursor returned as `next_cursor` on the previous page. Omit for the first page. |
-| `state` | string | — | Filter on activity state. One of `ongoing`, `ended`, `preempted` — lowercase, even though response bodies return uppercase. Unknown values are rejected with `422`. Omit to return all states. |
+| `state` | string | — | Filter on activity state. One of `ongoing`, `ended`, `preempted` (lowercase — the same casing response bodies use). Unknown values are rejected with `422`. Omit to return all states. |
 
 Example 
 
@@ -2107,6 +2114,8 @@ curl "https://api.pushward.app/activities?limit=50" \
 {
   "items": [
     {
+      "id": "7c9e6679-7425-40de-944b-e07fc1f90ae7",
+      "kind": "owned",
       "slug": "ci-pipeline",
       "name": "CI Pipeline",
       "state": "ended",
@@ -2124,6 +2133,8 @@ curl "https://api.pushward.app/activities?limit=50" \
       "share_count": null
     },
     {
+      "id": "550e8400-e29b-41d4-a716-446655440000",
+      "kind": "owned",
       "slug": "dishwasher",
       "name": "Dishwasher",
       "state": "ongoing",
@@ -2149,6 +2160,8 @@ curl "https://api.pushward.app/activities?limit=50" \
       "share_count": null
     },
     {
+      "id": "f47ac10b-58cc-4372-a567-0e02b2c3d479",
+      "kind": "shared",
       "slug": "oven-timer",
       "name": "Oven Timer",
       "state": "ongoing",
@@ -2299,6 +2312,8 @@ The response is the unified `Activity` object — the same shape returned by GET
 
 ```
 {
+  "id": "550e8400-e29b-41d4-a716-446655440000",
+  "kind": "owned",
   "slug": "dishwasher",
   "name": "Dishwasher",
   "state": "ongoing",
@@ -2334,6 +2349,7 @@ The `content` object is shared across all templates. Only `template` is required
 | `template` | string | **Required.** One of: `generic`, `countdown`, `steps`, `alert`, `gauge`, `timeline` |
 | `progress` | float | Optional. Value between `0.0` and `1.0`. Computed automatically for `gauge` from `value`/`min_value`/`max_value`. |
 | `alarm` | boolean | Optional. Opt-in iOS AlarmKit alarm at `end_date`. Rings through silent mode and Focus. Requires `end_date`; iOS 26+ only. See [Alarms](#alarm). |
+| `snooze_seconds` | integer | Optional. How many seconds `POST /activities/{slug}/snooze` extends `end_date`, and the iOS AlarmKit snooze window. `60`–`3600`; defaults to `300` (5 min) when omitted. Only meaningful with `alarm: true`. |
 | `snoozed_until` | integer | Read-only. Unix timestamp set when the user snoozes an alarm from iOS. When non-null and in the future, iOS renders a "Snoozed" banner; it auto-clears when the client sees `snoozed_until ≤ now`. Any client-supplied value is stripped on `PATCH`. |
 
 See the [Live Activities](https://pushward.app/docs/live-activities) section for template-specific fields.
@@ -2452,7 +2468,8 @@ Setting `content.alarm: true` schedules a native iOS alarm at `content.end_date`
 -   **Updating `end_date` reschedules the alarm.** Send a new PATCH with the new `end_date`; the armed alarm re-derives automatically.
 -   **Past `end_date` is a no-op.** If the push arrives after `end_date` has already elapsed, no alarm is scheduled (but the Live Activity content still updates).
 -   **Designed for the [countdown template](https://pushward.app/docs/live-activities/countdown).** Other templates accept the field if they set `end_date`, but only `countdown` meaningfully uses it.
--   **What the user sees.** When the alarm fires, iOS presents a full-screen alarm using the activity's `name` as the title with **Dismiss** and **Snooze** (5 min) buttons. Snooze extends `end_date` by 5 minutes and sets `snoozed_until` so the Live Activity shows a "Snoozed" banner. The PushWard Live Activity continues to display alongside.
+-   **What the user sees.** When the alarm fires, iOS presents a full-screen alarm using the activity's `name` as the title with **Dismiss** and **Snooze** buttons. Snooze extends `end_date` by the configured snooze window and sets `snoozed_until` so the Live Activity shows a "Snoozed" banner. The PushWard Live Activity continues to display alongside.
+-   **Configurable snooze window.** Set `content.snooze_seconds` (`60`–`3600`) to control how long Snooze extends the timer; it defaults to `300` (5 min) when omitted. iOS reads this value to size its AlarmKit snooze countdown, so a changed value applies to the next scheduled alarm.
 
 ⚠ Warning
 
@@ -2525,7 +2542,7 @@ Prefer matching on the stable `code` field over the human-readable `detail` stri
 | `404` | Activity not found |
 | `409` | Conflict — e.g. activity limit reached or demo cooldown active. Pairs with a `Retry-After` response header and a `retry_after_ms` extension. |
 | `422` | Unprocessable: semantic validation failure (e.g. arming `alarm: true` without `end_date`, or `POST /notifications` referencing an unknown `activity_slug`). |
-| `429` | Rate limit exceeded. Pairs with a `Retry-After` response header and a `retry_after_ms` extension. |
+| `429` | Two distinct cases — distinguish via the `code` field (`rate_limit.exceeded` or `quota.exceeded`). See the [code table below](#known-codes) for per-mode contracts and retry semantics. |
 
 ### Known `code` Values
 
@@ -2535,6 +2552,32 @@ Prefer matching on the stable `code` field over the human-readable `detail` stri
 | `demo.conflict` | `409` | Demo flow is on cooldown — retry after `retry_after_ms`. |
 | `subscription.required` | `403` | Endpoint requires an active subscription. |
 | `rate_limit.exceeded` | `429` | IP rate limit hit — back off using `Retry-After`. |
+| `quota.exceeded` | `429` | Free-tier monthly quota exhausted. The Problem Details body includes `kind` (`"notifications"` or `"live_activity_updates"`), `used`, `limit`, and `reset_at` (RFC 3339 UTC, the start of next calendar month). The `Retry-After` header gives seconds until `reset_at`. Upgrading the user's plan clears the quota immediately — retrying before `reset_at` on the free tier will keep failing. |
+
+#### Free-Tier Quota Response Example
+
+```
+HTTP/1.1 429 Too Many Requests
+Content-Type: application/problem+json
+Retry-After: 1209600
+
+{
+  "type": "about:blank",
+  "title": "Too Many Requests",
+  "status": 429,
+  "detail": "Monthly notification quota exceeded for the free tier.",
+  "instance": "/notifications",
+  "code": "quota.exceeded",
+  "kind": "notifications",
+  "used": 101,
+  "limit": 100,
+  "reset_at": "2026-06-01T00:00:00Z"
+}
+```
+
+💡 Tip
+
+Pin clients to the `code` field, not the HTTP status — the same `429` means very different things for `rate_limit.exceeded` (transient, retry after a few seconds) versus `quota.exceeded` (sticky until the start of next month, or until the user upgrades). For `quota.exceeded`, surface an upgrade prompt rather than a blind retry loop.
 
 ---
 
@@ -2950,9 +2993,21 @@ A `429 Too Many Requests` response includes a `Retry-After: 60` header.
 | --- | --- |
 | Max total activities per user | **25** |
 | Max live (`ongoing`) activities per user | **5** |
-| Max registered devices per user | **2** (free) · **5** (paid) |
+| Max registered devices per user (Free) | **2** |
+| Max registered devices per user (Individual / Family / Founding) | **5** |
 | Max integration keys per user | **25** |
 | Max [widgets](https://pushward.app/docs/widgets) per user | **50** |
+
+### Free Tier Quotas
+
+The Free tier includes a generous monthly allowance that resets on the 1st of each calendar month (UTC):
+
+| Quota | Limit (Free) | Limit (Paid) |
+| --- | --- | --- |
+| Push notifications | **100** / month | Unlimited |
+| Live Activity updates | **250** / month | Unlimited |
+
+Once a quota is exhausted, further requests return `429 Too Many Requests` with `code: "quota.exceeded"` and a `reset_at` timestamp indicating when the quota resets. See [API errors](https://pushward.app/docs/api/activities#errors) for the full response shape.
 
 ### Priority-Based Eviction
 
