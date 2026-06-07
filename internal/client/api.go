@@ -98,7 +98,13 @@ func (c *APIClient) ListAllActivities(ctx context.Context) (json.RawMessage, err
 			}
 			all = append(all, items...)
 		}
-		if !page.HasMore || page.NextCursor == "" {
+		if !page.HasMore {
+			break
+		}
+		// Server reports more pages but gave no cursor to fetch them — we cannot
+		// continue, so flag the result as partial rather than silently complete.
+		if page.NextCursor == "" {
+			truncated = true
 			break
 		}
 		opts.After = page.NextCursor
@@ -151,7 +157,7 @@ func (c *APIClient) DeleteActivity(ctx context.Context, slug string) error {
 
 // UpdateActivityInput is the request body for PATCH /activities/{slug}.
 // State is optional under RFC 7396 merge-patch semantics — omit to inherit
-// the stored state (unless the activity is PREEMPTED).
+// the stored state (unless the activity is preempted).
 type UpdateActivityInput struct {
 	State    string          `json:"state,omitempty"`
 	Content  json.RawMessage `json:"content"`
@@ -214,7 +220,7 @@ type CreateNotificationInput struct {
 	ActivitySlug      string            `json:"activity_slug,omitempty"`
 	Metadata          map[string]string `json:"metadata,omitempty"`
 	Actions           json.RawMessage   `json:"actions,omitempty"`
-	Push              bool              `json:"push"`
+	Push              *bool             `json:"push,omitempty"`
 	Volume            *float64          `json:"volume,omitempty"`
 }
 

@@ -4,9 +4,30 @@ import (
 	"bytes"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"text/template"
 )
+
+// repoRoot walks up from the test's cwd to the module root (where go.mod lives),
+// skipping the test if it cannot be found (e.g. in a stripped sandbox).
+func repoRoot(t *testing.T) string {
+	t.Helper()
+	dir, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for {
+		if _, err := os.Stat(filepath.Join(dir, "go.mod")); err == nil {
+			return dir
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			t.Skip("cannot find go.mod")
+		}
+		dir = parent
+	}
+}
 
 func TestToSnakeCase(t *testing.T) {
 	tests := []struct {
@@ -217,22 +238,7 @@ func TestExtractPathParams(t *testing.T) {
 }
 
 func TestDeterministicOutput(t *testing.T) {
-	// Find the repo root by walking up from cwd to find go.mod,
-	// same logic as findRootDir but without os.Exit.
-	rootDir, err := os.Getwd()
-	if err != nil {
-		t.Fatal(err)
-	}
-	for {
-		if _, err := os.Stat(filepath.Join(rootDir, "go.mod")); err == nil {
-			break
-		}
-		parent := filepath.Dir(rootDir)
-		if parent == rootDir {
-			t.Skip("cannot find go.mod — skipping deterministic output test")
-		}
-		rootDir = parent
-	}
+	rootDir := repoRoot(t)
 
 	apiSpecPath := filepath.Join(rootDir, "openapi.yaml")
 	relaySpecPath := filepath.Join(rootDir, "relay-openapi.json")
@@ -276,4 +282,110 @@ func renderTemplate(tmpl *template.Template, data any) []byte {
 		panic(err)
 	}
 	return buf.Bytes()
+}
+
+func TestBuildAPITools_ExpectedSet(t *testing.T) {
+	root := repoRoot(t)
+	data, err := os.ReadFile(filepath.Join(root, "openapi.yaml"))
+	if err != nil {
+		t.Skipf("openapi.yaml not found: %v", err)
+	}
+	tools := buildAPITools(parseSpecJSON(data, "api"))
+	if len(tools) == 0 {
+		t.Fatal("buildAPITools produced zero tools")
+	}
+	byName := make(map[string]toolDef, len(tools))
+	for _, tl := range tools {
+		byName[tl.Name] = tl
+	}
+	for _, want := range []string{"create_activity", "get_activity", "create_notification", "update_activity", "create_widget", "update_widget"} {
+		if _, ok := byName[want]; !ok {
+			t.Errorf("expected generated tool %q, missing", want)
+		}
+	}
+	// listActivities is handled by a composite tool and must be skipped, else it
+	// would collide with the hand-written handleListActivities (compile error).
+	if _, ok := byName["list_activities"]; ok {
+		t.Error("list_activities should be skipped (handled by composite tool)")
+	}
+	// create_activity has no content field; only the widget/activity updates do.
+	if byName["create_activity"].ContentJSON {
+		t.Error("create_activity should not use content_json (no content field)")
+	}
+	if !byName["create_widget"].ContentJSON {
+		t.Error("create_widget should use content_json")
+	}
+	// The widget content description must not leak activity-only templates, and
+	// must mention the widget template set.
+	if d := byName["create_widget"].ContentDesc; strings.Contains(d, "countdown") {
+		t.Errorf("create_widget content desc leaks activity templates: %s", d)
+	}
+	if d := byName["create_widget"].ContentDesc; !strings.Contains(d, "stat_list") {
+		t.Errorf("create_widget content desc missing widget templates: %s", d)
+	}
+}
+
+func TestBuildRelayTools_ExpectedSet(t *testing.T) {
+	root := repoRoot(t)
+	data, err := os.ReadFile(filepath.Join(root, "relay-openapi.json"))
+	if err != nil {
+		t.Skipf("relay-openapi.json not found: %v", err)
+	}
+	tools := buildRelayTools(parseSpecJSON(data, "relay"))
+	got := make(map[string]bool, len(tools))
+	for _, tl := range tools {
+		got[tl.Name] = true
+	}
+	want := []string{
+		"relay_argocd", "relay_backrest", "relay_bazarr", "relay_changedetection",
+		"relay_gatus", "relay_grafana", "relay_jellyfin", "relay_overseerr",
+		"relay_paperless", "relay_prowlarr", "relay_proxmox", "relay_radarr",
+		"relay_sonarr", "relay_unmanic", "relay_uptimekuma",
+	}
+	if len(tools) != len(want) {
+		t.Errorf("got %d relay tools, want %d", len(tools), len(want))
+	}
+	for _, w := range want {
+		if !got[w] {
+			t.Errorf("missing relay tool %q", w)
+		}
+	}
+}
+
+func TestFormatBound(t *testing.T) {
+	cases := map[float64]string{
+		2592000: "2592000", // must not render as 2.592e+06
+		3600:    "3600",
+		1:       "1",
+		0:       "0",
+		0.5:     "0.5",
+	}
+	for in, want := range cases {
+		if got := formatBound(in); got != want {
+			t.Errorf("formatBound(%v) = %q, want %q", in, got, want)
+		}
+	}
+}
+
+func TestContentJSONDesc(t *testing.T) {
+	// Widget POST: full object, widget templates, no merge-patch wording.
+	wPost := contentJSONDesc(true, "POST")
+	if !strings.Contains(wPost, "stat_list") {
+		t.Errorf("widget POST desc missing widget templates: %s", wPost)
+	}
+	if strings.Contains(wPost, "Merge Patch") {
+		t.Errorf("widget POST desc should not mention merge-patch: %s", wPost)
+	}
+	if strings.Contains(wPost, "countdown") {
+		t.Errorf("widget desc should not mention activity templates: %s", wPost)
+	}
+	// Widget PATCH: merge-patch wording present.
+	if wPatch := contentJSONDesc(true, "PATCH"); !strings.Contains(wPatch, "Merge Patch") {
+		t.Errorf("widget PATCH desc should mention merge-patch: %s", wPatch)
+	}
+	// Activity PATCH: activity templates + merge-patch.
+	aPatch := contentJSONDesc(false, "PATCH")
+	if !strings.Contains(aPatch, "countdown") || !strings.Contains(aPatch, "Merge Patch") {
+		t.Errorf("activity PATCH desc wrong: %s", aPatch)
+	}
 }
