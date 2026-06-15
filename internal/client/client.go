@@ -14,20 +14,62 @@ import (
 // maxRespBytes caps how much of a response body DoJSON will read into memory.
 const maxRespBytes = 1 << 20 // 1MB
 
+// remoteMode, when true, makes extractErrorMessage redact upstream Problem
+// detail/title/raw bodies from the caller-facing error so an internet-exposed
+// MCP endpoint does not leak upstream implementation detail to clients. It is
+// set once at startup (HTTP transport) before any request is served, so it is
+// safe to read without synchronization.
+var remoteMode bool
+
+// SetRemoteMode toggles caller-facing error redaction. Call once at startup.
+func SetRemoteMode(v bool) { remoteMode = v }
+
 // Base is the shared HTTP client for both API and relay requests.
 type Base struct {
 	httpClient *http.Client
 	baseURL    string
 	token      string
+	// useContextToken makes DoJSON prefer a per-request token carried in the
+	// context (set by the HTTP transport from the inbound Authorization header)
+	// over the struct's token. The struct token remains a fallback for stdio
+	// mode. The API client opts in; the relay client does not (relay uses a
+	// fixed server-side credential, never a per-user token).
+	useContextToken bool
 }
 
 // NewBase creates a new Base HTTP client.
 func NewBase(baseURL, token string) *Base {
 	return &Base{
-		httpClient: &http.Client{Timeout: 30 * time.Second},
+		httpClient: &http.Client{Timeout: 30 * time.Second, Transport: newTransport()},
 		baseURL:    baseURL,
 		token:      token,
 	}
+}
+
+// newTransport tunes the connection pool for a single shared client that serves
+// every user in http mode (the per-user token rides in the request context). The
+// stdlib default keeps only 2 idle connections per host, forcing TLS
+// re-handshakes to api.pushward.app under concurrent load; raise the idle pool so
+// connections are reused.
+func newTransport() *http.Transport {
+	t := http.DefaultTransport.(*http.Transport).Clone()
+	t.MaxIdleConns = 200
+	t.MaxIdleConnsPerHost = 100
+	t.MaxConnsPerHost = 200
+	t.IdleConnTimeout = 90 * time.Second
+	return t
+}
+
+// ParseBearer extracts the token from an "Authorization: Bearer <token>" header
+// value, matching the scheme case-insensitively. It returns "" when the value is
+// absent or malformed. Shared by the HTTP transport and the OAuth resource-server
+// middleware so the two never diverge.
+func ParseBearer(header string) string {
+	const prefix = "bearer "
+	if len(header) < len(prefix) || !strings.EqualFold(header[:len(prefix)], prefix) {
+		return ""
+	}
+	return strings.TrimSpace(header[len(prefix):])
 }
 
 // DoJSON sends an HTTP request and returns the raw JSON response body.
@@ -49,7 +91,19 @@ func (b *Base) DoJSON(ctx context.Context, method, path string, body any) (json.
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}
-	req.Header.Set("Authorization", "Bearer "+b.token)
+	// Prefer the per-request token (HTTP mode) when this client opts in, falling
+	// back to the struct token (stdio mode). Only set the header when a token is
+	// actually present so a tokenless request reaches upstream as anonymous and
+	// gets a clean 401 rather than a malformed "Bearer " header.
+	token := b.token
+	if b.useContextToken {
+		if t := TokenFromContext(ctx); t != "" {
+			token = t
+		}
+	}
+	if token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
+	}
 
 	resp, err := b.httpClient.Do(req)
 	if err != nil {
@@ -87,6 +141,12 @@ func (b *Base) DoJSON(ctx context.Context, method, path string, body any) (json.
 
 // extractErrorMessage pulls a human-friendly message from an RFC 9457 Problem
 // body, falling back to a truncated raw snippet if parsing fails.
+//
+// In remote mode the upstream's free-text title/detail and any raw body are
+// withheld from the caller-facing error (they can leak internal field names,
+// DB messages, or PII) — only the machine-readable Problem `code` and any
+// retry hint are surfaced. The full message is still available to the operator
+// via server-side logs.
 func extractErrorMessage(body []byte) string {
 	var p struct {
 		Title        string `json:"title"`
@@ -94,7 +154,23 @@ func extractErrorMessage(body []byte) string {
 		Code         string `json:"code"`
 		RetryAfterMs int64  `json:"retry_after_ms"`
 	}
-	if json.Unmarshal(body, &p) == nil && (p.Detail != "" || p.Title != "" || p.Code != "") {
+	parsed := json.Unmarshal(body, &p) == nil && (p.Detail != "" || p.Title != "" || p.Code != "")
+
+	if remoteMode {
+		var parts []string
+		if parsed && p.Code != "" {
+			parts = append(parts, "["+p.Code+"]")
+		}
+		if parsed && p.RetryAfterMs > 0 {
+			parts = append(parts, fmt.Sprintf("(retry_after_ms=%d)", p.RetryAfterMs))
+		}
+		if len(parts) == 0 {
+			return "upstream error (detail withheld)"
+		}
+		return strings.Join(parts, " ")
+	}
+
+	if parsed {
 		var parts []string
 		if p.Code != "" {
 			parts = append(parts, "["+p.Code+"]")

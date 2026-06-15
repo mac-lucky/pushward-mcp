@@ -1,0 +1,45 @@
+name: CI/CD
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ci-cd:
+    # Pinned to a commit SHA (supply-chain hardening) rather than the mutable
+    # @master ref. Bump via Dependabot/Renovate or when the shared workflow changes.
+    uses: mac-lucky/actions-shared-workflows/.github/workflows/go-cicd-reusable.yml@d277280074cd275ef07d19fb316f0d43c11ac22e # master
+    permissions:
+      contents: read
+      packages: write
+      security-events: write
+    with:
+      app_name: "pushward-mcp"
+      ghcr_image: "ghcr.io/mac-lucky/pushward-mcp"
+      dockerhub_image: "maclucky/pushward-mcp"
+      push_to_dockerhub: false
+      push_on_main: true
+      main_branch: "main"
+      runner_default: "ubuntu-latest"
+      runner_amd64: "ubuntu-latest"
+      runner_arm64: "ubuntu-24.04-arm"
+      skip_qemu_setup: true
+
+      # Go tests cover the transport refactor, the OAuth 2.1 flow (end-to-end
+      # against an httptest upstream + in-memory store), and the security units.
+      enable_go_tests: true
+      go_test_args: "-race"
+
+      # No container/k8s smoke test: http mode exits non-zero without a signing
+      # key + hlk encryption key, which would require secrets in CI.
+      enable_container_tests: false
+      enable_kubernetes_tests: false
+    secrets: inherit

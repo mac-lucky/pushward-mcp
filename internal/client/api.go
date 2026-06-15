@@ -23,9 +23,13 @@ func validateSlug(slug string) error {
 // APIClient wraps the PushWard API (api.pushward.app).
 type APIClient struct{ *Base }
 
-// NewAPIClient creates a new PushWard API client.
+// NewAPIClient creates a new PushWard API client. The API client prefers a
+// per-request token carried in the context (HTTP/remote mode) over the token
+// argument, which serves as the stdio-mode fallback.
 func NewAPIClient(baseURL, token string) *APIClient {
-	return &APIClient{NewBase(baseURL, token)}
+	b := NewBase(baseURL, token)
+	b.useContextToken = true
+	return &APIClient{b}
 }
 
 // ActivitiesPage is the paginated envelope returned by GET /activities (AIP-158).
