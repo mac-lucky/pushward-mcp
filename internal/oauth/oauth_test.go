@@ -17,6 +17,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -744,5 +746,26 @@ func TestIsBlockedIP_CGNAT(t *testing.T) {
 	// 100.128.0.0 is just outside the CGNAT /10 and must remain reachable.
 	if isBlockedIP(net.ParseIP("100.128.0.1")) {
 		t.Fatal("100.128.0.1 is a public address and must be allowed")
+	}
+}
+
+// TestReadPasswordFile covers the file-sourced DB password path: the trailing
+// newline that secret tooling appends is trimmed, and a missing mount errors
+// (so newPostgresStore fails fast rather than connecting password-less).
+func TestReadPasswordFile(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "password")
+	if err := os.WriteFile(path, []byte("s3cr3t-pw\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	got, err := readPasswordFile(path)
+	if err != nil {
+		t.Fatalf("readPasswordFile: %v", err)
+	}
+	if got != "s3cr3t-pw" {
+		t.Fatalf("got %q, want trailing newline trimmed", got)
+	}
+	if _, err := readPasswordFile(filepath.Join(dir, "missing")); err == nil {
+		t.Fatal("expected error for a missing password file")
 	}
 }

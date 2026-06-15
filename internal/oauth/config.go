@@ -58,6 +58,13 @@ type Config struct {
 	// DatabaseDSN, when set, selects the Postgres store; empty uses the
 	// in-memory store (single-replica / development only).
 	DatabaseDSN string
+	// DBPasswordFile, when set, is a path to a file holding the Postgres
+	// password. It is injected into the connection at connect time (re-read on
+	// every new connection so rotations are picked up) so the password never
+	// lives in the DSN or in SOPS — it is sourced from a CNPG-managed,
+	// auto-rotated Secret mounted into the pod, mirroring pushward-server /
+	// pushward-relay. Ignored when DatabaseDSN is empty.
+	DBPasswordFile string
 	// TrustProxy enables reading the client IP from forwarding headers
 	// (CF-Connecting-IP, then X-Forwarded-For) for rate-limit keying. Enable
 	// ONLY when the server sits behind a proxy that overwrites these headers
@@ -71,13 +78,14 @@ type Config struct {
 // already-validated upstream API URL from the core config.
 func LoadConfig(apiBaseURL string) (*Config, error) {
 	cfg := &Config{
-		Issuer:        strings.TrimRight(os.Getenv("PUSHWARD_MCP_ISSUER"), "/"),
-		Resource:      strings.TrimRight(os.Getenv("PUSHWARD_MCP_RESOURCE"), "/"),
-		APIBaseURL:    apiBaseURL,
-		SigningKeyPEM: os.Getenv("PUSHWARD_MCP_SIGNING_KEY"),
-		HLKEncKey:     os.Getenv("PUSHWARD_MCP_HLK_ENC_KEY"),
-		DatabaseDSN:   os.Getenv("PUSHWARD_MCP_DB_DSN"),
-		TrustProxy:    true,
+		Issuer:         strings.TrimRight(os.Getenv("PUSHWARD_MCP_ISSUER"), "/"),
+		Resource:       strings.TrimRight(os.Getenv("PUSHWARD_MCP_RESOURCE"), "/"),
+		APIBaseURL:     apiBaseURL,
+		SigningKeyPEM:  os.Getenv("PUSHWARD_MCP_SIGNING_KEY"),
+		HLKEncKey:      os.Getenv("PUSHWARD_MCP_HLK_ENC_KEY"),
+		DatabaseDSN:    os.Getenv("PUSHWARD_MCP_DB_DSN"),
+		DBPasswordFile: os.Getenv("PUSHWARD_MCP_DB_PASSWORD_FILE"),
+		TrustProxy:     true,
 	}
 	if v := os.Getenv("PUSHWARD_MCP_TRUST_PROXY"); v != "" {
 		b, err := strconv.ParseBool(v)

@@ -43,7 +43,7 @@ func New(ctx context.Context, cfg *Config, log *slog.Logger) (*Provider, error) 
 	}
 	var st Store
 	if cfg.DatabaseDSN != "" {
-		st, err = newPostgresStore(ctx, cfg.DatabaseDSN)
+		st, err = newPostgresStore(ctx, cfg.DatabaseDSN, cfg.DBPasswordFile)
 		if err != nil {
 			return nil, err
 		}

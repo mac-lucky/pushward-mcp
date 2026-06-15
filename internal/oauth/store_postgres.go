@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
+	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -53,7 +55,7 @@ type pgStore struct {
 	pool *pgxpool.Pool
 }
 
-func newPostgresStore(ctx context.Context, dsn string) (*pgStore, error) {
+func newPostgresStore(ctx context.Context, dsn, passwordFile string) (*pgStore, error) {
 	pcfg, err := pgxpool.ParseConfig(dsn)
 	if err != nil {
 		return nil, fmt.Errorf("parse postgres dsn: %w", err)
@@ -63,6 +65,26 @@ func newPostgresStore(ctx context.Context, dsn string) (*pgStore, error) {
 	pcfg.MaxConnLifetime = time.Hour
 	pcfg.MaxConnIdleTime = 30 * time.Minute
 	pcfg.HealthCheckPeriod = time.Minute
+	if passwordFile != "" {
+		// Source the password from the mounted CNPG credential file rather than
+		// the DSN, so it never lives in the DSN or SOPS. Read once up front to
+		// fail fast on a missing/unreadable mount, then on every (re)connect via
+		// BeforeConnect so a rotated password is picked up as the pool opens new
+		// connections (within MaxConnLifetime) without a pod restart.
+		pw, err := readPasswordFile(passwordFile)
+		if err != nil {
+			return nil, err
+		}
+		pcfg.ConnConfig.Password = pw
+		pcfg.BeforeConnect = func(_ context.Context, cc *pgx.ConnConfig) error {
+			pw, err := readPasswordFile(passwordFile)
+			if err != nil {
+				return err
+			}
+			cc.Password = pw
+			return nil
+		}
+	}
 	pool, err := pgxpool.NewWithConfig(ctx, pcfg)
 	if err != nil {
 		return nil, fmt.Errorf("connect postgres: %w", err)
@@ -197,3 +219,13 @@ func (s *pgStore) Cleanup(ctx context.Context) error {
 }
 
 func (s *pgStore) Close() { s.pool.Close() }
+
+// readPasswordFile reads a DB password from a mounted credential file, trimming
+// the trailing newline that secret tooling commonly appends.
+func readPasswordFile(path string) (string, error) {
+	b, err := os.ReadFile(path) // #nosec G304 -- path is an operator-set env, not user input
+	if err != nil {
+		return "", fmt.Errorf("read db password file: %w", err)
+	}
+	return strings.TrimRight(string(b), "\r\n"), nil
+}
