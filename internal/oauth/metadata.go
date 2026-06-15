@@ -73,3 +73,22 @@ func setCORS(w http.ResponseWriter) {
 	w.Header().Set("Access-Control-Allow-Methods", "GET, OPTIONS")
 	w.Header().Set("Access-Control-Allow-Headers", "Authorization, Content-Type")
 }
+
+// corsPOST wraps the OAuth POST endpoints (token, register) with permissive CORS
+// and OPTIONS preflight handling so browser-based connector flows (Claude.ai,
+// ChatGPT) can complete the token exchange / dynamic registration. These are
+// public-client (PKCE) endpoints carrying no cookie or client secret, so
+// Allow-Origin:* is safe — the auth code + PKCE verifier in the request body are
+// the only credentials, and they are useless to a cross-origin attacker.
+func corsPOST(next http.HandlerFunc) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Headers", "Authorization, Content-Type")
+		if r.Method == http.MethodOptions {
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+		next(w, r)
+	})
+}
