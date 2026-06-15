@@ -137,7 +137,7 @@ func (p *Provider) renderConsent(w http.ResponseWriter, pr authzParams, c *Clien
 		Name:     csrfCookie,
 		Value:    csrf,
 		Path:     "/oauth/authorize",
-		MaxAge:   600,
+		MaxAge:   1800, // 30 min: tolerate a consent page that sits open before submit
 		HttpOnly: true,
 		Secure:   true,
 		SameSite: http.SameSiteLaxMode,
@@ -183,10 +183,17 @@ func (p *Provider) authorizePost(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	// CSRF: double-submit cookie.
+	// CSRF: double-submit cookie. A mismatch is almost always benign — the single
+	// fixed-path cookie reflects only the most recent render, so a consent tab that
+	// is stale (cookie overwritten by a later /authorize render) or expired no
+	// longer matches its embedded token. Rather than dead-end the user on a 403,
+	// re-render consent with a fresh matched cookie+token so they can authorize in
+	// one more click. Security is preserved: no code is minted on this path, and a
+	// forged cross-site POST merely lands on the consent page having done nothing
+	// (it cannot supply the victim's freshly-pasted API key).
 	cookie, err := r.Cookie(csrfCookie)
 	if err != nil || cookie.Value == "" || cookie.Value != r.PostFormValue(csrfFormName) {
-		http.Error(w, "invalid or missing CSRF token", http.StatusForbidden)
+		p.renderConsent(w, pr, c, "Your authorization session expired. Please review and authorize again.", http.StatusOK)
 		return
 	}
 

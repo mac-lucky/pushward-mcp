@@ -698,7 +698,13 @@ func TestRefresh_ReuseAfterGraceRevokesFamily(t *testing.T) {
 	}
 }
 
-func TestAuthorize_CSRFMismatchRejected(t *testing.T) {
+// TestAuthorize_CSRFMismatchReRenders verifies that a stale/forged CSRF token on
+// POST does NOT mint an authorization code and does NOT dead-end on a 403: it
+// re-renders the consent page (200) with a fresh CSRF cookie+token so a user with
+// a stale tab can recover in one click. The security property — no code without a
+// matching fresh cookie — is preserved (the response is a Set-Cookie + the form,
+// never a Location redirect carrying a code).
+func TestAuthorize_CSRFMismatchReRenders(t *testing.T) {
 	srv, _ := newTestProvider(t)
 	body, _ := json.Marshal(map[string]any{"redirect_uris": []string{"https://client.test/cb"}})
 	res, _ := http.Post(srv.URL+"/oauth/register", "application/json", strings.NewReader(string(body)))
@@ -738,8 +744,23 @@ func TestAuthorize_CSRFMismatchRejected(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer res.Body.Close()
-	if res.StatusCode != http.StatusForbidden {
-		t.Fatalf("CSRF mismatch must be 403, got %d", res.StatusCode)
+	// Must NOT redirect (a redirect would mean a code was issued).
+	if res.StatusCode == http.StatusFound {
+		t.Fatalf("CSRF mismatch must never mint a code; got redirect to %q", res.Header.Get("Location"))
+	}
+	// Must re-render the consent page with a fresh CSRF cookie so the user can retry.
+	var fresh *http.Cookie
+	for _, c := range res.Cookies() {
+		if c.Name == csrfCookie {
+			fresh = c
+		}
+	}
+	if fresh == nil || fresh.Value == "" || fresh.Value == csrf.Value {
+		t.Fatal("CSRF mismatch must re-issue a fresh, different CSRF cookie")
+	}
+	page, _ := io.ReadAll(res.Body)
+	if !strings.Contains(string(page), `name="api_key"`) {
+		t.Fatal("CSRF mismatch must re-render the consent form, not an error page")
 	}
 }
 
