@@ -152,7 +152,7 @@ func main() {
 	// get_pushward_docs tool. Additive to tool generation. best-practices.md is
 	// hand-authored and intentionally absent here, so it is never overwritten.
 	assetsDir := filepath.Join(rootDir, "internal", "docs", "assets")
-	if err := os.MkdirAll(assetsDir, 0o755); err != nil {
+	if err := os.MkdirAll(assetsDir, 0o750); err != nil {
 		fmt.Fprintf(os.Stderr, "creating %s: %v\n", assetsDir, err)
 		os.Exit(1)
 	}
@@ -179,7 +179,7 @@ func refreshAsset(useLocal bool, url, destPath string) {
 		fmt.Fprintf(os.Stderr, "refresh %s failed (%v); keeping committed %s\n", url, err, destPath)
 		return
 	}
-	if err := os.WriteFile(destPath, data, 0o644); err != nil {
+	if err := os.WriteFile(destPath, data, 0o600); err != nil {
 		fmt.Fprintf(os.Stderr, "writing %s: %v\n", destPath, err)
 		os.Exit(1)
 	}
@@ -214,7 +214,9 @@ func loadSpec(useLocal bool, url, fallbackPath string) []byte {
 	} else {
 		fmt.Fprintf(os.Stderr, "PUSHWARD_USE_LOCAL_SPEC set, reading %s\n", fallbackPath)
 	}
-	data, err := os.ReadFile(fallbackPath)
+	// fallbackPath is a build-time constant (the vendored OpenAPI spec), not user
+	// input — this is a code generator, not a runtime path.
+	data, err := os.ReadFile(fallbackPath) // #nosec G304
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "reading %s: %v\n", fallbackPath, err)
 		os.Exit(1)
@@ -994,12 +996,12 @@ func writeGenFile(path string, tmpl *template.Template, data any) {
 	formatted, err := format.Source(buf.Bytes())
 	if err != nil {
 		// Write unformatted for debugging
-		_ = os.WriteFile(path+".raw", buf.Bytes(), 0644)
+		_ = os.WriteFile(path+".raw", buf.Bytes(), 0o600)
 		fmt.Fprintf(os.Stderr, "formatting %s: %v (raw output written to %s.raw)\n", path, err, path)
 		os.Exit(1)
 	}
 
-	if err := os.WriteFile(path, formatted, 0644); err != nil {
+	if err := os.WriteFile(path, formatted, 0o600); err != nil {
 		fmt.Fprintf(os.Stderr, "writing %s: %v\n", path, err)
 		os.Exit(1)
 	}

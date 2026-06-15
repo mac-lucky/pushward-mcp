@@ -230,7 +230,10 @@ func (p *Provider) authorizePost(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Clear the CSRF cookie and redirect back with the code.
-	http.SetCookie(w, &http.Cookie{Name: csrfCookie, Path: "/oauth/authorize", MaxAge: -1})
+	http.SetCookie(w, &http.Cookie{
+		Name: csrfCookie, Path: "/oauth/authorize", MaxAge: -1,
+		HttpOnly: true, Secure: true, SameSite: http.SameSiteLaxMode,
+	})
 	u, _ := url.Parse(pr.RedirectURI)
 	q := u.Query()
 	q.Set("code", code)

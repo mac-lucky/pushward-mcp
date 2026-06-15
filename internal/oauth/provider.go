@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
-	"sync"
 	"time"
 
 	"github.com/mac-lucky/pushward-mcp/internal/client"
@@ -26,8 +25,9 @@ type Provider struct {
 	tokenLimiter     *keyedLimiter
 	registerLimiter  *keyedLimiter
 
-	stop     chan struct{}
-	stopOnce sync.Once
+	// bgCtx scopes the background janitor to the provider lifetime; cancel stops it.
+	bgCtx  context.Context
+	cancel context.CancelFunc
 }
 
 // New builds a Provider. A Postgres store is used when cfg.DatabaseDSN is set,
@@ -51,6 +51,7 @@ func New(ctx context.Context, cfg *Config, log *slog.Logger) (*Provider, error) 
 		log.Warn("oauth using in-memory store; tokens are not shared across replicas and are lost on restart")
 		st = newMemoryStore()
 	}
+	bgCtx, cancel := context.WithCancel(context.WithoutCancel(ctx))
 	p := &Provider{
 		cfg:              cfg,
 		store:            st,
@@ -62,7 +63,8 @@ func New(ctx context.Context, cfg *Config, log *slog.Logger) (*Provider, error) 
 		authorizeLimiter: newKeyedLimiter(60, 20),
 		tokenLimiter:     newKeyedLimiter(120, 30),
 		registerLimiter:  newKeyedLimiter(10, 5),
-		stop:             make(chan struct{}),
+		bgCtx:            bgCtx,
+		cancel:           cancel,
 	}
 	go p.janitor()
 	return p, nil
@@ -137,10 +139,10 @@ func (p *Provider) janitor() {
 	defer t.Stop()
 	for {
 		select {
-		case <-p.stop:
+		case <-p.bgCtx.Done():
 			return
 		case <-t.C:
-			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			ctx, cancel := context.WithTimeout(p.bgCtx, 30*time.Second)
 			if err := p.store.Cleanup(ctx); err != nil {
 				p.log.Warn("oauth store cleanup failed", "err", err)
 			}
@@ -159,9 +161,10 @@ func (p *Provider) challenge(w http.ResponseWriter, desc string) {
 	oauthError(w, http.StatusUnauthorized, "invalid_token", desc)
 }
 
-// Close stops the janitor and releases the store.
+// Close stops the janitor and releases the store. cancel is idempotent, so
+// calling Close more than once is safe.
 func (p *Provider) Close() {
-	p.stopOnce.Do(func() { close(p.stop) })
+	p.cancel()
 	p.store.Close()
 }
 
