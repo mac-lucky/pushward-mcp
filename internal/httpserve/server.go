@@ -138,6 +138,11 @@ func corsMCP(next http.Handler) http.Handler {
 		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS")
 		w.Header().Set("Access-Control-Allow-Headers", "Authorization, Content-Type, MCP-Protocol-Version, Mcp-Session-Id, Last-Event-ID")
 		w.Header().Set("Access-Control-Expose-Headers", "Mcp-Session-Id, WWW-Authenticate")
+		// Defeat proxy response buffering on the streaming path. Cloudflare and
+		// the Traefik gateway both honor X-Accel-Buffering: no, so Streamable
+		// HTTP / SSE chunks reach the client immediately instead of being held
+		// at the edge until the buffer fills (which looks like a hung server).
+		w.Header().Set("X-Accel-Buffering", "no")
 		if r.Method == http.MethodOptions {
 			w.WriteHeader(http.StatusNoContent)
 			return

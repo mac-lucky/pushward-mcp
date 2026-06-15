@@ -78,9 +78,9 @@ func (p *Provider) RegisterRoutes(mux *http.ServeMux) {
 	mux.Handle(p.cfg.prmPath()+"/mcp", prm) // path-scoped variant some clients probe first
 	mux.Handle(p.cfg.asPath(), p.asMetadataHandler())
 	mux.Handle(p.cfg.jwksPath(), p.jwksHandler())
-	mux.HandleFunc("/oauth/authorize", p.handleAuthorize)
-	mux.HandleFunc("/oauth/token", p.handleToken)
-	mux.HandleFunc("/oauth/register", p.handleRegister)
+	mux.HandleFunc("/oauth/authorize", p.handleAuthorize) // top-level browser nav + form; not a CORS fetch
+	mux.Handle("/oauth/token", corsPOST(p.handleToken))
+	mux.Handle("/oauth/register", corsPOST(p.handleRegister))
 }
 
 // WrapMCP guards the MCP endpoint: it requires a valid access token issued by
