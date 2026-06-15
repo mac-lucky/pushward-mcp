@@ -55,10 +55,17 @@ var relayTestProviders = []string{
 }
 
 func registerCompositeTools(s *mcpserver.MCPServer, api *client.APIClient, relay *client.RelayClient) {
+	// relay is nil in http/remote mode; derive the gate from it so the enable
+	// state has a single source (the presence of a relay client).
+	relayEnabled := relay != nil
+	healthDesc := "Check health of the PushWard API endpoint"
+	if relayEnabled {
+		healthDesc = "Check health of both PushWard API and Relay endpoints"
+	}
 	// test_health
 	s.AddTool(
 		mcp.NewTool("test_health",
-			mcp.WithDescription("Check health of both PushWard API and Relay endpoints"),
+			mcp.WithDescription(healthDesc),
 			mcp.WithReadOnlyHintAnnotation(true),
 			mcp.WithOpenWorldHintAnnotation(true),
 		),
@@ -163,22 +170,24 @@ func registerCompositeTools(s *mcpserver.MCPServer, api *client.APIClient, relay
 		},
 	)
 
-	// test_relay_provider
-	s.AddTool(
-		mcp.NewTool("test_relay_provider",
-			mcp.WithDescription("Send a standard test payload to a relay provider and verify the response"),
-			mcp.WithDestructiveHintAnnotation(false),
-			mcp.WithOpenWorldHintAnnotation(true),
-			mcp.WithString("provider",
-				mcp.Required(),
-				mcp.Description("Relay provider name"),
-				mcp.Enum(relayTestProviders...),
+	// test_relay_provider — only registered when relay tools are enabled.
+	if relayEnabled {
+		s.AddTool(
+			mcp.NewTool("test_relay_provider",
+				mcp.WithDescription("Send a standard test payload to a relay provider and verify the response"),
+				mcp.WithDestructiveHintAnnotation(false),
+				mcp.WithOpenWorldHintAnnotation(true),
+				mcp.WithString("provider",
+					mcp.Required(),
+					mcp.Description("Relay provider name"),
+					mcp.Enum(relayTestProviders...),
+				),
 			),
-		),
-		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-			return handleTestRelayProvider(ctx, req, relay)
-		},
-	)
+			func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+				return handleTestRelayProvider(ctx, req, relay)
+			},
+		)
+	}
 
 	// end_activity
 	s.AddTool(
@@ -269,11 +278,15 @@ func handleTestHealth(ctx context.Context, api *client.APIClient, relay *client.
 		results = append(results, fmt.Sprintf("API: %s", string(apiRaw)))
 	}
 
-	relayRaw, _, err := relay.Base.DoJSON(ctx, "GET", "/health", nil)
-	if err != nil {
-		results = append(results, fmt.Sprintf("Relay: FAIL (%v)", err))
-	} else {
-		results = append(results, fmt.Sprintf("Relay: %s", string(relayRaw)))
+	// relay is nil when relay tools are disabled (http/remote mode) — only the
+	// API health is reported in that case.
+	if relay != nil {
+		relayRaw, _, err := relay.Base.DoJSON(ctx, "GET", "/health", nil)
+		if err != nil {
+			results = append(results, fmt.Sprintf("Relay: FAIL (%v)", err))
+		} else {
+			results = append(results, fmt.Sprintf("Relay: %s", string(relayRaw)))
+		}
 	}
 
 	return mcp.NewToolResultText(strings.Join(results, "\n")), nil
