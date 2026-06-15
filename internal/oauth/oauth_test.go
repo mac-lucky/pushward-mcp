@@ -71,6 +71,35 @@ func TestCrypto_RoundTripAndUserBinding(t *testing.T) {
 	}
 }
 
+func TestCSRFTokenizer(t *testing.T) {
+	base := time.Now()
+	clk := base
+	tok := newCSRFTokenizer([]byte("0123456789abcdef0123456789abcdef"), 10*time.Minute, func() time.Time { return clk })
+
+	s := tok.issue("client-A")
+	if !tok.verify(s, "client-A") {
+		t.Fatal("a fresh token must verify for its client_id")
+	}
+	if tok.verify(s, "client-B") {
+		t.Fatal("token must be bound to client_id (must not verify for another client)")
+	}
+	for _, bad := range []string{"", "no-dot", s + "x", "@@@.@@@"} {
+		if tok.verify(bad, "client-A") {
+			t.Fatalf("malformed/tampered token %q must not verify", bad)
+		}
+	}
+	// A token issued by a tokenizer with a different key must not verify.
+	other := newCSRFTokenizer([]byte("ffffffffffffffffffffffffffffffff"), 10*time.Minute, func() time.Time { return clk })
+	if tok.verify(other.issue("client-A"), "client-A") {
+		t.Fatal("token signed with a different key must not verify")
+	}
+	// Expiry.
+	clk = base.Add(11 * time.Minute)
+	if tok.verify(s, "client-A") {
+		t.Fatal("an expired token must not verify")
+	}
+}
+
 func TestPKCE_S256(t *testing.T) {
 	verifier := "verifier-abc-123-xyz-long-enough-string"
 	sum := sha256.Sum256([]byte(verifier))
@@ -202,7 +231,7 @@ func TestOAuthFullFlow(t *testing.T) {
 		t.Fatal("DCR did not return a client_id")
 	}
 
-	// Authorize (GET) → consent page + CSRF cookie.
+	// Authorize (GET) → consent page with a stateless CSRF token.
 	verifier := "this-is-a-sufficiently-long-pkce-code-verifier-value"
 	sum := sha256.Sum256([]byte(verifier))
 	challenge := base64.RawURLEncoding.EncodeToString(sum[:])
@@ -216,23 +245,7 @@ func TestOAuthFullFlow(t *testing.T) {
 		"code_challenge_method": {"S256"},
 		"resource":              {"https://mcp.test"},
 	}
-	res, err := http.Get(srv.URL + "/oauth/authorize?" + q.Encode())
-	if err != nil {
-		t.Fatal(err)
-	}
-	res.Body.Close()
-	if res.StatusCode != http.StatusOK {
-		t.Fatalf("authorize GET status = %d", res.StatusCode)
-	}
-	var csrf *http.Cookie
-	for _, c := range res.Cookies() {
-		if c.Name == csrfCookie {
-			csrf = c
-		}
-	}
-	if csrf == nil {
-		t.Fatal("no CSRF cookie set")
-	}
+	csrf := authzGetCSRF(t, srv, q.Encode())
 
 	// Authorize (POST) with the key → redirect with code.
 	form := url.Values{}
@@ -240,11 +253,10 @@ func TestOAuthFullFlow(t *testing.T) {
 		form.Set(k, v[0])
 	}
 	form.Set("api_key", "hlk_good")
-	form.Set(csrfFormName, csrf.Value)
+	form.Set(csrfFormName, csrf)
 	req, _ := http.NewRequest(http.MethodPost, srv.URL+"/oauth/authorize", strings.NewReader(form.Encode()))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	req.AddCookie(csrf)
-	res, err = noRedirect.Do(req)
+	res, err := noRedirect.Do(req)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -344,23 +356,15 @@ func TestAuthorize_RejectsBadKey(t *testing.T) {
 		"scope": {"mcp"}, "code_challenge": {challenge}, "code_challenge_method": {"S256"},
 		"resource": {"https://mcp.test"},
 	}
-	res, _ = http.Get(srv.URL + "/oauth/authorize?" + q.Encode())
-	res.Body.Close()
-	var csrf *http.Cookie
-	for _, c := range res.Cookies() {
-		if c.Name == csrfCookie {
-			csrf = c
-		}
-	}
+	csrf := authzGetCSRF(t, srv, q.Encode())
 	form := url.Values{}
 	for k, v := range q {
 		form.Set(k, v[0])
 	}
 	form.Set("api_key", "hlk_bad")
-	form.Set(csrfFormName, csrf.Value)
+	form.Set(csrfFormName, csrf)
 	req, _ := http.NewRequest(http.MethodPost, srv.URL+"/oauth/authorize", strings.NewReader(form.Encode()))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	req.AddCookie(csrf)
 	res, err := noRedirect.Do(req)
 	if err != nil {
 		t.Fatal(err)
@@ -403,6 +407,29 @@ func TestAuthorize_MissingPKCERejected(t *testing.T) {
 // template renders, so a test can submit exactly what a browser would.
 var hiddenInputRE = regexp.MustCompile(`<input type="hidden" name="([^"]*)" value="([^"]*)">`)
 
+// authzGetCSRF runs the authorize GET and returns the stateless CSRF token the
+// consent page embedded in its hidden field. There is no cookie — the token is
+// self-contained — so this is the only thing a submitter needs to carry back.
+func authzGetCSRF(t *testing.T, srv *httptest.Server, rawQuery string) string {
+	t.Helper()
+	res, err := http.Get(srv.URL + "/oauth/authorize?" + rawQuery)
+	if err != nil {
+		t.Fatal(err)
+	}
+	bodyBytes, _ := io.ReadAll(res.Body)
+	res.Body.Close()
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("authorize GET status = %d", res.StatusCode)
+	}
+	for _, m := range hiddenInputRE.FindAllStringSubmatch(string(bodyBytes), -1) {
+		if m[1] == csrfFormName {
+			return html.UnescapeString(m[2])
+		}
+	}
+	t.Fatal("consent page has no csrf hidden field")
+	return ""
+}
+
 // TestConsentFormRoundTripsOAuthParams renders the consent page (GET) and then
 // POSTs back ONLY the hidden fields the rendered HTML actually contains — exactly
 // as a browser does. The other authorize tests rebuild the POST body from the
@@ -432,17 +459,10 @@ func TestConsentFormRoundTripsOAuthParams(t *testing.T) {
 	res, _ = http.Get(srv.URL + "/oauth/authorize?" + q.Encode())
 	htmlBody, _ := io.ReadAll(res.Body)
 	res.Body.Close()
-	var csrf *http.Cookie
-	for _, c := range res.Cookies() {
-		if c.Name == csrfCookie {
-			csrf = c
-		}
-	}
-	if csrf == nil {
-		t.Fatal("no CSRF cookie")
-	}
 
-	// Reconstruct the POST body from the rendered form's hidden inputs only.
+	// Reconstruct the POST body from the rendered form's hidden inputs ONLY — no
+	// cookie. The CSRF token now lives entirely in a hidden field, so submitting
+	// exactly what the form contains (plus the key) must succeed.
 	form := url.Values{}
 	for _, m := range hiddenInputRE.FindAllStringSubmatch(string(htmlBody), -1) {
 		form.Set(m[1], html.UnescapeString(m[2]))
@@ -450,11 +470,13 @@ func TestConsentFormRoundTripsOAuthParams(t *testing.T) {
 	if form.Get("response_type") != "code" {
 		t.Fatalf("consent form must carry response_type=code as a hidden field; got %q", form.Get("response_type"))
 	}
+	if form.Get(csrfFormName) == "" {
+		t.Fatal("consent form must carry a csrf token as a hidden field")
+	}
 	form.Set("api_key", "hlk_good")
 
 	req, _ := http.NewRequest(http.MethodPost, srv.URL+"/oauth/authorize", strings.NewReader(form.Encode()))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	req.AddCookie(csrf)
 	res, err := noRedirect.Do(req)
 	if err != nil {
 		t.Fatal(err)
@@ -466,6 +488,52 @@ func TestConsentFormRoundTripsOAuthParams(t *testing.T) {
 	loc, _ := url.Parse(res.Header.Get("Location"))
 	if loc.Query().Get("error") != "" || loc.Query().Get("code") == "" {
 		t.Fatalf("expected an authorization code, got error=%q", loc.Query().Get("error"))
+	}
+}
+
+// TestAuthorize_StaleRenderStillValid reproduces the exact production bug: a
+// second authorize render (another tab, a reload, or the OAuth client prefetching
+// /oauth/authorize while also opening it) must NOT invalidate an earlier render's
+// token. The old single fixed-name cookie was clobbered by render 2, so render 1's
+// form no longer matched. With a stateless token both renders verify
+// independently, so submitting the FIRST render's token still mints a code.
+func TestAuthorize_StaleRenderStillValid(t *testing.T) {
+	srv, _ := newTestProvider(t)
+	noRedirect := &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+	body, _ := json.Marshal(map[string]any{"redirect_uris": []string{"https://client.test/cb"}})
+	res, _ := http.Post(srv.URL+"/oauth/register", "application/json", strings.NewReader(string(body)))
+	var reg map[string]any
+	_ = json.NewDecoder(res.Body).Decode(&reg)
+	res.Body.Close()
+	clientID := reg["client_id"].(string)
+	sum := sha256.Sum256([]byte("verifier-" + strings.Repeat("z", 40)))
+	challenge := base64.RawURLEncoding.EncodeToString(sum[:])
+	q := url.Values{
+		"response_type": {"code"}, "client_id": {clientID}, "redirect_uri": {"https://client.test/cb"},
+		"state": {"st"}, "scope": {"mcp"}, "code_challenge": {challenge},
+		"code_challenge_method": {"S256"}, "resource": {"https://mcp.test"},
+	}
+	first := authzGetCSRF(t, srv, q.Encode()) // render 1
+	_ = authzGetCSRF(t, srv, q.Encode())      // render 2 — would clobber a shared cookie
+
+	form := url.Values{}
+	for k, v := range q {
+		form.Set(k, v[0])
+	}
+	form.Set("api_key", "hlk_good")
+	form.Set(csrfFormName, first) // submit the FIRST render's token
+	req, _ := http.NewRequest(http.MethodPost, srv.URL+"/oauth/authorize", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	res, err := noRedirect.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer res.Body.Close()
+	if res.StatusCode != http.StatusFound {
+		t.Fatalf("submitting an earlier render's token must still mint a code, got %d", res.StatusCode)
+	}
+	if loc, _ := url.Parse(res.Header.Get("Location")); loc.Query().Get("code") == "" {
+		t.Fatalf("expected a code; got error=%q", loc.Query().Get("error"))
 	}
 }
 
@@ -504,26 +572,15 @@ func obtainCode(t *testing.T, srv *httptest.Server, apiKey string) (clientID, ve
 		"state": {"st"}, "scope": {"mcp"}, "code_challenge": {challenge},
 		"code_challenge_method": {"S256"}, "resource": {"https://mcp.test"},
 	}
-	res, _ = http.Get(srv.URL + "/oauth/authorize?" + q.Encode())
-	var csrf *http.Cookie
-	for _, c := range res.Cookies() {
-		if c.Name == csrfCookie {
-			csrf = c
-		}
-	}
-	res.Body.Close()
-	if csrf == nil {
-		t.Fatal("no CSRF cookie")
-	}
+	csrf := authzGetCSRF(t, srv, q.Encode())
 	form := url.Values{}
 	for k, v := range q {
 		form.Set(k, v[0])
 	}
 	form.Set("api_key", apiKey)
-	form.Set(csrfFormName, csrf.Value)
+	form.Set(csrfFormName, csrf)
 	req, _ := http.NewRequest(http.MethodPost, srv.URL+"/oauth/authorize", strings.NewReader(form.Encode()))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	req.AddCookie(csrf)
 	noRedirect := &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
 	res, err := noRedirect.Do(req)
 	if err != nil {
@@ -698,13 +755,12 @@ func TestRefresh_ReuseAfterGraceRevokesFamily(t *testing.T) {
 	}
 }
 
-// TestAuthorize_CSRFMismatchReRenders verifies that a stale/forged CSRF token on
-// POST does NOT mint an authorization code and does NOT dead-end on a 403: it
-// re-renders the consent page (200) with a fresh CSRF cookie+token so a user with
-// a stale tab can recover in one click. The security property — no code without a
-// matching fresh cookie — is preserved (the response is a Set-Cookie + the form,
-// never a Location redirect carrying a code).
-func TestAuthorize_CSRFMismatchReRenders(t *testing.T) {
+// TestAuthorize_CSRFInvalidReRenders verifies that an invalid/expired CSRF token
+// on POST does NOT mint an authorization code and does NOT dead-end: it re-renders
+// the consent page (no redirect) carrying a fresh token so the user can recover in
+// one click. The security property — no code without a valid token — is preserved
+// (the response is the consent form, never a Location redirect carrying a code).
+func TestAuthorize_CSRFInvalidReRenders(t *testing.T) {
 	srv, _ := newTestProvider(t)
 	body, _ := json.Marshal(map[string]any{"redirect_uris": []string{"https://client.test/cb"}})
 	res, _ := http.Post(srv.URL+"/oauth/register", "application/json", strings.NewReader(string(body)))
@@ -720,24 +776,17 @@ func TestAuthorize_CSRFMismatchReRenders(t *testing.T) {
 		"response_type": {"code"}, "client_id": {clientID}, "redirect_uri": {"https://client.test/cb"},
 		"scope": {"mcp"}, "code_challenge": {challenge}, "code_challenge_method": {"S256"}, "resource": {"https://mcp.test"},
 	}
-	res, _ = http.Get(srv.URL + "/oauth/authorize?" + q.Encode())
-	var csrf *http.Cookie
-	for _, c := range res.Cookies() {
-		if c.Name == csrfCookie {
-			csrf = c
-		}
-	}
-	res.Body.Close()
+	// Render once (just to exercise the GET path), then POST a bogus CSRF token.
+	_ = authzGetCSRF(t, srv, q.Encode())
 
 	form := url.Values{}
 	for k, v := range q {
 		form.Set(k, v[0])
 	}
 	form.Set("api_key", "hlk_good")
-	form.Set(csrfFormName, "not-the-cookie-value") // mismatch
+	form.Set(csrfFormName, "not-a-valid-token") // forged / invalid
 	req, _ := http.NewRequest(http.MethodPost, srv.URL+"/oauth/authorize", strings.NewReader(form.Encode()))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	req.AddCookie(csrf)
 	noRedirect := &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
 	res, err := noRedirect.Do(req)
 	if err != nil {
@@ -746,22 +795,27 @@ func TestAuthorize_CSRFMismatchReRenders(t *testing.T) {
 	defer res.Body.Close()
 	// Must NOT redirect (a redirect would mean a code was issued).
 	if res.StatusCode == http.StatusFound {
-		t.Fatalf("CSRF mismatch must never mint a code; got redirect to %q", res.Header.Get("Location"))
+		t.Fatalf("invalid CSRF must never mint a code; got redirect to %q", res.Header.Get("Location"))
 	}
-	// Must re-render the consent page with a fresh CSRF cookie so the user can retry.
-	var fresh *http.Cookie
-	for _, c := range res.Cookies() {
-		if c.Name == csrfCookie {
-			fresh = c
-		}
-	}
-	if fresh == nil || fresh.Value == "" || fresh.Value == csrf.Value {
-		t.Fatal("CSRF mismatch must re-issue a fresh, different CSRF cookie")
-	}
+	// Must re-render the consent page (with a fresh, valid token) so the user can retry.
 	page, _ := io.ReadAll(res.Body)
 	if !strings.Contains(string(page), `name="api_key"`) {
-		t.Fatal("CSRF mismatch must re-render the consent form, not an error page")
+		t.Fatal("invalid CSRF must re-render the consent form, not an error page")
 	}
+	if csrf := csrfFromHTMLString(string(page)); csrf == "" {
+		t.Fatal("re-render must embed a fresh csrf token")
+	}
+}
+
+// csrfFromHTMLString returns the csrf hidden-field value in a rendered consent
+// page, or "" if absent.
+func csrfFromHTMLString(s string) string {
+	for _, m := range hiddenInputRE.FindAllStringSubmatch(s, -1) {
+		if m[1] == csrfFormName {
+			return html.UnescapeString(m[2])
+		}
+	}
+	return ""
 }
 
 func TestConsumeAuthCode_MemoryContract(t *testing.T) {

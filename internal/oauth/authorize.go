@@ -4,12 +4,15 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 )
 
 const (
 	scopeMCP     = "mcp"
-	csrfCookie   = "pw_mcp_csrf"
 	csrfFormName = "csrf"
+
+	// csrfTokenTTL bounds how long a rendered consent page stays submittable.
+	csrfTokenTTL = 30 * time.Minute
 
 	// OAuth protocol token values, single-sourced so the request handlers and the
 	// advertised discovery metadata (metadata.go) cannot drift.
@@ -123,25 +126,13 @@ func (p *Provider) authorizeGet(w http.ResponseWriter, r *http.Request) {
 	p.renderConsent(w, pr, c, "", 0)
 }
 
-// renderConsent issues a fresh CSRF cookie and renders the consent screen. A
+// renderConsent renders the consent screen with a fresh stateless CSRF token
+// embedded in the form (see csrfTokenizer for why this carries no cookie). A
 // non-zero status writes that status first (the error re-render uses 401). The
-// page handles a credential, so it forbids framing (clickjacking) and restricts
-// where the form may post.
+// page handles a credential, so it forbids framing (clickjacking), restricts
+// where the form may post, and is never cached.
 func (p *Provider) renderConsent(w http.ResponseWriter, pr authzParams, c *Client, errMsg string, status int) {
-	csrf, err := randomToken(24)
-	if err != nil {
-		http.Error(w, "internal error", http.StatusInternalServerError)
-		return
-	}
-	http.SetCookie(w, &http.Cookie{
-		Name:     csrfCookie,
-		Value:    csrf,
-		Path:     "/oauth/authorize",
-		MaxAge:   1800, // 30 min: tolerate a consent page that sits open before submit
-		HttpOnly: true,
-		Secure:   true,
-		SameSite: http.SameSiteLaxMode,
-	})
+	csrf := p.csrf.issue(pr.ClientID)
 	host := pr.RedirectURI
 	if u, err := url.Parse(pr.RedirectURI); err == nil {
 		host = u.Host
@@ -153,6 +144,9 @@ func (p *Provider) renderConsent(w http.ResponseWriter, pr authzParams, c *Clien
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("X-Frame-Options", "DENY")
 	w.Header().Set("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; frame-ancestors 'none'")
+	// Never let an edge cache (Cloudflare) keep a consent page; each must carry a
+	// freshly issued, unexpired CSRF token.
+	w.Header().Set("Cache-Control", "no-store")
 	if status != 0 {
 		w.WriteHeader(status)
 	}
@@ -183,16 +177,13 @@ func (p *Provider) authorizePost(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	// CSRF: double-submit cookie. A mismatch is almost always benign — the single
-	// fixed-path cookie reflects only the most recent render, so a consent tab that
-	// is stale (cookie overwritten by a later /authorize render) or expired no
-	// longer matches its embedded token. Rather than dead-end the user on a 403,
-	// re-render consent with a fresh matched cookie+token so they can authorize in
-	// one more click. Security is preserved: no code is minted on this path, and a
-	// forged cross-site POST merely lands on the consent page having done nothing
-	// (it cannot supply the victim's freshly-pasted API key).
-	cookie, err := r.Cookie(csrfCookie)
-	if err != nil || cookie.Value == "" || cookie.Value != r.PostFormValue(csrfFormName) {
+	// CSRF: verify the stateless token the consent page embedded. It is bound to
+	// this client_id and self-expiring, so it needs no cookie and cannot be
+	// invalidated by a concurrent render. A failure means it expired (the page sat
+	// open past csrfTokenTTL) or was tampered with; re-render with a fresh token so
+	// the user recovers in one click. No code is minted here, and a forged
+	// cross-site POST achieves nothing — it cannot supply the victim's pasted key.
+	if !p.csrf.verify(r.PostFormValue(csrfFormName), pr.ClientID) {
 		p.renderConsent(w, pr, c, "Your authorization session expired. Please review and authorize again.", http.StatusOK)
 		return
 	}
@@ -237,11 +228,7 @@ func (p *Provider) authorizePost(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Clear the CSRF cookie and redirect back with the code.
-	http.SetCookie(w, &http.Cookie{
-		Name: csrfCookie, Path: "/oauth/authorize", MaxAge: -1,
-		HttpOnly: true, Secure: true, SameSite: http.SameSiteLaxMode,
-	})
+	// Redirect back to the client with the authorization code.
 	u, _ := url.Parse(pr.RedirectURI)
 	q := u.Query()
 	q.Set("code", code)
