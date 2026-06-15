@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"encoding/pem"
 	"errors"
+	"html"
 	"io"
 	"log/slog"
 	"net"
@@ -19,6 +20,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"sync"
 	"testing"
@@ -394,6 +396,76 @@ func TestAuthorize_MissingPKCERejected(t *testing.T) {
 	loc, _ := url.Parse(res.Header.Get("Location"))
 	if loc.Query().Get("error") == "" {
 		t.Fatal("missing PKCE should redirect back with an error")
+	}
+}
+
+// hiddenInputRE extracts the name/value of each hidden field the consent
+// template renders, so a test can submit exactly what a browser would.
+var hiddenInputRE = regexp.MustCompile(`<input type="hidden" name="([^"]*)" value="([^"]*)">`)
+
+// TestConsentFormRoundTripsOAuthParams renders the consent page (GET) and then
+// POSTs back ONLY the hidden fields the rendered HTML actually contains — exactly
+// as a browser does. The other authorize tests rebuild the POST body from the
+// original query, so they silently re-add any field the form drops; this one
+// would not. A missing hidden field (e.g. response_type) makes the POST fail
+// validation and redirect back with an OAuth error even though the GET rendered
+// fine. Regression test for the dropped-response_type bug.
+func TestConsentFormRoundTripsOAuthParams(t *testing.T) {
+	srv, _ := newTestProvider(t)
+	noRedirect := &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+
+	body, _ := json.Marshal(map[string]any{"redirect_uris": []string{"https://client.test/cb"}, "client_name": "Test"})
+	res, _ := http.Post(srv.URL+"/oauth/register", "application/json", strings.NewReader(string(body)))
+	var reg map[string]any
+	_ = json.NewDecoder(res.Body).Decode(&reg)
+	res.Body.Close()
+	clientID := reg["client_id"].(string)
+
+	verifier := "verifier-" + strings.Repeat("x", 40)
+	sum := sha256.Sum256([]byte(verifier))
+	challenge := base64.RawURLEncoding.EncodeToString(sum[:])
+	q := url.Values{
+		"response_type": {"code"}, "client_id": {clientID}, "redirect_uri": {"https://client.test/cb"},
+		"state": {"st"}, "scope": {"mcp"}, "code_challenge": {challenge},
+		"code_challenge_method": {"S256"}, "resource": {"https://mcp.test"},
+	}
+	res, _ = http.Get(srv.URL + "/oauth/authorize?" + q.Encode())
+	htmlBody, _ := io.ReadAll(res.Body)
+	res.Body.Close()
+	var csrf *http.Cookie
+	for _, c := range res.Cookies() {
+		if c.Name == csrfCookie {
+			csrf = c
+		}
+	}
+	if csrf == nil {
+		t.Fatal("no CSRF cookie")
+	}
+
+	// Reconstruct the POST body from the rendered form's hidden inputs only.
+	form := url.Values{}
+	for _, m := range hiddenInputRE.FindAllStringSubmatch(string(htmlBody), -1) {
+		form.Set(m[1], html.UnescapeString(m[2]))
+	}
+	if form.Get("response_type") != "code" {
+		t.Fatalf("consent form must carry response_type=code as a hidden field; got %q", form.Get("response_type"))
+	}
+	form.Set("api_key", "hlk_good")
+
+	req, _ := http.NewRequest(http.MethodPost, srv.URL+"/oauth/authorize", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.AddCookie(csrf)
+	res, err := noRedirect.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer res.Body.Close()
+	if res.StatusCode != http.StatusFound {
+		t.Fatalf("submitting the rendered consent form should redirect with a code, got %d", res.StatusCode)
+	}
+	loc, _ := url.Parse(res.Header.Get("Location"))
+	if loc.Query().Get("error") != "" || loc.Query().Get("code") == "" {
+		t.Fatalf("expected an authorization code, got error=%q", loc.Query().Get("error"))
 	}
 }
 
