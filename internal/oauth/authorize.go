@@ -158,6 +158,7 @@ func (p *Provider) renderConsent(w http.ResponseWriter, pr authzParams, c *Clien
 	}
 	_ = consentTmpl.Execute(w, consentData{
 		ClientName:          name,
+		ResponseType:        pr.ResponseType,
 		ClientID:            pr.ClientID,
 		RedirectURI:         pr.RedirectURI,
 		RedirectHost:        host,

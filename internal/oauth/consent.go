@@ -35,6 +35,7 @@ var consentTmpl = template.Must(template.New("consent").Parse(`<!doctype html>
       <label for="api_key">PushWard API key</label>
       <input id="api_key" name="api_key" type="password" placeholder="hlk_…" autocomplete="off" autocapitalize="off" spellcheck="false" required>
       <input type="hidden" name="csrf" value="{{.CSRF}}">
+      <input type="hidden" name="response_type" value="{{.ResponseType}}">
       <input type="hidden" name="client_id" value="{{.ClientID}}">
       <input type="hidden" name="redirect_uri" value="{{.RedirectURI}}">
       <input type="hidden" name="state" value="{{.State}}">
@@ -51,6 +52,7 @@ var consentTmpl = template.Must(template.New("consent").Parse(`<!doctype html>
 
 type consentData struct {
 	ClientName          string
+	ResponseType        string
 	ClientID            string
 	RedirectURI         string
 	RedirectHost        string
