@@ -17,6 +17,7 @@ type Provider struct {
 	store  Store
 	signer *signer
 	crypto *hlkCipher
+	csrf   *csrfTokenizer
 	log    *slog.Logger
 	now    func() time.Time
 	cred   *credCache
@@ -57,6 +58,7 @@ func New(ctx context.Context, cfg *Config, log *slog.Logger) (*Provider, error) 
 		store:            st,
 		signer:           sg,
 		crypto:           cr,
+		csrf:             newCSRFTokenizer(cr.master, csrfTokenTTL, time.Now),
 		log:              log,
 		now:              time.Now,
 		cred:             newCredCache(credCacheTTL, credCacheMax, time.Now),
@@ -174,6 +176,7 @@ func (p *Provider) Close() {
 func (p *Provider) setClock(now func() time.Time) {
 	p.now = now
 	p.cred.now = now
+	p.csrf.now = now
 	if m, ok := p.store.(*memoryStore); ok {
 		m.now = now
 	}
