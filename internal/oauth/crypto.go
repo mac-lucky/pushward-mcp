@@ -7,10 +7,10 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
-	"encoding/binary"
 	"errors"
 	"fmt"
 	"io"
+	"strconv"
 	"strings"
 	"time"
 
@@ -121,19 +121,22 @@ func newCSRFTokenizer(master []byte, ttl time.Duration, now func() time.Time) *c
 	return &csrfTokenizer{key: dk, ttl: ttl, now: now}
 }
 
-func (t *csrfTokenizer) mac(expiry []byte, clientID string) []byte {
+// mac signs the expiry (decimal Unix seconds) and clientID. The NUL separator
+// keeps the boundary unambiguous — expiry is digits-only and a client_id never
+// contains a NUL byte — so no two (expiry, clientID) pairs can collide.
+func (t *csrfTokenizer) mac(expiry, clientID string) []byte {
 	h := hmac.New(sha256.New, t.key)
-	h.Write(expiry) // fixed 8 bytes, so clientID can't shift the boundary
+	h.Write([]byte(expiry))
+	h.Write([]byte{0})
 	h.Write([]byte(clientID))
 	return h.Sum(nil)
 }
 
 // issue returns a fresh token bound to clientID, valid for ttl.
 func (t *csrfTokenizer) issue(clientID string) string {
-	var eb [8]byte
-	binary.BigEndian.PutUint64(eb[:], uint64(t.now().Add(t.ttl).Unix()))
-	return base64.RawURLEncoding.EncodeToString(eb[:]) + "." +
-		base64.RawURLEncoding.EncodeToString(t.mac(eb[:], clientID))
+	exp := strconv.FormatInt(t.now().Add(t.ttl).Unix(), 10)
+	return base64.RawURLEncoding.EncodeToString([]byte(exp)) + "." +
+		base64.RawURLEncoding.EncodeToString(t.mac(exp, clientID))
 }
 
 // verify reports whether token is a valid, unexpired token for clientID.
@@ -142,15 +145,19 @@ func (t *csrfTokenizer) verify(token, clientID string) bool {
 	if dot <= 0 {
 		return false
 	}
-	eb, err := base64.RawURLEncoding.DecodeString(token[:dot])
-	if err != nil || len(eb) != 8 {
+	expBytes, err := base64.RawURLEncoding.DecodeString(token[:dot])
+	if err != nil {
 		return false
 	}
 	gotMAC, err := base64.RawURLEncoding.DecodeString(token[dot+1:])
-	if err != nil || !hmac.Equal(gotMAC, t.mac(eb, clientID)) {
+	if err != nil || !hmac.Equal(gotMAC, t.mac(string(expBytes), clientID)) {
 		return false
 	}
-	return t.now().Unix() < int64(binary.BigEndian.Uint64(eb))
+	exp, err := strconv.ParseInt(string(expBytes), 10, 64)
+	if err != nil {
+		return false
+	}
+	return t.now().Unix() < exp
 }
 
 // randomToken returns n cryptographically-random bytes as a url-safe string.
