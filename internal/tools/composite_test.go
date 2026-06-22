@@ -163,6 +163,58 @@ func TestBuildTestContent_Timeline(t *testing.T) {
 	}
 }
 
+func TestBuildTestContent_Board(t *testing.T) {
+	raw := buildTestContent("board", 0.5, "Running", "")
+	var m map[string]any
+	if err := json.Unmarshal(raw, &m); err != nil {
+		t.Fatalf("invalid JSON: %v", err)
+	}
+	tiles, ok := m["tiles"].([]any)
+	if !ok {
+		t.Fatalf("tiles missing or wrong type: %v", m["tiles"])
+	}
+	// board accepts 1-4 tiles; the server rejects an empty or oversized grid.
+	if len(tiles) < 1 || len(tiles) > 4 {
+		t.Errorf("board must have 1-4 tiles, got %d", len(tiles))
+	}
+	first, ok := tiles[0].(map[string]any)
+	if !ok {
+		t.Fatalf("tile[0] wrong type: %v", tiles[0])
+	}
+	for _, key := range []string{"label", "value"} {
+		if _, ok := first[key]; !ok {
+			t.Errorf("tile missing required key %q", key)
+		}
+	}
+	// board tile values are strings (supporting "On"/"Locked"/"21%"), not numbers.
+	if _, ok := first["value"].(string); !ok {
+		t.Errorf("tile value must be a string, got %T", first["value"])
+	}
+}
+
+func TestBuildTestContent_Log(t *testing.T) {
+	raw := buildTestContent("log", 0.5, "Booting", "")
+	var m map[string]any
+	if err := json.Unmarshal(raw, &m); err != nil {
+		t.Fatalf("invalid JSON: %v", err)
+	}
+	lines, ok := m["lines"].([]any)
+	if !ok {
+		t.Fatalf("lines missing or wrong type: %v", m["lines"])
+	}
+	// log accepts 1-20 newest-first lines.
+	if len(lines) < 1 || len(lines) > 20 {
+		t.Errorf("log must have 1-20 lines, got %d", len(lines))
+	}
+	first, ok := lines[0].(map[string]any)
+	if !ok {
+		t.Fatalf("line[0] wrong type: %v", lines[0])
+	}
+	if _, ok := first["text"]; !ok {
+		t.Error("line missing required key \"text\"")
+	}
+}
+
 func TestBuildTestContent_AllLifecycleTemplatesValidJSON(t *testing.T) {
 	// Every template the lifecycle tool advertises must produce parseable JSON
 	// carrying its required template-specific fields.
@@ -173,6 +225,8 @@ func TestBuildTestContent_AllLifecycleTemplatesValidJSON(t *testing.T) {
 		"alert":     {"template", "severity"},
 		"gauge":     {"template", "value", "min_value", "max_value"},
 		"timeline":  {"template", "value"},
+		"board":     {"template", "tiles"},
+		"log":       {"template", "lines"},
 	}
 	// Parity: the assertions below must cover exactly the templates the tool
 	// advertises in lifecycleTemplates — adding one to the enum without a fixture
@@ -869,6 +923,67 @@ func TestHandleEndActivity_ContentOverride(t *testing.T) {
 	content, _ := patchBody["content"].(map[string]any)
 	if content["template"] != "generic" {
 		t.Errorf("expected overridden template 'generic', got %v", content["template"])
+	}
+}
+
+// ---------- handleGetActivity (enhanced) ----------
+
+func TestHandleGetActivity_PlainAndBacklog(t *testing.T) {
+	var gotPath, gotQuery string
+	var hits int
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hits++
+		gotPath = r.URL.Path
+		gotQuery = r.URL.RawQuery
+		w.Write([]byte(`{"slug":"test-log","state":"ongoing"}`))
+	}))
+	defer srv.Close()
+
+	api := client.NewAPIClient(srv.URL, "test-token")
+
+	// Without the flag: the GET must still reach the server, with no query string
+	// (lean default). Asserting the request arrived distinguishes "sent without
+	// include" from "never sent" — an empty RawQuery alone cannot, since that is
+	// also its zero value.
+	if _, err := handleGetActivity(context.Background(), newReq(map[string]any{"slug": "test-log"}), api); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if hits != 1 {
+		t.Fatalf("expected the plain GET to reach the server once, got %d hits", hits)
+	}
+	if gotPath != "/activities/test-log" {
+		t.Errorf("expected path /activities/test-log, got %q", gotPath)
+	}
+	if gotQuery != "" {
+		t.Errorf("expected no query string without the flag, got %q", gotQuery)
+	}
+
+	// With include_log_backlog=true: ?include=log_backlog.
+	if _, err := handleGetActivity(context.Background(), newReq(map[string]any{"slug": "test-log", "include_log_backlog": true}), api); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if hits != 2 {
+		t.Fatalf("expected the backlog GET to reach the server, got %d hits", hits)
+	}
+	if gotQuery != "include=log_backlog" {
+		t.Errorf("expected include=log_backlog query, got %q", gotQuery)
+	}
+}
+
+func TestHandleGetActivity_MissingSlugIsError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Error("server must not be called when required slug is missing")
+		w.WriteHeader(http.StatusBadRequest)
+	}))
+	defer srv.Close()
+
+	api := client.NewAPIClient(srv.URL, "test-token")
+	result, err := handleGetActivity(context.Background(), newReq(map[string]any{}), api)
+	if err != nil {
+		t.Fatalf("expected a nil Go error, got: %v", err)
+	}
+	if !result.IsError {
+		t.Errorf("expected IsError=true when slug is missing, got: %s", resultText(t, result))
 	}
 }
 

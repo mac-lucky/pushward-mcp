@@ -298,15 +298,19 @@ func TestBuildAPITools_ExpectedSet(t *testing.T) {
 	for _, tl := range tools {
 		byName[tl.Name] = tl
 	}
-	for _, want := range []string{"create_activity", "get_activity", "create_notification", "update_activity", "create_widget", "update_widget"} {
+	for _, want := range []string{"create_activity", "create_notification", "update_activity", "create_widget", "update_widget"} {
 		if _, ok := byName[want]; !ok {
 			t.Errorf("expected generated tool %q, missing", want)
 		}
 	}
-	// listActivities is handled by a composite tool and must be skipped, else it
-	// would collide with the hand-written handleListActivities (compile error).
+	// listActivities and getActivity are handled by composite tools and must be
+	// skipped, else they would collide with the hand-written handlers (compile
+	// error). getActivity is superseded to add the include_log_backlog option.
 	if _, ok := byName["list_activities"]; ok {
 		t.Error("list_activities should be skipped (handled by composite tool)")
+	}
+	if _, ok := byName["get_activity"]; ok {
+		t.Error("get_activity should be skipped (handled by composite tool with include_log_backlog)")
 	}
 	// create_activity has no content field; only the widget/activity updates do.
 	if byName["create_activity"].ContentJSON {
@@ -379,6 +383,10 @@ func TestContentJSONDesc(t *testing.T) {
 	if strings.Contains(wPost, "countdown") {
 		t.Errorf("widget desc should not mention activity templates: %s", wPost)
 	}
+	// Activity-only board/log fields must not leak into the widget description.
+	if strings.Contains(wPost, "tiles") || strings.Contains(wPost, "log_backlog") {
+		t.Errorf("widget desc should not mention activity board/log fields: %s", wPost)
+	}
 	// Widget PATCH: merge-patch wording present.
 	if wPatch := contentJSONDesc(true, "PATCH"); !strings.Contains(wPatch, "Merge Patch") {
 		t.Errorf("widget PATCH desc should mention merge-patch: %s", wPatch)
@@ -387,5 +395,12 @@ func TestContentJSONDesc(t *testing.T) {
 	aPatch := contentJSONDesc(false, "PATCH")
 	if !strings.Contains(aPatch, "countdown") || !strings.Contains(aPatch, "Merge Patch") {
 		t.Errorf("activity PATCH desc wrong: %s", aPatch)
+	}
+	// The board/log templates must be advertised in the enum and documented.
+	if !strings.Contains(aPatch, "timeline|board|log)") {
+		t.Errorf("activity desc missing board/log in template enum: %s", aPatch)
+	}
+	if !strings.Contains(aPatch, "board (tiles") || !strings.Contains(aPatch, "log (lines") {
+		t.Errorf("activity desc missing board/log field docs: %s", aPatch)
 	}
 }

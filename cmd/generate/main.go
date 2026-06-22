@@ -269,6 +269,7 @@ func parseSpecJSON(data []byte, name string) *openAPISpec {
 // surface post-merge-patch cleanup.
 var skipOperations = map[string]bool{
 	"listActivities":     true, // enhanced with state/source filtering and summary mode
+	"getActivity":        true, // superseded by a composite that adds include_log_backlog (?include=log_backlog)
 	"setActivityAlarm":   true, // removed from public surface — alarm is now a merge-patch field
 	"clearActivityAlarm": true, // same
 }
@@ -509,7 +510,7 @@ func contentJSONDesc(isWidget bool, method string) string {
 	if patch {
 		lead += mergePatchNote
 	}
-	return lead + "Fields: template (generic|countdown|steps|alert|gauge|timeline), progress (0.0-1.0), state, icon, subtitle, accent_color, background_color, text_color. Template-specific: countdown (duration as integer seconds (60) or duration string (\"60s\", \"1h30m\"), end_date [unix timestamp], warning_threshold, completion_message, alarm, snooze_seconds (60-3600, default 300; how far the /snooze action and iOS AlarmKit snooze extend the timer, only with alarm); if both duration and end_date are sent, end_date wins), steps (current_step, total_steps, step_labels), alert (severity: critical|warning|info, fired_at), gauge (value, min_value, max_value, unit), timeline (value as {key:number}, history as {key:[{timestamp,value}]}, scale, thresholds)."
+	return lead + "Fields: template (generic|countdown|steps|alert|gauge|timeline|board|log), progress (0.0-1.0), state, icon, subtitle, accent_color, background_color, text_color. Template-specific: countdown (duration as integer seconds (60) or duration string (\"60s\", \"1h30m\"), end_date [unix timestamp], warning_threshold, completion_message, alarm, snooze_seconds (60-3600, default 300; how far the /snooze action and iOS AlarmKit snooze extend the timer, only with alarm); if both duration and end_date are sent, end_date wins), steps (current_step, total_steps, step_labels), alert (severity: critical|warning|info, fired_at), gauge (value, min_value, max_value, unit), timeline (value as {key:number}, history as {key:[{timestamp,value}]}, scale, thresholds), board (tiles: 1-4 labeled tiles, each {label, value [string], unit, icon, color, trend [up|down|flat], url_action {url}}, replaced wholesale per update), log (lines: 1-20 newest-first entries, each {text, at [unix seconds], level [info|warn|error]}, replaced wholesale per update; the server also keeps a read-only rolling log_backlog, fetch it via get_activity include_log_backlog)."
 }
 
 func resolveRef(spec *openAPISpec, s schemaObj) schemaObj {

@@ -33,6 +33,8 @@ const (
 	tmplAlert     = "alert"
 	tmplGauge     = "gauge"
 	tmplTimeline  = "timeline"
+	tmplBoard     = "board"
+	tmplLog       = "log"
 
 	defaultTemplate = tmplGeneric
 )
@@ -43,6 +45,7 @@ const (
 // relayTestProviders pattern.
 var lifecycleTemplates = []string{
 	tmplGeneric, tmplCountdown, tmplSteps, tmplAlert, tmplGauge, tmplTimeline,
+	tmplBoard, tmplLog,
 }
 
 // relayTestProviders is the set of providers accepted by the test_relay_provider
@@ -211,6 +214,27 @@ func registerCompositeTools(s *mcpserver.MCPServer, api *client.APIClient, relay
 		),
 		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 			return handleEndActivity(ctx, req, api)
+		},
+	)
+
+	// get_activity (enhanced, replaces generated version) — adds
+	// include_log_backlog, which the generator can't express because it ignores
+	// OpenAPI query parameters.
+	s.AddTool(
+		mcp.NewTool("get_activity",
+			mcp.WithDescription("Get a single activity by slug. Set include_log_backlog=true to also return the server-accumulated rolling log history (log template only; sent as ?include=log_backlog)."),
+			mcp.WithReadOnlyHintAnnotation(true),
+			mcp.WithOpenWorldHintAnnotation(true),
+			mcp.WithString("slug",
+				mcp.Required(),
+				mcp.Description("Activity slug"),
+			),
+			mcp.WithBoolean("include_log_backlog",
+				mcp.Description("Include the server-owned rolling log_backlog (newest-first, up to 1000 lines) for log-template activities. Omitted by default."),
+			),
+		),
+		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			return handleGetActivity(ctx, req, api)
 		},
 	)
 
@@ -418,6 +442,20 @@ func buildTestContent(tmpl string, progress float64, state, tapURL string) json.
 		// timeline value must be a labeled map ({key: number}), not a scalar —
 		// the server rejects a bare number for this template.
 		content["value"] = map[string]any{"Value": progress * 100}
+	case tmplBoard:
+		// board requires 1-4 tiles; tile values are strings (not numeric),
+		// replaced wholesale on every update.
+		content["tiles"] = []map[string]any{
+			{"label": "Progress", "value": fmt.Sprintf("%d%%", int(progress*100)), "trend": "up"},
+			{"label": "Status", "value": state, "icon": "checkmark.circle"},
+		}
+	case tmplLog:
+		// log requires 1-20 lines, newest-first; each line needs text, replaced
+		// wholesale on every update.
+		content["lines"] = []map[string]any{
+			{"text": state, "level": "info"},
+			{"text": "Lifecycle test started", "level": "info"},
+		}
 	}
 
 	if tapURL != "" {
@@ -553,6 +591,26 @@ func buildEndContent(activity map[string]any, reason string) json.RawMessage {
 	contentMap["state"] = reason
 	data, _ := json.Marshal(contentMap)
 	return data
+}
+
+// ---------- get_activity (enhanced) ----------
+
+func handleGetActivity(ctx context.Context, req mcp.CallToolRequest, api *client.APIClient) (*mcp.CallToolResult, error) {
+	slug, err := req.RequireString("slug")
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
+
+	var includes []string
+	if req.GetBool("include_log_backlog", false) {
+		includes = append(includes, "log_backlog")
+	}
+
+	raw, err := api.GetActivity(ctx, slug, includes...)
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
+	return mcp.NewToolResultText(string(raw)), nil
 }
 
 // ---------- list_activities (enhanced) ----------

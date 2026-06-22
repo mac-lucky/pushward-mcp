@@ -182,24 +182,6 @@ func registerAPITools(s *mcpserver.MCPServer, api *client.APIClient) {
 		},
 	)
 
-	// get_activity
-	s.AddTool(
-		mcp.NewTool("get_activity",
-			mcp.WithDescription("Get activity"),
-			mcp.WithReadOnlyHintAnnotation(true),
-			// Every tool proxies an external REST API (api.pushward.app), so its
-			// results cross a trust boundary — keep the open-world hint explicit.
-			mcp.WithOpenWorldHintAnnotation(true),
-			mcp.WithString("slug",
-				mcp.Required(),
-				mcp.Description("slug path parameter"),
-			),
-		),
-		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-			return handleGetActivity(ctx, req, api)
-		},
-	)
-
 	// get_health
 	s.AddTool(
 		mcp.NewTool("get_health",
@@ -319,7 +301,7 @@ func registerAPITools(s *mcpserver.MCPServer, api *client.APIClient) {
 			),
 			mcp.WithString("content_json",
 				mcp.Required(),
-				mcp.Description("Activity content as JSON object. PATCH applies RFC 7396 JSON Merge Patch semantics — only send the fields you want to change, null clears a field, absent preserves. Fields: template (generic|countdown|steps|alert|gauge|timeline), progress (0.0-1.0), state, icon, subtitle, accent_color, background_color, text_color. Template-specific: countdown (duration as integer seconds (60) or duration string (\"60s\", \"1h30m\"), end_date [unix timestamp], warning_threshold, completion_message, alarm, snooze_seconds (60-3600, default 300; how far the /snooze action and iOS AlarmKit snooze extend the timer, only with alarm); if both duration and end_date are sent, end_date wins), steps (current_step, total_steps, step_labels), alert (severity: critical|warning|info, fired_at), gauge (value, min_value, max_value, unit), timeline (value as {key:number}, history as {key:[{timestamp,value}]}, scale, thresholds)."),
+				mcp.Description("Activity content as JSON object. PATCH applies RFC 7396 JSON Merge Patch semantics — only send the fields you want to change, null clears a field, absent preserves. Fields: template (generic|countdown|steps|alert|gauge|timeline|board|log), progress (0.0-1.0), state, icon, subtitle, accent_color, background_color, text_color. Template-specific: countdown (duration as integer seconds (60) or duration string (\"60s\", \"1h30m\"), end_date [unix timestamp], warning_threshold, completion_message, alarm, snooze_seconds (60-3600, default 300; how far the /snooze action and iOS AlarmKit snooze extend the timer, only with alarm); if both duration and end_date are sent, end_date wins), steps (current_step, total_steps, step_labels), alert (severity: critical|warning|info, fired_at), gauge (value, min_value, max_value, unit), timeline (value as {key:number}, history as {key:[{timestamp,value}]}, scale, thresholds), board (tiles: 1-4 labeled tiles, each {label, value [string], unit, icon, color, trend [up|down|flat], url_action {url}}, replaced wholesale per update), log (lines: 1-20 newest-first entries, each {text, at [unix seconds], level [info|warn|error]}, replaced wholesale per update; the server also keeps a read-only rolling log_backlog, fetch it via get_activity include_log_backlog)."),
 			),
 		),
 		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -520,18 +502,6 @@ func handleDeleteWidget(ctx context.Context, req mcp.CallToolRequest, api *clien
 		return mcp.NewToolResultError(err.Error()), nil
 	}
 	return mcp.NewToolResultText("deleted successfully"), nil
-}
-
-func handleGetActivity(ctx context.Context, req mcp.CallToolRequest, api *client.APIClient) (*mcp.CallToolResult, error) {
-	paramSlug, err := req.RequireString("slug")
-	if err != nil {
-		return mcp.NewToolResultError(err.Error()), nil
-	}
-	raw, err := api.GetActivity(ctx, paramSlug)
-	if err != nil {
-		return mcp.NewToolResultError(err.Error()), nil
-	}
-	return mcp.NewToolResultText(string(raw)), nil
 }
 
 func handleGetHealth(ctx context.Context, req mcp.CallToolRequest, api *client.APIClient) (*mcp.CallToolResult, error) {

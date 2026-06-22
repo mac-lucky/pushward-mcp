@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"regexp"
 	"strconv"
+	"strings"
 )
 
 var slugPattern = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$`)
@@ -18,6 +19,16 @@ func validateSlug(slug string) error {
 		return fmt.Errorf("invalid slug %q: must match ^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$", slug)
 	}
 	return nil
+}
+
+// withQuery appends url-encoded query parameters to path, returning path
+// unchanged when q is empty. Shared by the GET builders so query assembly
+// (encoding, empty-omission) lives in one place.
+func withQuery(path string, q url.Values) string {
+	if len(q) == 0 {
+		return path
+	}
+	return path + "?" + q.Encode()
 }
 
 // APIClient wraps the PushWard API (api.pushward.app).
@@ -49,7 +60,6 @@ type ListActivitiesOptions struct {
 
 // ListActivitiesPage fetches a single page of activities.
 func (c *APIClient) ListActivitiesPage(ctx context.Context, opts ListActivitiesOptions) (*ActivitiesPage, error) {
-	path := "/activities"
 	q := url.Values{}
 	if opts.Limit > 0 {
 		q.Set("limit", strconv.Itoa(opts.Limit))
@@ -57,10 +67,7 @@ func (c *APIClient) ListActivitiesPage(ctx context.Context, opts ListActivitiesO
 	if opts.After != "" {
 		q.Set("after", opts.After)
 	}
-	if len(q) > 0 {
-		path += "?" + q.Encode()
-	}
-	raw, _, err := c.DoJSON(ctx, http.MethodGet, path, nil)
+	raw, _, err := c.DoJSON(ctx, http.MethodGet, withQuery("/activities", q), nil)
 	if err != nil {
 		return nil, err
 	}
@@ -141,12 +148,19 @@ func (c *APIClient) CreateActivity(ctx context.Context, input CreateActivityInpu
 	return raw, err
 }
 
-// GetActivity returns a single activity by slug.
-func (c *APIClient) GetActivity(ctx context.Context, slug string) (json.RawMessage, error) {
+// GetActivity returns a single activity by slug. Optional includes (e.g.
+// "log_backlog") are sent as a comma-separated ?include= query — the server
+// returns server-owned extras like the log template's rolling backlog only
+// when asked, omitting them from the default lean response.
+func (c *APIClient) GetActivity(ctx context.Context, slug string, includes ...string) (json.RawMessage, error) {
 	if err := validateSlug(slug); err != nil {
 		return nil, err
 	}
-	raw, _, err := c.DoJSON(ctx, http.MethodGet, "/activities/"+slug, nil)
+	q := url.Values{}
+	if len(includes) > 0 {
+		q.Set("include", strings.Join(includes, ","))
+	}
+	raw, _, err := c.DoJSON(ctx, http.MethodGet, withQuery("/activities/"+slug, q), nil)
 	return raw, err
 }
 

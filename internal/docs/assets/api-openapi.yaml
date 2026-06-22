@@ -48,9 +48,11 @@ components:
           discriminator:
             mapping:
               alert: "#/components/schemas/ContentAlert"
+              board: "#/components/schemas/ContentBoard"
               countdown: "#/components/schemas/ContentCountdown"
               gauge: "#/components/schemas/ContentGauge"
               generic: "#/components/schemas/ContentGeneric"
+              log: "#/components/schemas/ContentLog"
               steps: "#/components/schemas/ContentSteps"
               timeline: "#/components/schemas/ContentTimeline"
             propertyName: template
@@ -67,6 +69,10 @@ components:
               title: Gauge
             - $ref: "#/components/schemas/ContentTimeline"
               title: Timeline
+            - $ref: "#/components/schemas/ContentBoard"
+              title: Board
+            - $ref: "#/components/schemas/ContentLog"
+              title: Log
         created_at:
           description: Timestamp when the activity was created.
           format: date-time
@@ -242,6 +248,27 @@ components:
         - latest_version
         - min_supported_version
         - channel
+      type: object
+    BoardTile:
+      additionalProperties: false
+      properties:
+        color:
+          type: string
+        icon:
+          type: string
+        label:
+          type: string
+        trend:
+          type: string
+        unit:
+          type: string
+        url_action:
+          $ref: "#/components/schemas/TapAction"
+        value:
+          type: string
+      required:
+        - label
+        - value
       type: object
     ContentAlert:
       additionalProperties: true
@@ -419,6 +446,180 @@ components:
       required:
         - template
       title: Alert
+      type: object
+    ContentBoard:
+      additionalProperties: true
+      description: A grid of 1–4 labeled tiles, each with a value, optional unit, icon, color, and trend arrow (e.g. a room of sensors). Tiles are replaced wholesale on each update.
+      properties:
+        accent_color:
+          description: "Accent color: named color or hex (#RRGGBB / #RRGGBBAA)."
+          type: string
+        background_color:
+          description: "Background color: named color or hex."
+          type: string
+        icon:
+          description: "Icon name. SF Symbol (e.g. washer, flame) or Material Design Icon with mdi: prefix (e.g. mdi:thermometer)."
+          maxLength: 128
+          type: string
+        progress:
+          description: Progress value [0.0 - 1.0]
+          maximum: 1
+          minimum: 0
+          type: number
+        remaining_time:
+          description: Remaining time in seconds.
+          minimum: 0
+          type: integer
+        secondary_url:
+          description: Secondary button URL (legacy). Use secondary_url_action for richer routing.
+          maxLength: 2048
+          type: string
+        secondary_url_action:
+          description: Secondary button. See url_action for semantics.
+          properties:
+            body:
+              description: HTTP request body for silent webhook. ≤1KB. Ignored for custom-scheme URLs.
+              maxLength: 1024
+              type: string
+            foreground:
+              description: "For http(s) URLs only: true opens the URL in Safari / in-app browser; false fires the request silently without launching the app (silent webhook). Ignored for custom-scheme URLs."
+              type: boolean
+            headers:
+              additionalProperties:
+                type: string
+              description: HTTP headers for silent webhook. Total ≤1KB. Ignored for custom-scheme URLs.
+              type: object
+            icon:
+              description: SF Symbol name (e.g. checkmark.circle).
+              maxLength: 64
+              type: string
+            method:
+              description: HTTP method for silent webhook (foreground=false). Defaults to GET. Ignored for custom-scheme URLs.
+              enum:
+                - GET
+                - POST
+                - PUT
+                - PATCH
+                - DELETE
+                - HEAD
+              type: string
+            title:
+              description: Button label shown to the user.
+              maxLength: 64
+              type: string
+            url:
+              description: Target URL. Any scheme except javascript/data/file/vbscript. http(s) URLs require a host; custom schemes (e.g. youtube://, homeassistant://) open the matching app.
+              maxLength: 2048
+              type: string
+          required:
+            - url
+          type: object
+        snoozed_until:
+          description: Server-set unix timestamp marking the new end_date after the most recent snooze. Non-nil and >= now means the activity is currently snoozed.
+          readOnly: true
+          type: integer
+        state:
+          description: Short status text (e.g. Washing, Build Container Image).
+          maxLength: 256
+          type: string
+        subtitle:
+          description: Secondary descriptive text (e.g. Layer 150/200, repo / CI/CD).
+          maxLength: 256
+          type: string
+        tap_action:
+          description: Widget-wide tap action. When set, overrides the default behavior (opening the PushWard app to the activity detail page). The whole Live Activity becomes tappable as a single target.
+          properties:
+            body:
+              description: HTTP request body for silent webhook. ≤1KB. Ignored for custom-scheme URLs.
+              maxLength: 1024
+              type: string
+            foreground:
+              description: "For http(s) URLs only: true opens the URL in Safari / in-app browser; false fires the request silently without launching the app (silent webhook). Ignored for custom-scheme URLs."
+              type: boolean
+            headers:
+              additionalProperties:
+                type: string
+              description: HTTP headers for silent webhook. Total ≤1KB. Ignored for custom-scheme URLs.
+              type: object
+            method:
+              description: HTTP method for silent webhook (foreground=false). Defaults to GET. Ignored for custom-scheme URLs.
+              enum:
+                - GET
+                - POST
+                - PUT
+                - PATCH
+                - DELETE
+                - HEAD
+              type: string
+            url:
+              description: Target URL. Any scheme except javascript/data/file/vbscript. http(s) URLs require a host; custom schemes (e.g. youtube://, homeassistant://) open the matching app.
+              maxLength: 2048
+              type: string
+          required:
+            - url
+          type: object
+        template:
+          description: Template type that determines the Live Activity layout.
+          enum:
+            - board
+          type: string
+        text_color:
+          description: "Text color: named color or hex."
+          type: string
+        tiles:
+          description: 1–4 labeled tiles. Replaced wholesale on each update (no server accumulation). Required when template is board.
+          items:
+            $ref: "#/components/schemas/BoardTile"
+          maxItems: 4
+          minItems: 1
+          type: array
+        url:
+          description: Primary button URL (legacy). Use url_action for richer routing (silent webhook, custom HTTP method/headers/body).
+          maxLength: 2048
+          type: string
+        url_action:
+          description: Primary button. Replaces the legacy url string when richer routing semantics (silent webhook, custom HTTP) are needed. When both url and url_action are set, url_action wins on iOS clients that understand it.
+          properties:
+            body:
+              description: HTTP request body for silent webhook. ≤1KB. Ignored for custom-scheme URLs.
+              maxLength: 1024
+              type: string
+            foreground:
+              description: "For http(s) URLs only: true opens the URL in Safari / in-app browser; false fires the request silently without launching the app (silent webhook). Ignored for custom-scheme URLs."
+              type: boolean
+            headers:
+              additionalProperties:
+                type: string
+              description: HTTP headers for silent webhook. Total ≤1KB. Ignored for custom-scheme URLs.
+              type: object
+            icon:
+              description: SF Symbol name (e.g. checkmark.circle).
+              maxLength: 64
+              type: string
+            method:
+              description: HTTP method for silent webhook (foreground=false). Defaults to GET. Ignored for custom-scheme URLs.
+              enum:
+                - GET
+                - POST
+                - PUT
+                - PATCH
+                - DELETE
+                - HEAD
+              type: string
+            title:
+              description: Button label shown to the user.
+              maxLength: 64
+              type: string
+            url:
+              description: Target URL. Any scheme except javascript/data/file/vbscript. http(s) URLs require a host; custom schemes (e.g. youtube://, homeassistant://) open the matching app.
+              maxLength: 2048
+              type: string
+          required:
+            - url
+          type: object
+      required:
+        - template
+      title: Board
       type: object
     ContentCountdown:
       additionalProperties: true
@@ -967,6 +1168,187 @@ components:
         - template
       title: Generic
       type: object
+    ContentLog:
+      additionalProperties: true
+      description: A scrolling log of 1–20 lines (newest first), each with optional timestamp and level (info/warn/error). Lines are replaced wholesale on each update; the server additionally accumulates a rolling backlog (up to 1000 lines) fetchable via ?include=log_backlog for in-app scroll-back.
+      properties:
+        accent_color:
+          description: "Accent color: named color or hex (#RRGGBB / #RRGGBBAA)."
+          type: string
+        background_color:
+          description: "Background color: named color or hex."
+          type: string
+        icon:
+          description: "Icon name. SF Symbol (e.g. washer, flame) or Material Design Icon with mdi: prefix (e.g. mdi:thermometer)."
+          maxLength: 128
+          type: string
+        lines:
+          description: 1–20 log lines, newest first. Replaced wholesale on each update (no server accumulation). Required when template is log.
+          items:
+            $ref: "#/components/schemas/LogLine"
+          maxItems: 20
+          minItems: 1
+          type: array
+        log_backlog:
+          description: "Server-accumulated rolling log history (newest first), up to 1000 lines / ~300 KiB. Read-only and server-owned: ignored on write. Returned only when the request includes ?include=log_backlog; omitted by default and never sent in the APNs payload."
+          items:
+            $ref: "#/components/schemas/LogLine"
+          maxItems: 1000
+          readOnly: true
+          type: array
+        progress:
+          description: Progress value [0.0 - 1.0]
+          maximum: 1
+          minimum: 0
+          type: number
+        remaining_time:
+          description: Remaining time in seconds.
+          minimum: 0
+          type: integer
+        secondary_url:
+          description: Secondary button URL (legacy). Use secondary_url_action for richer routing.
+          maxLength: 2048
+          type: string
+        secondary_url_action:
+          description: Secondary button. See url_action for semantics.
+          properties:
+            body:
+              description: HTTP request body for silent webhook. ≤1KB. Ignored for custom-scheme URLs.
+              maxLength: 1024
+              type: string
+            foreground:
+              description: "For http(s) URLs only: true opens the URL in Safari / in-app browser; false fires the request silently without launching the app (silent webhook). Ignored for custom-scheme URLs."
+              type: boolean
+            headers:
+              additionalProperties:
+                type: string
+              description: HTTP headers for silent webhook. Total ≤1KB. Ignored for custom-scheme URLs.
+              type: object
+            icon:
+              description: SF Symbol name (e.g. checkmark.circle).
+              maxLength: 64
+              type: string
+            method:
+              description: HTTP method for silent webhook (foreground=false). Defaults to GET. Ignored for custom-scheme URLs.
+              enum:
+                - GET
+                - POST
+                - PUT
+                - PATCH
+                - DELETE
+                - HEAD
+              type: string
+            title:
+              description: Button label shown to the user.
+              maxLength: 64
+              type: string
+            url:
+              description: Target URL. Any scheme except javascript/data/file/vbscript. http(s) URLs require a host; custom schemes (e.g. youtube://, homeassistant://) open the matching app.
+              maxLength: 2048
+              type: string
+          required:
+            - url
+          type: object
+        snoozed_until:
+          description: Server-set unix timestamp marking the new end_date after the most recent snooze. Non-nil and >= now means the activity is currently snoozed.
+          readOnly: true
+          type: integer
+        state:
+          description: Short status text (e.g. Washing, Build Container Image).
+          maxLength: 256
+          type: string
+        subtitle:
+          description: Secondary descriptive text (e.g. Layer 150/200, repo / CI/CD).
+          maxLength: 256
+          type: string
+        tap_action:
+          description: Widget-wide tap action. When set, overrides the default behavior (opening the PushWard app to the activity detail page). The whole Live Activity becomes tappable as a single target.
+          properties:
+            body:
+              description: HTTP request body for silent webhook. ≤1KB. Ignored for custom-scheme URLs.
+              maxLength: 1024
+              type: string
+            foreground:
+              description: "For http(s) URLs only: true opens the URL in Safari / in-app browser; false fires the request silently without launching the app (silent webhook). Ignored for custom-scheme URLs."
+              type: boolean
+            headers:
+              additionalProperties:
+                type: string
+              description: HTTP headers for silent webhook. Total ≤1KB. Ignored for custom-scheme URLs.
+              type: object
+            method:
+              description: HTTP method for silent webhook (foreground=false). Defaults to GET. Ignored for custom-scheme URLs.
+              enum:
+                - GET
+                - POST
+                - PUT
+                - PATCH
+                - DELETE
+                - HEAD
+              type: string
+            url:
+              description: Target URL. Any scheme except javascript/data/file/vbscript. http(s) URLs require a host; custom schemes (e.g. youtube://, homeassistant://) open the matching app.
+              maxLength: 2048
+              type: string
+          required:
+            - url
+          type: object
+        template:
+          description: Template type that determines the Live Activity layout.
+          enum:
+            - log
+          type: string
+        text_color:
+          description: "Text color: named color or hex."
+          type: string
+        url:
+          description: Primary button URL (legacy). Use url_action for richer routing (silent webhook, custom HTTP method/headers/body).
+          maxLength: 2048
+          type: string
+        url_action:
+          description: Primary button. Replaces the legacy url string when richer routing semantics (silent webhook, custom HTTP) are needed. When both url and url_action are set, url_action wins on iOS clients that understand it.
+          properties:
+            body:
+              description: HTTP request body for silent webhook. ≤1KB. Ignored for custom-scheme URLs.
+              maxLength: 1024
+              type: string
+            foreground:
+              description: "For http(s) URLs only: true opens the URL in Safari / in-app browser; false fires the request silently without launching the app (silent webhook). Ignored for custom-scheme URLs."
+              type: boolean
+            headers:
+              additionalProperties:
+                type: string
+              description: HTTP headers for silent webhook. Total ≤1KB. Ignored for custom-scheme URLs.
+              type: object
+            icon:
+              description: SF Symbol name (e.g. checkmark.circle).
+              maxLength: 64
+              type: string
+            method:
+              description: HTTP method for silent webhook (foreground=false). Defaults to GET. Ignored for custom-scheme URLs.
+              enum:
+                - GET
+                - POST
+                - PUT
+                - PATCH
+                - DELETE
+                - HEAD
+              type: string
+            title:
+              description: Button label shown to the user.
+              maxLength: 64
+              type: string
+            url:
+              description: Target URL. Any scheme except javascript/data/file/vbscript. http(s) URLs require a host; custom schemes (e.g. youtube://, homeassistant://) open the matching app.
+              maxLength: 2048
+              type: string
+          required:
+            - url
+          type: object
+      required:
+        - template
+      title: Log
+      type: object
     ContentSteps:
       additionalProperties: true
       description: Multi-step workflow showing the current step out of a total (e.g. CI pipeline jobs).
@@ -1406,6 +1788,9 @@ components:
           type:
             - array
             - "null"
+        emails:
+          description: "Allow this key to send transactional emails (default: false)"
+          type: boolean
         name:
           description: Human-readable name for the integration key
           maxLength: 256
@@ -2009,6 +2394,9 @@ components:
         created_at:
           format: date-time
           type: string
+        emails:
+          description: Whether this key can send transactional emails (POST /emails)
+          type: boolean
         id:
           type: string
         is_default:
@@ -2042,6 +2430,7 @@ components:
         - is_default
         - notifications
         - widgets
+        - emails
         - created_at
       type: object
     IntegrationKeyResponse:
@@ -2056,6 +2445,8 @@ components:
         created_at:
           format: date-time
           type: string
+        emails:
+          type: boolean
         id:
           type: string
         is_default:
@@ -2080,7 +2471,34 @@ components:
         - is_default
         - notifications
         - widgets
+        - emails
         - created_at
+      type: object
+    IntroOfferEligibilityInputBody:
+      additionalProperties: false
+      properties:
+        app_transaction_id:
+          description: Device app transaction id (StoreKit AppTransaction.appTransactionID)
+          maxLength: 255
+          minLength: 1
+          type: string
+        product_id:
+          description: Subscription product identifier the offer applies to
+          maxLength: 255
+          minLength: 1
+          type: string
+      required:
+        - product_id
+        - app_transaction_id
+      type: object
+    IntroOfferEligibilityOutputBody:
+      additionalProperties: false
+      properties:
+        compact_jws:
+          description: Signed JWS overriding Apple's intro-offer eligibility check
+          type: string
+      required:
+        - compact_jws
       type: object
     LinkGrantee:
       additionalProperties: false
@@ -2218,6 +2636,19 @@ components:
             - "null"
       required:
         - items
+      type: object
+    LogLine:
+      additionalProperties: false
+      properties:
+        at:
+          format: int64
+          type: integer
+        level:
+          type: string
+        text:
+          type: string
+      required:
+        - text
       type: object
     MediaAttachment:
       additionalProperties: false
@@ -2806,9 +3237,11 @@ components:
           discriminator:
             mapping:
               alert: "#/components/schemas/ContentAlert"
+              board: "#/components/schemas/ContentBoard"
               countdown: "#/components/schemas/ContentCountdown"
               gauge: "#/components/schemas/ContentGauge"
               generic: "#/components/schemas/ContentGeneric"
+              log: "#/components/schemas/ContentLog"
               steps: "#/components/schemas/ContentSteps"
               timeline: "#/components/schemas/ContentTimeline"
             propertyName: template
@@ -2825,6 +3258,10 @@ components:
               title: Gauge
             - $ref: "#/components/schemas/ContentTimeline"
               title: Timeline
+            - $ref: "#/components/schemas/ContentBoard"
+              title: Board
+            - $ref: "#/components/schemas/ContentLog"
+              title: Log
         priority:
           format: int64
           type: integer
@@ -2854,6 +3291,9 @@ components:
           items:
             type: string
           type: array
+        emails:
+          description: Allow this key to send transactional emails
+          type: boolean
         notifications:
           description: Allow this key to create notifications
           type: boolean
@@ -2935,21 +3375,55 @@ components:
           format: int64
           readOnly: true
           type: integer
+        emails_limit:
+          format: int64
+          readOnly: true
+          type: integer
+        emails_used:
+          format: int64
+          readOnly: true
+          type: integer
         id:
           description: Server-assigned user ID.
           readOnly: true
           type: string
+        live_activity_updates_limit:
+          format: int64
+          readOnly: true
+          type: integer
+        live_activity_updates_used:
+          format: int64
+          readOnly: true
+          type: integer
         nickname:
           description: Display name. Set via the iOS app — not writable from integration keys.
           readOnly: true
           type:
             - string
             - "null"
+        notifications_limit:
+          format: int64
+          readOnly: true
+          type: integer
+        notifications_used:
+          format: int64
+          readOnly: true
+          type: integer
         notifications_used_month:
           description: "Paid-tier only: month-to-date notifications count. Free tier reads notifications_used (which already carries the monthly value)."
           format: int64
           readOnly: true
           type: integer
+        quota_period_month:
+          description: YYYYMM bucket for the current monthly billing period (UTC).
+          format: int64
+          readOnly: true
+          type: integer
+        quota_resets_at:
+          description: Instant the active notifications counter resets — next UTC midnight for paid tier, next UTC month for free tier.
+          format: date-time
+          readOnly: true
+          type: string
         quota_resets_day_at:
           description: "Paid-tier only: instant the daily counters reset — next UTC midnight."
           format: date-time
@@ -2959,6 +3433,14 @@ components:
           description: Whether the user has an active App Store subscription. Required for create/update activity calls.
           readOnly: true
           type: boolean
+        widget_updates_limit:
+          format: int64
+          readOnly: true
+          type: integer
+        widget_updates_used:
+          format: int64
+          readOnly: true
+          type: integer
       required:
         - id
         - nickname
@@ -3374,6 +3856,13 @@ paths:
           required: true
           schema:
             type: string
+        - description: Comma-separated extras to include in the response. Currently supports 'log_backlog' — the server-accumulated rolling log history for the log template (newest-first, up to 1000 lines / ~300 KiB). Omitted by default.
+          explode: false
+          in: query
+          name: include
+          schema:
+            description: Comma-separated extras to include in the response. Currently supports 'log_backlog' — the server-accumulated rolling log history for the log template (newest-first, up to 1000 lines / ~300 KiB). Omitted by default.
+            type: string
       responses:
         "200":
           content:
@@ -3526,7 +4015,7 @@ paths:
         - Auth
   /emails:
     post:
-      description: Sends a transactional email to a verified, non-unsubscribed recipient of the calling account. Rejects unverified recipients (403) and silently skips suppressed addresses. Reuses the notifications integration-key capability.
+      description: Sends a transactional email to a verified, non-unsubscribed recipient of the calling account. Rejects unverified recipients (403) and silently skips suppressed addresses. Requires the emails integration-key capability.
       operationId: sendEmail
       requestBody:
         content:
@@ -3588,6 +4077,7 @@ paths:
       summary: Send transactional email
       tags:
         - Email
+      x-require-emails: true
   /health:
     get:
       operationId: getHealth
