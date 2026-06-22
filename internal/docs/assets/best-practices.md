@@ -43,13 +43,17 @@ General rules for any code that talks to the PushWard REST API
 Writing Live Activity content that renders well on the Dynamic Island and Lock
 Screen.
 
-- **Pick the right template.** Six templates, each with a distinct layout:
+- **Pick the right template.** Eight templates, each with a distinct layout:
   `generic` (progress for builds/downloads/deploys), `countdown` (server-managed
   timer with automatic warning/completion pushes), `steps` (CI/CD multi-stage
   matrix), `alert` (severity-based monitoring with deep links), `gauge`
   (numeric value within min/max, progress auto-computed server-side), `timeline`
   (real-time sparkline; each push appends a data point and the server keeps the
-  history). Always set `content.template`.
+  history), `board` (a grid of 1–4 labeled status tiles — room sensors, service
+  health — `tiles` replaced wholesale per update), `log` (a scrolling feed of
+  1–20 newest-first `lines`, replaced wholesale per update; the server also keeps
+  a rolling backlog readable via `GET /activities/{slug}?include=log_backlog`).
+  Always set `content.template`.
 - **Two-phase end.** To end an activity with a clean final frame: first `PATCH`
   to `state="ongoing"` with the *final* content (so the last visible frame is
   correct), pause briefly so the user sees it, then `PATCH` to `state="ended"` to
