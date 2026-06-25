@@ -172,12 +172,15 @@ func (p *Provider) Close() {
 
 // setClock overrides the time source on the provider, its credential cache, and
 // (when in-memory) its store, so tests can simulate token expiry and the
-// refresh-rotation grace window. Test-only.
+// refresh-rotation grace window. Test-only. The cred-cache and store clocks are
+// swapped under their locks because the background janitor reads them
+// concurrently; p.now and p.csrf.now have no concurrent reader (only request
+// handlers, which the test sequences after this call) so they are set directly.
 func (p *Provider) setClock(now func() time.Time) {
 	p.now = now
-	p.cred.now = now
+	p.cred.setNow(now)
 	p.csrf.now = now
 	if m, ok := p.store.(*memoryStore); ok {
-		m.now = now
+		m.setNow(now)
 	}
 }

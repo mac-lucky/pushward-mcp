@@ -57,6 +57,15 @@ var relayTestProviders = []string{
 	"proxmox", "radarr", "sonarr", "unmanic", "uptimekuma",
 }
 
+// isJSONObject reports whether s is a syntactically valid JSON object (not a bare
+// scalar or array). The content_json/payload_json tool params all document a "JSON
+// object", so a scalar/array should fail at the boundary with a clear message
+// rather than reaching the upstream API as a confusing 4xx.
+func isJSONObject(s string) bool {
+	t := strings.TrimSpace(s)
+	return len(t) > 0 && t[0] == '{' && json.Valid([]byte(s))
+}
+
 func registerCompositeTools(s *mcpserver.MCPServer, api *client.APIClient, relay *client.RelayClient) {
 	// relay is nil in http/remote mode; derive the gate from it so the enable
 	// state has a single source (the presence of a relay client).
@@ -350,6 +359,7 @@ func handleTestActivityLifecycle(ctx context.Context, req mcp.CallToolRequest, a
 		Content: ongoingContent,
 	}); err != nil {
 		steps = append(steps, fmt.Sprintf("2. Update %s: FAIL (%v)", stateOngoing, err))
+		steps = append(steps, cleanupAfterFailure(ctx, api, slug, cleanup))
 		return mcp.NewToolResultError(strings.Join(steps, "\n")), nil
 	}
 	steps = append(steps, fmt.Sprintf("2. Updated to %s: OK", stateOngoing))
@@ -366,6 +376,7 @@ func handleTestActivityLifecycle(ctx context.Context, req mcp.CallToolRequest, a
 		Content: endedContent,
 	}); err != nil {
 		steps = append(steps, fmt.Sprintf("4. Update %s: FAIL (%v)", stateEnded, err))
+		steps = append(steps, cleanupAfterFailure(ctx, api, slug, cleanup))
 		return mcp.NewToolResultError(strings.Join(steps, "\n")), nil
 	}
 	steps = append(steps, fmt.Sprintf("4. Updated to %s: OK", stateEnded))
@@ -392,6 +403,20 @@ func handleTestActivityLifecycle(ctx context.Context, req mcp.CallToolRequest, a
 		return mcp.NewToolResultError(out), nil
 	}
 	return mcp.NewToolResultText(out), nil
+}
+
+// cleanupAfterFailure best-effort-deletes the activity the lifecycle test created
+// when a mid-run update fails, so a transient PATCH error doesn't orphan the
+// activity (which would also block re-running the test with the same unique slug).
+// Returns a step line describing what it did. No-op when cleanup is disabled.
+func cleanupAfterFailure(ctx context.Context, api *client.APIClient, slug string, cleanup bool) string {
+	if !cleanup {
+		return "   Cleanup: skipped (cleanup=false); activity left in place"
+	}
+	if err := api.DeleteActivity(ctx, slug); err != nil {
+		return fmt.Sprintf("   Cleanup: FAIL (%v); activity may be orphaned", err)
+	}
+	return "   Cleanup: deleted the created activity"
 }
 
 // verifyActivityState fetches the activity and confirms its state equals want,
@@ -556,8 +581,8 @@ func handleEndActivity(ctx context.Context, req mcp.CallToolRequest, api *client
 	// Build content
 	var content json.RawMessage
 	if contentOverride != "" {
-		if !json.Valid([]byte(contentOverride)) {
-			return mcp.NewToolResultError("content_json is not valid JSON"), nil
+		if !isJSONObject(contentOverride) {
+			return mcp.NewToolResultError("content_json must be a JSON object"), nil
 		}
 		content = json.RawMessage(contentOverride)
 	} else {
@@ -646,6 +671,11 @@ func handleListActivities(ctx context.Context, req mcp.CallToolRequest, api *cli
 		return mcp.NewToolResultText(withTruncationNote(formatSummary(filtered), truncated)), nil
 	}
 
+	// Marshal a non-nil empty slice as "[]" rather than the literal "null" a nil
+	// slice produces, so a no-match filter reads as an empty list, not missing data.
+	if filtered == nil {
+		filtered = []map[string]any{}
+	}
 	out, _ := json.MarshalIndent(filtered, "", "  ")
 	return mcp.NewToolResultText(withTruncationNote(string(out), truncated)), nil
 }

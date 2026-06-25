@@ -97,6 +97,12 @@ func Load() (*Config, error) {
 	}
 
 	if cfg.Transport == TransportHTTP {
+		// http mode is multi-tenant: per-user tokens arrive via OAuth and ride in
+		// the request context. Drop any process-wide PUSHWARD_API_TOKEN so it can
+		// never become a silent shared fallback credential used as every user's
+		// identity (an env copy-paste foot-gun) if a request ever reaches the API
+		// client without a context token.
+		cfg.APIToken = ""
 		if cfg.ListenAddr == "" {
 			cfg.ListenAddr = ":8080"
 		}

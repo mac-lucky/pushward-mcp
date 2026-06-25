@@ -12,7 +12,15 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-const pgSchema = `
+// migrations are applied in order, each recorded in schema_migrations, under an
+// advisory lock so concurrently-booting replicas don't race the DDL. Migration 1
+// is the original schema (idempotent CREATE ... IF NOT EXISTS, so it no-ops on an
+// already-provisioned database and just records the version); later migrations
+// evolve it with idempotent ALTERs. APPEND new migrations — never edit or reorder
+// existing entries, or deployed databases will diverge.
+var migrations = []string{
+	// 1: initial schema.
+	`
 CREATE TABLE IF NOT EXISTS oauth_clients (
   client_id     TEXT PRIMARY KEY,
   client_name   TEXT NOT NULL DEFAULT '',
@@ -49,7 +57,18 @@ CREATE TABLE IF NOT EXISTS oauth_user_credentials (
   encrypted_hlk BYTEA NOT NULL,
   created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at    TIMESTAMPTZ NOT NULL DEFAULT now()
-);`
+);`,
+	// 2: track last-write time on clients for the CIMD re-fetch TTL and
+	// stale-client cleanup, and index it so the cleanup DELETE is cheap.
+	`
+ALTER TABLE oauth_clients ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT now();
+CREATE INDEX IF NOT EXISTS idx_oauth_clients_updated ON oauth_clients(updated_at);`,
+}
+
+// migrationAdvisoryLock is a fixed key for pg_advisory_lock so only one pod runs
+// migrations at a time (CREATE/ALTER ... IF NOT EXISTS are not race-safe against
+// the system catalogs on simultaneous first boot).
+const migrationAdvisoryLock int64 = 0x70757368776d6967 // "pushwmig"
 
 type pgStore struct {
 	pool *pgxpool.Pool
@@ -93,19 +112,63 @@ func newPostgresStore(ctx context.Context, dsn, passwordFile string) (*pgStore, 
 		pool.Close()
 		return nil, fmt.Errorf("ping postgres: %w", err)
 	}
-	if _, err := pool.Exec(ctx, pgSchema); err != nil {
+	s := &pgStore{pool: pool}
+	if err := s.migrate(ctx); err != nil {
 		pool.Close()
 		return nil, fmt.Errorf("apply schema: %w", err)
 	}
-	return &pgStore{pool: pool}, nil
+	return s, nil
+}
+
+// migrate applies any unapplied migrations in order under a session-level advisory
+// lock, so simultaneously-booting replicas serialize their DDL instead of racing
+// CREATE/ALTER ... IF NOT EXISTS against the catalogs. It is idempotent: an
+// already-provisioned database whose schema_migrations is empty records the
+// existing schema as version 1 (the CREATE IF NOT EXISTS no-op), then applies the
+// rest.
+func (s *pgStore) migrate(ctx context.Context) error {
+	conn, err := s.pool.Acquire(ctx)
+	if err != nil {
+		return fmt.Errorf("acquire migration conn: %w", err)
+	}
+	defer conn.Release()
+
+	if _, err := conn.Exec(ctx, `SELECT pg_advisory_lock($1)`, migrationAdvisoryLock); err != nil {
+		return fmt.Errorf("acquire migration lock: %w", err)
+	}
+	defer func() { _, _ = conn.Exec(ctx, `SELECT pg_advisory_unlock($1)`, migrationAdvisoryLock) }()
+
+	if _, err := conn.Exec(ctx, `CREATE TABLE IF NOT EXISTS schema_migrations (
+  version    INT PRIMARY KEY,
+  applied_at TIMESTAMPTZ NOT NULL DEFAULT now()
+)`); err != nil {
+		return fmt.Errorf("ensure schema_migrations: %w", err)
+	}
+	var current int
+	if err := conn.QueryRow(ctx, `SELECT COALESCE(MAX(version), 0) FROM schema_migrations`).Scan(&current); err != nil {
+		return fmt.Errorf("read schema version: %w", err)
+	}
+	for i, stmt := range migrations {
+		v := i + 1
+		if v <= current {
+			continue
+		}
+		if _, err := conn.Exec(ctx, stmt); err != nil {
+			return fmt.Errorf("apply migration %d: %w", v, err)
+		}
+		if _, err := conn.Exec(ctx, `INSERT INTO schema_migrations (version) VALUES ($1)`, v); err != nil {
+			return fmt.Errorf("record migration %d: %w", v, err)
+		}
+	}
+	return nil
 }
 
 func (s *pgStore) SaveClient(ctx context.Context, c *Client) error {
 	_, err := s.pool.Exec(ctx,
-		`INSERT INTO oauth_clients (client_id, client_name, redirect_uris, is_cimd)
-		 VALUES ($1,$2,$3,$4)
+		`INSERT INTO oauth_clients (client_id, client_name, redirect_uris, is_cimd, updated_at)
+		 VALUES ($1,$2,$3,$4, now())
 		 ON CONFLICT (client_id) DO UPDATE SET client_name=EXCLUDED.client_name,
-		   redirect_uris=EXCLUDED.redirect_uris, is_cimd=EXCLUDED.is_cimd`,
+		   redirect_uris=EXCLUDED.redirect_uris, is_cimd=EXCLUDED.is_cimd, updated_at=now()`,
 		c.ID, c.Name, c.RedirectURIs, c.IsCIMD)
 	return err
 }
@@ -113,9 +176,9 @@ func (s *pgStore) SaveClient(ctx context.Context, c *Client) error {
 func (s *pgStore) GetClient(ctx context.Context, id string) (*Client, error) {
 	c := &Client{}
 	err := s.pool.QueryRow(ctx,
-		`SELECT client_id, client_name, redirect_uris, is_cimd, created_at
+		`SELECT client_id, client_name, redirect_uris, is_cimd, created_at, updated_at
 		 FROM oauth_clients WHERE client_id=$1`, id).
-		Scan(&c.ID, &c.Name, &c.RedirectURIs, &c.IsCIMD, &c.CreatedAt)
+		Scan(&c.ID, &c.Name, &c.RedirectURIs, &c.IsCIMD, &c.CreatedAt, &c.UpdatedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, ErrNotFound
 	}
@@ -145,11 +208,13 @@ func (s *pgStore) ConsumeAuthCode(ctx context.Context, codeHash string) (*AuthCo
 	if !errors.Is(err, pgx.ErrNoRows) {
 		return nil, err
 	}
-	// Distinguish reuse (used_at set) from absent/expired.
+	// Distinguish reuse (used_at set) from absent/expired. On reuse, surface the
+	// user_id so the caller can revoke the grant's token family (replay = attack).
 	var used *time.Time
-	e2 := s.pool.QueryRow(ctx, `SELECT used_at FROM oauth_auth_codes WHERE code_hash=$1`, codeHash).Scan(&used)
+	var userID string
+	e2 := s.pool.QueryRow(ctx, `SELECT used_at, user_id FROM oauth_auth_codes WHERE code_hash=$1`, codeHash).Scan(&used, &userID)
 	if e2 == nil && used != nil {
-		return nil, ErrCodeAlreadyUsed
+		return &AuthCode{CodeHash: codeHash, UserID: userID}, ErrCodeAlreadyUsed
 	}
 	return nil, ErrNotFound
 }
@@ -213,6 +278,18 @@ func (s *pgStore) Cleanup(ctx context.Context) error {
 	if _, err := s.pool.Exec(ctx,
 		`DELETE FROM oauth_refresh_tokens
 		 WHERE expires_at < now() OR (revoked_at IS NOT NULL AND revoked_at < now() - interval '1 hour')`); err != nil {
+		return err
+	}
+	// Prune abandoned clients so anonymous DCR/CIMD traffic cannot grow the table
+	// without bound: drop clients not written within clientRetention that hold no
+	// active refresh token and no live authorization code. Run last so the token
+	// deletes above have already removed expired grants this pass.
+	if _, err := s.pool.Exec(ctx,
+		`DELETE FROM oauth_clients c
+		 WHERE c.updated_at < now() - make_interval(secs => $1)
+		   AND NOT EXISTS (SELECT 1 FROM oauth_refresh_tokens r WHERE r.client_id = c.client_id)
+		   AND NOT EXISTS (SELECT 1 FROM oauth_auth_codes a WHERE a.client_id = c.client_id)`,
+		clientRetention.Seconds()); err != nil {
 		return err
 	}
 	return nil

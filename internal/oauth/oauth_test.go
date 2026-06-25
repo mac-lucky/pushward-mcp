@@ -292,13 +292,6 @@ func TestOAuthFullFlow(t *testing.T) {
 		t.Fatalf("token response missing tokens: %v", tok)
 	}
 
-	// Code reuse must fail.
-	res, _ = http.PostForm(srv.URL+"/oauth/token", tokForm)
-	if res.StatusCode == http.StatusOK {
-		t.Fatal("authorization code reuse must be rejected")
-	}
-	res.Body.Close()
-
 	// Call /mcp with the access token → inner handler sees the decrypted hlk.
 	req, _ = http.NewRequest(http.MethodGet, srv.URL+"/mcp", nil)
 	req.Header.Set("Authorization", "Bearer "+access)
@@ -333,6 +326,16 @@ func TestOAuthFullFlow(t *testing.T) {
 	res, _ = http.PostForm(srv.URL+"/oauth/token", rf)
 	if res.StatusCode == http.StatusOK {
 		t.Fatal("reuse of a rotated refresh token must be rejected")
+	}
+	res.Body.Close()
+
+	// Authorization-code reuse must be rejected. This is checked last because a
+	// replayed code is treated as a compromised grant and revokes the user's
+	// refresh-token family, which would invalidate the refresh rotation tested
+	// above if it ran earlier.
+	res, _ = http.PostForm(srv.URL+"/oauth/token", tokForm)
+	if res.StatusCode == http.StatusOK {
+		t.Fatal("authorization code reuse must be rejected")
 	}
 	res.Body.Close()
 }
@@ -835,6 +838,35 @@ func TestConsumeAuthCode_MemoryContract(t *testing.T) {
 	}
 }
 
+// TestConsumeAuthCode_ReuseSurfacesUserID verifies the reuse path returns the
+// user_id (so the token endpoint can revoke that grant's refresh-token family) and
+// that reuse stays detectable even after the code expires — matching the Postgres
+// retention window so dev (memory) and prod (pg) behave the same.
+func TestConsumeAuthCode_ReuseSurfacesUserID(t *testing.T) {
+	m := newMemoryStore()
+	ctx := context.Background()
+	clk := time.Now()
+	m.now = func() time.Time { return clk }
+
+	if err := m.SaveAuthCode(ctx, &AuthCode{CodeHash: "h", UserID: "user-7", ExpiresAt: clk.Add(time.Minute)}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := m.ConsumeAuthCode(ctx, "h"); err != nil {
+		t.Fatalf("first consume must succeed: %v", err)
+	}
+	ac, err := m.ConsumeAuthCode(ctx, "h")
+	if !errors.Is(err, ErrCodeAlreadyUsed) || ac == nil || ac.UserID != "user-7" {
+		t.Fatalf("replay must be ErrCodeAlreadyUsed with the user_id, got %v %+v", err, ac)
+	}
+
+	// After expiry the used code must STILL report reuse (not ErrNotFound).
+	clk = clk.Add(2 * time.Minute)
+	ac2, err := m.ConsumeAuthCode(ctx, "h")
+	if !errors.Is(err, ErrCodeAlreadyUsed) || ac2 == nil || ac2.UserID != "user-7" {
+		t.Fatalf("expired-but-used code must still report reuse with user_id, got %v %+v", err, ac2)
+	}
+}
+
 func TestRevokeRefreshToken_WinsOnce(t *testing.T) {
 	m := newMemoryStore()
 	ctx := context.Background()
@@ -893,6 +925,58 @@ func TestIsBlockedIP_CGNAT(t *testing.T) {
 	// 100.128.0.0 is just outside the CGNAT /10 and must remain reachable.
 	if isBlockedIP(net.ParseIP("100.128.0.1")) {
 		t.Fatal("100.128.0.1 is a public address and must be allowed")
+	}
+}
+
+// TestIsBlockedIP_IPv6Transition covers the IPv6 transition forms (NAT64, 6to4,
+// IPv4-compatible) that embed an internal IPv4 — the net.IP helpers miss these
+// because they only de-map the ::ffff: form, so a CIMD host whose AAAA record is
+// one of them could otherwise tunnel an SSRF to cloud metadata / RFC1918.
+func TestIsBlockedIP_IPv6Transition(t *testing.T) {
+	for _, s := range []string{
+		"64:ff9b::a9fe:a9fe", // NAT64 of 169.254.169.254 (cloud metadata)
+		"::169.254.169.254",  // IPv4-compatible of the metadata IP
+		"2002:a9fe:a9fe::",   // 6to4 embedding 169.254.169.254
+		"64:ff9b::a00:1",     // NAT64 of 10.0.0.1
+		"2002:c0a8:101::",    // 6to4 embedding 192.168.1.1
+		"2001:0:1234::",      // Teredo prefix
+	} {
+		if !isBlockedIP(net.ParseIP(s)) {
+			t.Fatalf("%s embeds/relays an internal address and must be blocked (SSRF)", s)
+		}
+	}
+	// A plain public IPv6 address must still be reachable.
+	if isBlockedIP(net.ParseIP("2606:4700:4700::1111")) {
+		t.Fatal("a public IPv6 address must be allowed")
+	}
+}
+
+// TestClientIP_TrustedProxyGating verifies the forwarding headers are honored only
+// for a trusted (in-cluster) peer, so a directly-connecting public client cannot
+// forge its rate-limit key.
+func TestClientIP_TrustedProxyGating(t *testing.T) {
+	p := &Provider{cfg: &Config{TrustProxy: true}}
+
+	// In-cluster proxy peer (private RemoteAddr) → honor CF-Connecting-IP.
+	r := httptest.NewRequest(http.MethodGet, "/oauth/token", nil)
+	r.RemoteAddr = "10.0.0.5:12345"
+	r.Header.Set("CF-Connecting-IP", "203.0.113.9")
+	if got := p.clientIP(r); got != "203.0.113.9" {
+		t.Fatalf("trusted private peer must honor CF-Connecting-IP, got %q", got)
+	}
+
+	// Public peer connecting directly → ignore the forged header, use RemoteAddr.
+	r2 := httptest.NewRequest(http.MethodGet, "/oauth/token", nil)
+	r2.RemoteAddr = "198.51.100.7:443"
+	r2.Header.Set("CF-Connecting-IP", "10.0.0.1")
+	if got := p.clientIP(r2); got != "198.51.100.7" {
+		t.Fatalf("untrusted public peer must fall back to RemoteAddr, got %q", got)
+	}
+
+	// TrustProxy disabled → always RemoteAddr regardless of peer.
+	p.cfg.TrustProxy = false
+	if got := p.clientIP(r); got != "10.0.0.5" {
+		t.Fatalf("TrustProxy off must use RemoteAddr, got %q", got)
 	}
 }
 

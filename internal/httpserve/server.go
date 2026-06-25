@@ -9,13 +9,28 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"net"
 	"net/http"
+	"sync"
 	"time"
 
 	mcpserver "github.com/mark3labs/mcp-go/server"
 
 	"github.com/mac-lucky/pushward-mcp/internal/client"
 	"github.com/mac-lucky/pushward-mcp/internal/config"
+)
+
+const (
+	// maxMCPBytes caps a single /mcp JSON-RPC request body. The mcp-go streamable
+	// handler reads the body with an unbounded io.ReadAll, so without this a single
+	// authenticated caller could buffer an arbitrarily large body into memory and
+	// OOM the pod. Mirrors the defensive cap the OAuth endpoints already apply.
+	maxMCPBytes = 4 << 20 // 4 MiB
+	// maxConns bounds concurrent accepted connections at the origin. WriteTimeout
+	// is 0 (streaming responses must not be cut off), so a slow/never-reading client
+	// would otherwise pin a goroutine + FD indefinitely; this caps how many such
+	// connections a single replica will hold.
+	maxConns = 1024
 )
 
 // Authenticator mounts the OAuth discovery/authorize/token routes and guards
@@ -47,7 +62,7 @@ func Run(ctx context.Context, cfg *config.Config, mcp *mcpserver.MCPServer, auth
 	} else {
 		mcpHandler = passthroughBearer(streamable)
 	}
-	mux.Handle("/mcp", corsMCP(mcpHandler))
+	mux.Handle("/mcp", corsMCP(limitBody(maxMCPBytes, mcpHandler)))
 	mux.HandleFunc("/health", liveness)
 	mux.HandleFunc("/ready", readiness)
 
@@ -69,10 +84,16 @@ func Run(ctx context.Context, cfg *config.Config, mcp *mcpserver.MCPServer, auth
 		metricsSrv = &http.Server{Addr: cfg.MetricsAddr, Handler: mmux, ReadHeaderTimeout: 10 * time.Second}
 	}
 
+	ln, err := net.Listen("tcp", cfg.ListenAddr)
+	if err != nil {
+		return err
+	}
+	ln = newLimitListener(ln, maxConns)
+
 	errCh := make(chan error, 2)
 	go func() {
-		log.Info("mcp http server listening", "addr", cfg.ListenAddr)
-		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+		log.Info("mcp http server listening", "addr", cfg.ListenAddr, "maxConns", maxConns)
+		if err := srv.Serve(ln); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			errCh <- err
 		}
 	}()
@@ -149,6 +170,52 @@ func corsMCP(next http.Handler) http.Handler {
 		}
 		next.ServeHTTP(w, r)
 	})
+}
+
+// limitBody caps the request body a downstream handler can read, so a single
+// caller cannot stream an unbounded body that the mcp-go handler would buffer
+// whole into memory. OPTIONS preflights carry no body, so this is a no-op for them.
+func limitBody(max int64, next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		r.Body = http.MaxBytesReader(w, r.Body, max)
+		next.ServeHTTP(w, r)
+	})
+}
+
+// limitListener bounds the number of simultaneously-accepted connections. It is a
+// tiny in-tree equivalent of golang.org/x/net/netutil.LimitListener (avoids adding
+// that dependency): Accept blocks once n connections are live and resumes as their
+// Close releases a slot. This caps FD/goroutine growth from slow-read clients given
+// the server runs with WriteTimeout=0 for streaming.
+type limitListener struct {
+	net.Listener
+	sem chan struct{}
+}
+
+func newLimitListener(l net.Listener, n int) net.Listener {
+	return &limitListener{Listener: l, sem: make(chan struct{}, n)}
+}
+
+func (l *limitListener) Accept() (net.Conn, error) {
+	l.sem <- struct{}{}
+	c, err := l.Listener.Accept()
+	if err != nil {
+		<-l.sem
+		return nil, err
+	}
+	return &limitConn{Conn: c, release: func() { <-l.sem }}, nil
+}
+
+type limitConn struct {
+	net.Conn
+	once    sync.Once
+	release func()
+}
+
+func (c *limitConn) Close() error {
+	err := c.Conn.Close()
+	c.once.Do(c.release)
+	return err
 }
 
 // passthroughBearer is the dev-only fallback when no Authenticator is wired: it

@@ -65,6 +65,14 @@ func (c *credCache) invalidate(userID string) {
 	delete(c.entries, userID)
 }
 
+// setNow swaps the clock under the lock so the background janitor's sweep (which
+// reads c.now concurrently) never races a test-only clock override.
+func (c *credCache) setNow(now func() time.Time) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.now = now
+}
+
 // sweep removes all expired entries; called periodically by the janitor.
 func (c *credCache) sweep() {
 	c.mu.Lock()

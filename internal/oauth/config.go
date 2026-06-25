@@ -13,6 +13,7 @@ package oauth
 
 import (
 	"fmt"
+	"net"
 	"net/url"
 	"os"
 	"strconv"
@@ -37,6 +38,17 @@ const (
 	credCacheTTL = 60 * time.Second
 	// credCacheMax hard-caps the decrypted-credential cache size.
 	credCacheMax = 50_000
+	// cimdCacheTTL bounds how long a fetched Client ID Metadata Document is served
+	// from the store before it is re-fetched, so a client that rotates a
+	// redirect_uri (or has one removed after a compromise) is not honored forever.
+	cimdCacheTTL = 24 * time.Hour
+	// clientRetention is how long a registered/cached client with no active refresh
+	// token and no live authorization code is kept before Cleanup prunes it, so the
+	// clients table cannot grow without bound from anonymous DCR/CIMD traffic.
+	clientRetention = 24 * time.Hour
+	// clientCacheMax hard-caps the in-memory store's client map (the Postgres store
+	// is bounded by clientRetention cleanup instead).
+	clientCacheMax = 50_000
 )
 
 // Config holds the OAuth server configuration, loaded from environment.
@@ -72,6 +84,13 @@ type Config struct {
 	// mint a fresh rate-limit bucket per request. Defaults true (always hosted
 	// behind the gateway); set PUSHWARD_MCP_TRUST_PROXY=false for direct exposure.
 	TrustProxy bool
+	// TrustedProxyCIDRs optionally restricts which peer (RemoteAddr) may set the
+	// forwarding headers TrustProxy honors. Parsed from PUSHWARD_MCP_TRUSTED_PROXY_CIDRS
+	// (comma-separated CIDRs). When empty, the forwarding headers are honored only
+	// when the immediate peer is itself in a private/loopback/CGNAT range (i.e. the
+	// in-cluster proxy tier), so a directly-connecting public client can never spoof
+	// its rate-limit key. Mirrors pushward-server's trusted_proxy_cidrs.
+	TrustedProxyCIDRs []*net.IPNet
 }
 
 // LoadConfig reads OAuth configuration from the environment. apiBaseURL is the
@@ -93,6 +112,19 @@ func LoadConfig(apiBaseURL string) (*Config, error) {
 			return nil, fmt.Errorf("invalid PUSHWARD_MCP_TRUST_PROXY %q: %w", v, err)
 		}
 		cfg.TrustProxy = b
+	}
+	if v := strings.TrimSpace(os.Getenv("PUSHWARD_MCP_TRUSTED_PROXY_CIDRS")); v != "" {
+		for _, part := range strings.Split(v, ",") {
+			part = strings.TrimSpace(part)
+			if part == "" {
+				continue
+			}
+			_, n, err := net.ParseCIDR(part)
+			if err != nil {
+				return nil, fmt.Errorf("invalid PUSHWARD_MCP_TRUSTED_PROXY_CIDRS entry %q: %w", part, err)
+			}
+			cfg.TrustedProxyCIDRs = append(cfg.TrustedProxyCIDRs, n)
+		}
 	}
 
 	if cfg.Issuer == "" {

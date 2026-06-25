@@ -475,8 +475,8 @@ func handleRelayGrafana(ctx context.Context, req mcp.CallToolRequest, relay *cli
 	if err != nil {
 		return mcp.NewToolResultError(err.Error()), nil
 	}
-	if !json.Valid([]byte(payloadStr)) {
-		return mcp.NewToolResultError("payload_json is not valid JSON"), nil
+	if !isJSONObject(payloadStr) {
+		return mcp.NewToolResultError("payload_json must be a JSON object"), nil
 	}
 	raw, err := relay.PostWebhook(ctx, "grafana", json.RawMessage(payloadStr))
 	if err != nil {
@@ -490,8 +490,8 @@ func handleRelayJellyfin(ctx context.Context, req mcp.CallToolRequest, relay *cl
 	if err != nil {
 		return mcp.NewToolResultError(err.Error()), nil
 	}
-	if !json.Valid([]byte(payloadStr)) {
-		return mcp.NewToolResultError("payload_json is not valid JSON"), nil
+	if !isJSONObject(payloadStr) {
+		return mcp.NewToolResultError("payload_json must be a JSON object"), nil
 	}
 	raw, err := relay.PostWebhook(ctx, "jellyfin", json.RawMessage(payloadStr))
 	if err != nil {
@@ -505,8 +505,8 @@ func handleRelayOverseerr(ctx context.Context, req mcp.CallToolRequest, relay *c
 	if err != nil {
 		return mcp.NewToolResultError(err.Error()), nil
 	}
-	if !json.Valid([]byte(payloadStr)) {
-		return mcp.NewToolResultError("payload_json is not valid JSON"), nil
+	if !isJSONObject(payloadStr) {
+		return mcp.NewToolResultError("payload_json must be a JSON object"), nil
 	}
 	raw, err := relay.PostWebhook(ctx, "overseerr", json.RawMessage(payloadStr))
 	if err != nil {
@@ -553,8 +553,8 @@ func handleRelayProwlarr(ctx context.Context, req mcp.CallToolRequest, relay *cl
 	if err != nil {
 		return mcp.NewToolResultError(err.Error()), nil
 	}
-	if !json.Valid([]byte(payloadStr)) {
-		return mcp.NewToolResultError("payload_json is not valid JSON"), nil
+	if !isJSONObject(payloadStr) {
+		return mcp.NewToolResultError("payload_json must be a JSON object"), nil
 	}
 	raw, err := relay.PostWebhook(ctx, "prowlarr", json.RawMessage(payloadStr))
 	if err != nil {
@@ -592,8 +592,8 @@ func handleRelayRadarr(ctx context.Context, req mcp.CallToolRequest, relay *clie
 	if err != nil {
 		return mcp.NewToolResultError(err.Error()), nil
 	}
-	if !json.Valid([]byte(payloadStr)) {
-		return mcp.NewToolResultError("payload_json is not valid JSON"), nil
+	if !isJSONObject(payloadStr) {
+		return mcp.NewToolResultError("payload_json must be a JSON object"), nil
 	}
 	raw, err := relay.PostWebhook(ctx, "radarr", json.RawMessage(payloadStr))
 	if err != nil {
@@ -607,8 +607,8 @@ func handleRelaySonarr(ctx context.Context, req mcp.CallToolRequest, relay *clie
 	if err != nil {
 		return mcp.NewToolResultError(err.Error()), nil
 	}
-	if !json.Valid([]byte(payloadStr)) {
-		return mcp.NewToolResultError("payload_json is not valid JSON"), nil
+	if !isJSONObject(payloadStr) {
+		return mcp.NewToolResultError("payload_json must be a JSON object"), nil
 	}
 	raw, err := relay.PostWebhook(ctx, "sonarr", json.RawMessage(payloadStr))
 	if err != nil {
@@ -643,8 +643,8 @@ func handleRelayUptimekuma(ctx context.Context, req mcp.CallToolRequest, relay *
 	if err != nil {
 		return mcp.NewToolResultError(err.Error()), nil
 	}
-	if !json.Valid([]byte(payloadStr)) {
-		return mcp.NewToolResultError("payload_json is not valid JSON"), nil
+	if !isJSONObject(payloadStr) {
+		return mcp.NewToolResultError("payload_json must be a JSON object"), nil
 	}
 	raw, err := relay.PostWebhook(ctx, "uptimekuma", json.RawMessage(payloadStr))
 	if err != nil {

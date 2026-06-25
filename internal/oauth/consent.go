@@ -23,13 +23,20 @@ var consentTmpl = template.Must(template.New("consent").Parse(`<!doctype html>
   button { margin-top: 1.25rem; width: 100%; padding: .75rem; border: 0; border-radius: 10px; background: #2c6ef2; color: #fff; font: inherit; font-weight: 600; cursor: pointer; }
   .err { color: #d33; font-size: .9rem; margin-top: .75rem; }
   .scope { font-size: .85rem; opacity: .75; margin-top: 1rem; }
+  .warn { font-size: .85rem; color: #b76b00; margin: .5rem 0 0; }
+  .dest { font-size: .9rem; margin-top: 1rem; padding: .6rem .7rem; border-radius: 8px; background: color-mix(in srgb, currentColor 8%, transparent); }
   code { background: color-mix(in srgb, currentColor 12%, transparent); padding: .1rem .3rem; border-radius: 5px; }
 </style>
 </head>
 <body>
   <div class="card">
     <h1>Authorize access</h1>
+{{- if .Verified}}
     <p class="sub"><strong>{{.ClientName}}</strong> is requesting access to your PushWard account.</p>
+{{- else}}
+    <p class="sub">An app identifying itself as <strong>{{.ClientName}}</strong> is requesting access to your PushWard account.</p>
+    <p class="warn">⚠ This name is not verified. Only continue if you recognize the destination below.</p>
+{{- end}}
     {{if .Error}}<p class="err">{{.Error}}</p>{{end}}
     <form method="post" action="/oauth/authorize">
       <label for="api_key">PushWard API key</label>
@@ -44,7 +51,7 @@ var consentTmpl = template.Must(template.New("consent").Parse(`<!doctype html>
       <input type="hidden" name="code_challenge_method" value="{{.CodeChallengeMethod}}">
       <input type="hidden" name="resource" value="{{.Resource}}">
       <button type="submit">Authorize</button>
-      <p class="scope">Redirecting to <code>{{.RedirectHost}}</code> after you approve.</p>
+      <p class="dest">After you approve, your authorization will be sent to <code>{{.RedirectHost}}</code>. Make sure you trust it.</p>
     </form>
   </div>
 </body>
@@ -52,6 +59,7 @@ var consentTmpl = template.Must(template.New("consent").Parse(`<!doctype html>
 
 type consentData struct {
 	ClientName          string
+	Verified            bool // CIMD (origin-verified) client vs anonymous DCR
 	ResponseType        string
 	ClientID            string
 	RedirectURI         string
