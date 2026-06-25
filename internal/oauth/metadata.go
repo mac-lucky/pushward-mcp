@@ -78,7 +78,7 @@ func setCORS(w http.ResponseWriter) {
 // and OPTIONS preflight handling so browser-based connector flows (Claude.ai,
 // ChatGPT) can complete the token exchange / dynamic registration. These are
 // public-client (PKCE) endpoints carrying no cookie or client secret, so
-// Allow-Origin:* is safe — the auth code + PKCE verifier in the request body are
+// Allow-Origin:* is safe - the auth code + PKCE verifier in the request body are
 // the only credentials, and they are useless to a cross-origin attacker.
 func corsPOST(next http.HandlerFunc) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

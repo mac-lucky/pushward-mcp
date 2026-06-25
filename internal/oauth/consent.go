@@ -3,7 +3,7 @@ package oauth
 import "html/template"
 
 // consentTmpl renders the authorization consent screen. The user pastes their
-// PushWard API key (hlk_…) once; it is validated upstream and then stored
+// PushWard API key (hlk_...) once; it is validated upstream and then stored
 // encrypted server-side. All OAuth parameters are carried as hidden fields and
 // a CSRF token guards the POST.
 var consentTmpl = template.Must(template.New("consent").Parse(`<!doctype html>
@@ -40,7 +40,7 @@ var consentTmpl = template.Must(template.New("consent").Parse(`<!doctype html>
     {{if .Error}}<p class="err">{{.Error}}</p>{{end}}
     <form method="post" action="/oauth/authorize">
       <label for="api_key">PushWard API key</label>
-      <input id="api_key" name="api_key" type="password" placeholder="hlk_…" autocomplete="off" autocapitalize="off" spellcheck="false" required>
+      <input id="api_key" name="api_key" type="password" placeholder="hlk_..." autocomplete="off" autocapitalize="off" spellcheck="false" required>
       <input type="hidden" name="csrf" value="{{.CSRF}}">
       <input type="hidden" name="response_type" value="{{.ResponseType}}">
       <input type="hidden" name="client_id" value="{{.ClientID}}">

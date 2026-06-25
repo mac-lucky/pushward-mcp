@@ -212,7 +212,7 @@ func TestDoJSON_ResponseBodyOverCapErrors(t *testing.T) {
 }
 
 func TestDoJSON_ResponseBodyAtCapSucceeds(t *testing.T) {
-	// A body of *exactly* maxRespBytes (1MB) must be returned intact — this pins
+	// A body of *exactly* maxRespBytes (1MB) must be returned intact - this pins
 	// the `len > maxRespBytes` boundary so an off-by-one regression to `>=`
 	// (which would wrongly reject a legitimate 1MB body) is caught.
 	const cap = 1 << 20
@@ -591,7 +591,7 @@ func TestAPIClient_SendEmail_HTMLBody(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		body, _ := io.ReadAll(r.Body)
 		// Decode into the value (not raw bytes): json.Marshal HTML-escapes < and >
-		// to </> on the wire, which the server's parser decodes back — so
+		// to </> on the wire, which the server's parser decodes back - so
 		// assert the decoded value the server actually receives, not the escaping.
 		var raw map[string]any
 		if err := json.Unmarshal(body, &raw); err != nil {
@@ -684,7 +684,7 @@ func TestAPIClient_ListAllActivities_MultiPage(t *testing.T) {
 }
 
 func TestAPIClient_ListAllActivities_TruncatedAtCap(t *testing.T) {
-	// Server always reports has_more=true with a fresh cursor — ListAllActivities
+	// Server always reports has_more=true with a fresh cursor - ListAllActivities
 	// must stop at the page cap and return ErrListActivitiesTruncated.
 	var calls int
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -712,7 +712,7 @@ func TestAPIClient_ListAllActivities_TruncatedAtCap(t *testing.T) {
 }
 
 func TestAPIClient_ListAllActivities_MoreButNoCursor(t *testing.T) {
-	// Server reports has_more=true but gives no next_cursor — we cannot fetch the
+	// Server reports has_more=true but gives no next_cursor - we cannot fetch the
 	// rest, so the result must be flagged as truncated rather than silently
 	// treated as complete.
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

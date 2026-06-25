@@ -25,7 +25,7 @@ type Client struct {
 }
 
 // AuthCode is a pending authorization code grant. Code is stored hashed. The
-// encrypted credential is NOT stored here — it lives once in user_credentials,
+// encrypted credential is NOT stored here - it lives once in user_credentials,
 // written before the code is issued, so the short-lived code table never holds a
 // second copy of a secret.
 type AuthCode struct {
@@ -41,7 +41,7 @@ type AuthCode struct {
 
 // RefreshToken is an issued refresh token (stored hashed). Rotation-reuse theft
 // detection is implemented by the atomic single-winner revoke in
-// RevokeRefreshToken plus the post-grace family revoke in grantRefreshToken — not
+// RevokeRefreshToken plus the post-grace family revoke in grantRefreshToken - not
 // by walking PrevHash, which is retained only as audit lineage of the rotation
 // chain (it is written and scanned, but no logic branches on it).
 type RefreshToken struct {
@@ -63,7 +63,7 @@ type Store interface {
 	SaveAuthCode(ctx context.Context, ac *AuthCode) error
 	// ConsumeAuthCode atomically fetches and marks an unexpired, unused code as
 	// used. It returns ErrNotFound if missing/expired and ErrCodeAlreadyUsed if the
-	// code was already consumed — and on that reuse path it returns a non-nil
+	// code was already consumed - and on that reuse path it returns a non-nil
 	// *AuthCode carrying at least the UserID, so the caller can treat the replay as
 	// an attack and revoke the tokens minted from that grant.
 	ConsumeAuthCode(ctx context.Context, codeHash string) (*AuthCode, error)
@@ -72,8 +72,8 @@ type Store interface {
 	GetRefreshToken(ctx context.Context, tokenHash string) (*RefreshToken, error)
 	// RevokeRefreshToken atomically marks a token revoked and reports whether
 	// THIS call performed the revocation (rows affected > 0). A false result
-	// means the token was already revoked — i.e. this caller lost a rotation
-	// race — and the caller must not mint new tokens.
+	// means the token was already revoked - i.e. this caller lost a rotation
+	// race - and the caller must not mint new tokens.
 	RevokeRefreshToken(ctx context.Context, tokenHash string) (bool, error)
 	// RevokeUserRefreshTokens revokes all of a user's refresh tokens (theft
 	// response).

@@ -99,7 +99,7 @@ func (c *hlkCipher) Decrypt(userID string, blob []byte) (string, error) {
 // The token is STATELESS and self-contained: an expiry plus an HMAC over
 // (expiry || client_id), keyed by a master-derived secret. It needs no cookie
 // and no server-side record, so every consent render produces an independently
-// verifiable token. That is the whole point — the previous design used one
+// verifiable token. That is the whole point - the previous design used one
 // fixed-name cookie reissued on every render, so a second render before submit
 // (another tab, a reload, or the OAuth client prefetching /oauth/authorize while
 // also opening it) overwrote the cookie and invalidated the first form
@@ -122,8 +122,8 @@ func newCSRFTokenizer(master []byte, ttl time.Duration, now func() time.Time) *c
 }
 
 // mac signs the expiry (decimal Unix seconds) and clientID. The NUL separator
-// keeps the boundary unambiguous — expiry is digits-only and a client_id never
-// contains a NUL byte — so no two (expiry, clientID) pairs can collide.
+// keeps the boundary unambiguous - expiry is digits-only and a client_id never
+// contains a NUL byte - so no two (expiry, clientID) pairs can collide.
 func (t *csrfTokenizer) mac(expiry, clientID string) []byte {
 	h := hmac.New(sha256.New, t.key)
 	h.Write([]byte(expiry))

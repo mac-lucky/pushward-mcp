@@ -143,7 +143,7 @@ func (p *Provider) fetchCIMD(ctx context.Context, clientID string) (*Client, err
 }
 
 // safeGet performs an SSRF-guarded HTTPS GET: only https, and the resolved IPs
-// must all be public (no loopback, private, link-local, or ULA ranges — which
+// must all be public (no loopback, private, link-local, or ULA ranges - which
 // blocks cloud metadata endpoints like 169.254.169.254).
 func safeGet(ctx context.Context, rawurl string) ([]byte, error) {
 	u, err := url.Parse(rawurl)
@@ -303,7 +303,7 @@ func allZero(b []byte) bool {
 
 // clientIP returns the rate-limit key. The forwarding headers (CF-Connecting-IP,
 // then the left-most X-Forwarded-For hop) are honored ONLY when TrustProxy is set
-// AND the immediate peer is a trusted proxy (see peerTrusted) — otherwise a
+// AND the immediate peer is a trusted proxy (see peerTrusted) - otherwise a
 // directly-connecting client could forge them to mint a fresh bucket per request.
 // When not trusted, the peer's RemoteAddr is used.
 func (p *Provider) clientIP(r *http.Request) string {
@@ -328,7 +328,7 @@ func (p *Provider) clientIP(r *http.Request) string {
 // allowed to set the forwarding headers. With TrustedProxyCIDRs configured the
 // peer must fall inside one of them; otherwise the default is the in-cluster proxy
 // tier (loopback / RFC1918 private / CGNAT / link-local), which is where the
-// Traefik gateway connects from — so a directly-connecting public client is never
+// Traefik gateway connects from - so a directly-connecting public client is never
 // trusted to assert its own forwarded IP.
 func (p *Provider) peerTrusted(host string) bool {
 	ip := net.ParseIP(host)

@@ -73,7 +73,7 @@ type Config struct {
 	// DBPasswordFile, when set, is a path to a file holding the Postgres
 	// password. It is injected into the connection at connect time (re-read on
 	// every new connection so rotations are picked up) so the password never
-	// lives in the DSN or in SOPS — it is sourced from a CNPG-managed,
+	// lives in the DSN or in SOPS - it is sourced from a CNPG-managed,
 	// auto-rotated Secret mounted into the pod, mirroring pushward-server /
 	// pushward-relay. Ignored when DatabaseDSN is empty.
 	DBPasswordFile string

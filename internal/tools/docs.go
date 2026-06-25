@@ -13,7 +13,7 @@ import (
 
 // bestPracticeTopics are the get_pushward_best_practices "topic" enum values.
 // They map 1:1 to H2 headings in assets/best-practices.md (e.g. "## integration"),
-// so a topic is passed straight to docs.Section — no mapping table to drift.
+// so a topic is passed straight to docs.Section - no mapping table to drift.
 var bestPracticeTopics = []string{"integration", "live-activity", "relay-provider", "email"}
 
 // registerDocsTools registers the embedded-content reference tools. These serve
@@ -26,13 +26,13 @@ func registerDocsTools(s *mcpserver.MCPServer) {
 				"Start with kind=\"index\" to see what exists, then pull kind=\"full\" (optionally narrowed with section) for guides and examples, "+
 				"or kind=\"api_openapi\" / kind=\"relay_openapi\" for exact request/response schemas. Content is embedded and offline-safe."),
 			mcp.WithReadOnlyHintAnnotation(true),
-			// Serves go:embed bundled content — no network, closed domain.
+			// Serves go:embed bundled content - no network, closed domain.
 			mcp.WithOpenWorldHintAnnotation(false),
 			mcp.WithString("kind",
 				mcp.Required(),
 				mcp.Enum("index", "full", "api_openapi", "relay_openapi"),
 				mcp.Description("Which document to return. \"index\" = short llms.txt map of all docs (start here); "+
-					"\"full\" = complete llms-full.txt guide bundle (large — narrow it with section); "+
+					"\"full\" = complete llms-full.txt guide bundle (large - narrow it with section); "+
 					"\"api_openapi\" = api.pushward.app OpenAPI spec (YAML); "+
 					"\"relay_openapi\" = relay.pushward.app OpenAPI spec (JSON)."),
 			),
@@ -53,7 +53,7 @@ func registerDocsTools(s *mcpserver.MCPServer) {
 				"Call this BEFORE implementing a PushWard integration, a Live Activity, or a relay provider hookup. "+
 				"Omit topic for the whole guide, or pass a topic to get just that part."),
 			mcp.WithReadOnlyHintAnnotation(true),
-			// Serves go:embed bundled content — no network, closed domain.
+			// Serves go:embed bundled content - no network, closed domain.
 			mcp.WithOpenWorldHintAnnotation(false),
 			mcp.WithString("topic",
 				mcp.Enum(bestPracticeTopics...),
@@ -103,8 +103,8 @@ func handleGetPushwardBestPractices(req mcp.CallToolRequest) (*mcp.CallToolResul
 	return mcp.NewToolResultText(sliceOrGuide(doc, topic)), nil
 }
 
-// sliceOrGuide returns the requested section of a Markdown doc, or — when no
-// heading matches — a short note listing the available headings so the caller
+// sliceOrGuide returns the requested section of a Markdown doc, or - when no
+// heading matches - a short note listing the available headings so the caller
 // can retry with a valid name.
 func sliceOrGuide(doc, section string) string {
 	text, ok, topLevel := docs.Section(doc, section)

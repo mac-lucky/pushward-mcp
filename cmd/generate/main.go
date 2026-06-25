@@ -98,12 +98,12 @@ type paramDef struct {
 	Enum      []string
 	GoType    string // Go type used in client struct for Object/Array params (e.g. "*client.MediaAttachment", "[]client.NotificationAction")
 	ItemsType string // Item type description (used for array property items schema)
-	Opaque    bool   // forward as json.RawMessage instead of typed unmarshal — for fields whose schema drifts faster than the MCP rebuilds
+	Opaque    bool   // forward as json.RawMessage instead of typed unmarshal - for fields whose schema drifts faster than the MCP rebuilds
 }
 
 // opaqueArrayFields lists request-body field names that must be forwarded as
 // raw JSON instead of unmarshalled into a typed slice. The server is the
-// source of truth for these schemas — typed parsing silently dropped unknown
+// source of truth for these schemas - typed parsing silently dropped unknown
 // fields the server had added since the last MCP rebuild (see commit 33912d9).
 var opaqueArrayFields = map[string]bool{
 	"actions": true,
@@ -117,8 +117,8 @@ const (
 
 // Published reference docs embedded into the binary and served by the
 // get_pushward_docs tool. Fetched at generate time (see refreshAsset). The API
-// spec is fetched as YAML here — distinct from apiSpecURL's JSON used for tool
-// generation — so the embedded copy matches what api.pushward.app serves.
+// spec is fetched as YAML here - distinct from apiSpecURL's JSON used for tool
+// generation - so the embedded copy matches what api.pushward.app serves.
 const (
 	llmsIndexURL     = "https://pushward.app/llms.txt"
 	llmsFullURL      = "https://pushward.app/llms-full.txt"
@@ -132,7 +132,7 @@ func main() {
 	rootDir := findRootDir()
 	outDir := filepath.Join(rootDir, "internal", "tools")
 	// Any non-empty value opts in (so PUSHWARD_USE_LOCAL_SPEC=0 still means
-	// "use local"). Skip the network entirely when set — useful for testing
+	// "use local"). Skip the network entirely when set - useful for testing
 	// spec changes that haven't been deployed yet.
 	useLocal := os.Getenv("PUSHWARD_USE_LOCAL_SPEC") != ""
 
@@ -165,8 +165,8 @@ func main() {
 }
 
 // refreshAsset fetches url and overwrites destPath with the response, refreshing
-// a reference doc embedded into the binary. On fetch failure — or when useLocal
-// is set — it logs and leaves the committed asset in place (offline-safe: the
+// a reference doc embedded into the binary. On fetch failure - or when useLocal
+// is set - it logs and leaves the committed asset in place (offline-safe: the
 // embedded copy is the fallback). A write failure is fatal: it means a broken
 // source tree.
 func refreshAsset(useLocal bool, url, destPath string) {
@@ -215,7 +215,7 @@ func loadSpec(useLocal bool, url, fallbackPath string) []byte {
 		fmt.Fprintf(os.Stderr, "PUSHWARD_USE_LOCAL_SPEC set, reading %s\n", fallbackPath)
 	}
 	// fallbackPath is a build-time constant (the vendored OpenAPI spec), not user
-	// input — this is a code generator, not a runtime path.
+	// input - this is a code generator, not a runtime path.
 	data, err := os.ReadFile(fallbackPath) // #nosec G304
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "reading %s: %v\n", fallbackPath, err)
@@ -270,7 +270,7 @@ func parseSpecJSON(data []byte, name string) *openAPISpec {
 var skipOperations = map[string]bool{
 	"listActivities":     true, // enhanced with state/source filtering and summary mode
 	"getActivity":        true, // superseded by a composite that adds include_log_backlog (?include=log_backlog)
-	"setActivityAlarm":   true, // removed from public surface — alarm is now a merge-patch field
+	"setActivityAlarm":   true, // removed from public surface - alarm is now a merge-patch field
 	"clearActivityAlarm": true, // same
 }
 
@@ -297,7 +297,7 @@ func buildAPITools(spec *openAPISpec) []toolDef {
 			t.PathParams = extractPathParams(path)
 
 			// Extract request body parameters. Huma serves PATCH endpoints
-			// with `application/merge-patch+json` (RFC 7396) — accept both so
+			// with `application/merge-patch+json` (RFC 7396) - accept both so
 			// PATCH operations don't lose their body params.
 			if op.RequestBody != nil {
 				ct, ok := op.RequestBody.Content["application/json"]
@@ -378,16 +378,16 @@ func schemaToParams(spec *openAPISpec, schema schemaObj, bodyRequired bool) []pa
 		}
 		prop := resolveRef(spec, raw)
 
-		// Skip the `content` field — it's always emitted via the content_json
+		// Skip the `content` field - it's always emitted via the content_json
 		// string path (see buildAPITools). This applies whether the schema is a
-		// nested object, a $ref, or a discriminator/oneOf — the fallback
+		// nested object, a $ref, or a discriminator/oneOf - the fallback
 		// `schemaType` would otherwise mislabel oneOf as "string" and emit a
 		// duplicate `Content` field in the input struct literal.
 		if name == "content" {
 			continue
 		}
 
-		// Skip free-form object fields (e.g., metadata: map[string]string) without a typed schema —
+		// Skip free-form object fields (e.g., metadata: map[string]string) without a typed schema -
 		// not representable as a typed MCP object param.
 		if propRef == "" && schemaType(prop) == "object" && len(prop.Properties) == 0 {
 			continue
@@ -441,7 +441,7 @@ func schemaToParams(spec *openAPISpec, schema schemaObj, bodyRequired bool) []pa
 			continue
 		}
 
-		// Skip array fields whose items are not ref'd schemas — no typed Go target available.
+		// Skip array fields whose items are not ref'd schemas - no typed Go target available.
 		if schemaType(prop) == "array" {
 			continue
 		}
@@ -488,12 +488,12 @@ const widgetContentSchema = "WidgetContent"
 
 // mergePatchNote is the shared wording for PATCH endpoints, kept in one place so
 // the activity and widget descriptions can't drift apart.
-const mergePatchNote = "PATCH applies RFC 7396 JSON Merge Patch semantics — only send the fields you want to change, null clears a field, absent preserves. "
+const mergePatchNote = "PATCH applies RFC 7396 JSON Merge Patch semantics - only send the fields you want to change, null clears a field, absent preserves. "
 
 // contentJSONDesc returns the description for a tool's content_json parameter.
 // The activity and widget content schemas are disjoint (different template enums,
 // both additionalProperties:false), so a single shared string misleads agents into
-// sending the wrong shape — which the server then rejects. POST create endpoints
+// sending the wrong shape - which the server then rejects. POST create endpoints
 // require the full content object; PATCH endpoints apply RFC 7396 merge-patch.
 func contentJSONDesc(isWidget bool, method string) string {
 	patch := method == http.MethodPatch
@@ -504,7 +504,7 @@ func contentJSONDesc(isWidget bool, method string) string {
 		} else {
 			lead += "Send the full content object (template is required). "
 		}
-		return lead + "Fields: template (value|progress|status|gauge|stat_list — selects the visual style), value (number), label, unit, trend (up|down|flat), severity, min_value, max_value, stat_rows (array of stat rows, used by stat_list), icon, subtitle, accent_color, background_color, text_color, tap_action ({url}), url_action, secondary_url_action."
+		return lead + "Fields: template (value|progress|status|gauge|stat_list - selects the visual style), value (number), label, unit, trend (up|down|flat), severity, min_value, max_value, stat_rows (array of stat rows, used by stat_list), icon, subtitle, accent_color, background_color, text_color, tap_action ({url}), url_action, secondary_url_action."
 	}
 	lead := "Activity content as JSON object. "
 	if patch {
@@ -633,8 +633,29 @@ func buildRelayTools(spec *openAPISpec) []toolDef {
 
 // ---------- template rendering ----------
 
+// asciiReplacer rewrites the Unicode "tells" that ride in on upstream OpenAPI
+// descriptions (em/en dashes, arrows, math symbols, smart quotes, invisible
+// whitespace) into plain ASCII, so the generated tool descriptions read like
+// hand-written text and stay grep-clean.
+var asciiReplacer = strings.NewReplacer(
+	"\u2014", "-", // em dash
+	"\u2013", "-", // en dash
+	"\u2192", "->", // rightwards arrow
+	"\u2026", "...", // ellipsis
+	"\u2264", "<=", // less-than or equal
+	"\u2265", ">=", // greater-than or equal
+	"\u00d7", "x", // multiplication sign
+	"\u00a7", "section ", // section sign
+	"\u2018", "'", "\u2019", "'", // single curly quotes
+	"\u201c", "\"", "\u201d", "\"", // double curly quotes
+	"\u00a0", " ", // non-breaking space
+	"\u200b", "", "\u200c", "", "\u200d", "", // zero-width space/joiner
+	"\ufeff", "", // BOM / zero-width no-break
+	"\u00ad", "", // soft hyphen
+)
+
 var funcMap = template.FuncMap{
-	"quote":   func(s string) string { return fmt.Sprintf("%q", s) },
+	"quote":   func(s string) string { return fmt.Sprintf("%q", asciiReplacer.Replace(s)) },
 	"hasEnum": func(p paramDef) bool { return len(p.Enum) > 0 },
 	"enumList": func(p paramDef) string {
 		quoted := make([]string, len(p.Enum))
@@ -677,8 +698,8 @@ import (
 )
 {{ define "boolField" -}}
 // Send the field only when the caller supplied a real boolean, so an omitted
-// (or null) value inherits the server-side default — e.g. push defaults to
-// true — instead of being forced to false. RequireBool errors on absent, null,
+// (or null) value inherits the server-side default - e.g. push defaults to
+// true - instead of being forced to false. RequireBool errors on absent, null,
 // or non-bool input; assign only on success. Requires a *bool client field.
 if v, err := req.RequireBool({{ quote .Name }}); err == nil {
 	input.{{ .GoName }} = &v
@@ -709,7 +730,7 @@ func registerAPITools(s *mcpserver.MCPServer, api *client.APIClient) {
 			mcp.WithDestructiveHintAnnotation(false),
 {{- end }}
 			// Every tool proxies an external REST API (api.pushward.app), so its
-			// results cross a trust boundary — keep the open-world hint explicit.
+			// results cross a trust boundary - keep the open-world hint explicit.
 			mcp.WithOpenWorldHintAnnotation(true),
 {{- range .PathParams }}
 			mcp.WithString({{ quote .Name }},
@@ -832,7 +853,7 @@ func handle{{ .FuncName }}(ctx context.Context, req mcp.CallToolRequest, api *cl
 			return mcp.NewToolResultError("encoding {{ .Name }}: " + err.Error()), nil
 		}
 {{- if .Opaque }}
-		// Forward opaque JSON — server is the source of truth for the
+		// Forward opaque JSON - server is the source of truth for the
 		// {{ .Name }} schema, so new fields don't require an MCP rebuild.
 		input.{{ .GoName }} = json.RawMessage(buf)
 {{- else }}

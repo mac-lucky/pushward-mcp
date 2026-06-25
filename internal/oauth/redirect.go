@@ -8,7 +8,7 @@ import (
 // redirectURIAllowed reports whether a request's redirect_uri matches one of a
 // client's registered URIs. Matching is byte-exact, except that loopback URIs
 // (http://localhost or http://127.0.0.1 / [::1]) match port-agnostically per
-// RFC 8252 §7.3 — native clients like Claude Code bind an ephemeral port.
+// RFC 8252 section 7.3 - native clients like Claude Code bind an ephemeral port.
 func redirectURIAllowed(registered []string, candidate string) bool {
 	for _, r := range registered {
 		if r == candidate {

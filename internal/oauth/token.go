@@ -49,7 +49,7 @@ func (p *Provider) grantAuthorizationCode(w http.ResponseWriter, r *http.Request
 	if errors.Is(err, ErrCodeAlreadyUsed) {
 		// Replay of a consumed code is treated as compromise of that grant: revoke
 		// the user's refresh-token family so any tokens minted from the first use
-		// are killed (RFC 6749 §4.1.2 / OAuth 2.1). ConsumeAuthCode surfaces the
+		// are killed (RFC 6749 section 4.1.2 / OAuth 2.1). ConsumeAuthCode surfaces the
 		// user_id on the reuse path so this is actionable.
 		if ac != nil && ac.UserID != "" {
 			if rerr := p.store.RevokeUserRefreshTokens(r.Context(), ac.UserID); rerr != nil {

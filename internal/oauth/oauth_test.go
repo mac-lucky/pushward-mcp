@@ -231,7 +231,7 @@ func TestOAuthFullFlow(t *testing.T) {
 		t.Fatal("DCR did not return a client_id")
 	}
 
-	// Authorize (GET) → consent page with a stateless CSRF token.
+	// Authorize (GET) -> consent page with a stateless CSRF token.
 	verifier := "this-is-a-sufficiently-long-pkce-code-verifier-value"
 	sum := sha256.Sum256([]byte(verifier))
 	challenge := base64.RawURLEncoding.EncodeToString(sum[:])
@@ -247,7 +247,7 @@ func TestOAuthFullFlow(t *testing.T) {
 	}
 	csrf := authzGetCSRF(t, srv, q.Encode())
 
-	// Authorize (POST) with the key → redirect with code.
+	// Authorize (POST) with the key -> redirect with code.
 	form := url.Values{}
 	for k, v := range q {
 		form.Set(k, v[0])
@@ -292,7 +292,7 @@ func TestOAuthFullFlow(t *testing.T) {
 		t.Fatalf("token response missing tokens: %v", tok)
 	}
 
-	// Call /mcp with the access token → inner handler sees the decrypted hlk.
+	// Call /mcp with the access token -> inner handler sees the decrypted hlk.
 	req, _ = http.NewRequest(http.MethodGet, srv.URL+"/mcp", nil)
 	req.Header.Set("Authorization", "Bearer "+access)
 	res, _ = http.DefaultClient.Do(req)
@@ -306,7 +306,7 @@ func TestOAuthFullFlow(t *testing.T) {
 		t.Fatalf("WrapMCP did not inject the user id: %v", seen)
 	}
 
-	// /mcp without a token → 401 + WWW-Authenticate.
+	// /mcp without a token -> 401 + WWW-Authenticate.
 	res, _ = http.Get(srv.URL + "/mcp")
 	if res.StatusCode != http.StatusUnauthorized || res.Header.Get("WWW-Authenticate") == "" {
 		t.Fatalf("unauthenticated /mcp must 401 with challenge, got %d %q", res.StatusCode, res.Header.Get("WWW-Authenticate"))
@@ -411,8 +411,8 @@ func TestAuthorize_MissingPKCERejected(t *testing.T) {
 var hiddenInputRE = regexp.MustCompile(`<input type="hidden" name="([^"]*)" value="([^"]*)">`)
 
 // authzGetCSRF runs the authorize GET and returns the stateless CSRF token the
-// consent page embedded in its hidden field. There is no cookie — the token is
-// self-contained — so this is the only thing a submitter needs to carry back.
+// consent page embedded in its hidden field. There is no cookie - the token is
+// self-contained - so this is the only thing a submitter needs to carry back.
 func authzGetCSRF(t *testing.T, srv *httptest.Server, rawQuery string) string {
 	t.Helper()
 	res, err := http.Get(srv.URL + "/oauth/authorize?" + rawQuery)
@@ -434,7 +434,7 @@ func authzGetCSRF(t *testing.T, srv *httptest.Server, rawQuery string) string {
 }
 
 // TestConsentFormRoundTripsOAuthParams renders the consent page (GET) and then
-// POSTs back ONLY the hidden fields the rendered HTML actually contains — exactly
+// POSTs back ONLY the hidden fields the rendered HTML actually contains - exactly
 // as a browser does. The other authorize tests rebuild the POST body from the
 // original query, so they silently re-add any field the form drops; this one
 // would not. A missing hidden field (e.g. response_type) makes the POST fail
@@ -463,7 +463,7 @@ func TestConsentFormRoundTripsOAuthParams(t *testing.T) {
 	htmlBody, _ := io.ReadAll(res.Body)
 	res.Body.Close()
 
-	// Reconstruct the POST body from the rendered form's hidden inputs ONLY — no
+	// Reconstruct the POST body from the rendered form's hidden inputs ONLY - no
 	// cookie. The CSRF token now lives entirely in a hidden field, so submitting
 	// exactly what the form contains (plus the key) must succeed.
 	form := url.Values{}
@@ -517,7 +517,7 @@ func TestAuthorize_StaleRenderStillValid(t *testing.T) {
 		"code_challenge_method": {"S256"}, "resource": {"https://mcp.test"},
 	}
 	first := authzGetCSRF(t, srv, q.Encode()) // render 1
-	_ = authzGetCSRF(t, srv, q.Encode())      // render 2 — would clobber a shared cookie
+	_ = authzGetCSRF(t, srv, q.Encode())      // render 2 - would clobber a shared cookie
 
 	form := url.Values{}
 	for k, v := range q {
@@ -555,7 +555,7 @@ type fakeClock struct {
 func (c *fakeClock) now() time.Time          { c.mu.Lock(); defer c.mu.Unlock(); return c.t }
 func (c *fakeClock) advance(d time.Duration) { c.mu.Lock(); defer c.mu.Unlock(); c.t = c.t.Add(d) }
 
-// obtainCode runs register → authorize(GET) → authorize(POST) with apiKey and
+// obtainCode runs register -> authorize(GET) -> authorize(POST) with apiKey and
 // returns the issued code plus the bound client_id/verifier/redirect_uri.
 func obtainCode(t *testing.T, srv *httptest.Server, apiKey string) (clientID, verifier, redirect, code string) {
 	t.Helper()
@@ -737,7 +737,7 @@ func TestRefresh_ReuseAfterGraceRevokesFamily(t *testing.T) {
 	clientID, verifier, redirect, code := obtainCode(t, srv, "hlk_good")
 	_, refresh1 := exchangeForTokens(t, srv, code, clientID, verifier, redirect)
 
-	// Rotate refresh1 → refresh2.
+	// Rotate refresh1 -> refresh2.
 	status, m := tokenPost(t, srv, url.Values{"grant_type": {"refresh_token"}, "refresh_token": {refresh1}})
 	if status != http.StatusOK {
 		t.Fatalf("first rotation should succeed, got %d %v", status, m)
@@ -761,7 +761,7 @@ func TestRefresh_ReuseAfterGraceRevokesFamily(t *testing.T) {
 // TestAuthorize_CSRFInvalidReRenders verifies that an invalid/expired CSRF token
 // on POST does NOT mint an authorization code and does NOT dead-end: it re-renders
 // the consent page (no redirect) carrying a fresh token so the user can recover in
-// one click. The security property — no code without a valid token — is preserved
+// one click. The security property - no code without a valid token - is preserved
 // (the response is the consent form, never a Location redirect carrying a code).
 func TestAuthorize_CSRFInvalidReRenders(t *testing.T) {
 	srv, _ := newTestProvider(t)
@@ -840,7 +840,7 @@ func TestConsumeAuthCode_MemoryContract(t *testing.T) {
 
 // TestConsumeAuthCode_ReuseSurfacesUserID verifies the reuse path returns the
 // user_id (so the token endpoint can revoke that grant's refresh-token family) and
-// that reuse stays detectable even after the code expires — matching the Postgres
+// that reuse stays detectable even after the code expires - matching the Postgres
 // retention window so dev (memory) and prod (pg) behave the same.
 func TestConsumeAuthCode_ReuseSurfacesUserID(t *testing.T) {
 	m := newMemoryStore()
@@ -929,7 +929,7 @@ func TestIsBlockedIP_CGNAT(t *testing.T) {
 }
 
 // TestIsBlockedIP_IPv6Transition covers the IPv6 transition forms (NAT64, 6to4,
-// IPv4-compatible) that embed an internal IPv4 — the net.IP helpers miss these
+// IPv4-compatible) that embed an internal IPv4 - the net.IP helpers miss these
 // because they only de-map the ::ffff: form, so a CIMD host whose AAAA record is
 // one of them could otherwise tunnel an SSRF to cloud metadata / RFC1918.
 func TestIsBlockedIP_IPv6Transition(t *testing.T) {
@@ -957,7 +957,7 @@ func TestIsBlockedIP_IPv6Transition(t *testing.T) {
 func TestClientIP_TrustedProxyGating(t *testing.T) {
 	p := &Provider{cfg: &Config{TrustProxy: true}}
 
-	// In-cluster proxy peer (private RemoteAddr) → honor CF-Connecting-IP.
+	// In-cluster proxy peer (private RemoteAddr) -> honor CF-Connecting-IP.
 	r := httptest.NewRequest(http.MethodGet, "/oauth/token", nil)
 	r.RemoteAddr = "10.0.0.5:12345"
 	r.Header.Set("CF-Connecting-IP", "203.0.113.9")
@@ -965,7 +965,7 @@ func TestClientIP_TrustedProxyGating(t *testing.T) {
 		t.Fatalf("trusted private peer must honor CF-Connecting-IP, got %q", got)
 	}
 
-	// Public peer connecting directly → ignore the forged header, use RemoteAddr.
+	// Public peer connecting directly -> ignore the forged header, use RemoteAddr.
 	r2 := httptest.NewRequest(http.MethodGet, "/oauth/token", nil)
 	r2.RemoteAddr = "198.51.100.7:443"
 	r2.Header.Set("CF-Connecting-IP", "10.0.0.1")
@@ -973,7 +973,7 @@ func TestClientIP_TrustedProxyGating(t *testing.T) {
 		t.Fatalf("untrusted public peer must fall back to RemoteAddr, got %q", got)
 	}
 
-	// TrustProxy disabled → always RemoteAddr regardless of peer.
+	// TrustProxy disabled -> always RemoteAddr regardless of peer.
 	p.cfg.TrustProxy = false
 	if got := p.clientIP(r); got != "10.0.0.5" {
 		t.Fatalf("TrustProxy off must use RemoteAddr, got %q", got)

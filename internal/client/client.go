@@ -48,8 +48,8 @@ func NewBase(baseURL, token string) *Base {
 }
 
 // newTransport returns the process-wide shared *http.Transport. A single transport
-// (and thus a single connection pool) is reused by every Base — the long-lived API
-// and relay clients AND the short-lived Base that validateHLK spins up per consent —
+// (and thus a single connection pool) is reused by every Base - the long-lived API
+// and relay clients AND the short-lived Base that validateHLK spins up per consent -
 // so a throwaway client never leaves behind its own idle connection pool. The pool
 // is tuned for the shared http-mode client that serves every user (the per-user
 // token rides in the request context): the stdlib default keeps only 2 idle
@@ -156,7 +156,7 @@ func (b *Base) DoJSON(ctx context.Context, method, path string, body any) (json.
 //
 // In remote mode the upstream's free-text title/detail and any raw body are
 // withheld from the caller-facing error (they can leak internal field names,
-// DB messages, or PII) — only the machine-readable Problem `code` and any
+// DB messages, or PII) - only the machine-readable Problem `code` and any
 // retry hint are surfaced. The full message is still available to the operator
 // via server-side logs.
 func extractErrorMessage(body []byte) string {

@@ -1,6 +1,6 @@
 // Package observability provides structured logging hooks and helpers for the
 // MCP server. It deliberately never logs credentials (the per-user PushWard
-// token or any Authorization header) — only tool names, outcomes, and the
+// token or any Authorization header) - only tool names, outcomes, and the
 // authenticated user id (the OAuth subject) for an audit trail.
 package observability
 
