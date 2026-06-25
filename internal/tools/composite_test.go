@@ -36,6 +36,19 @@ func newReq(args map[string]any) mcp.CallToolRequest {
 
 // ---------- buildTestContent ----------
 
+func TestIsJSONObject(t *testing.T) {
+	for _, ok := range []string{`{}`, `{"a":1}`, "  {\n\"x\":true}\t"} {
+		if !isJSONObject(ok) {
+			t.Errorf("%q should be a JSON object", ok)
+		}
+	}
+	for _, bad := range []string{``, `123`, `"x"`, `true`, `null`, `[]`, `[1,2]`, `{`, `{bad}`, `{}x`} {
+		if isJSONObject(bad) {
+			t.Errorf("%q should NOT be accepted as a JSON object", bad)
+		}
+	}
+}
+
 func TestBuildTestContent_Generic(t *testing.T) {
 	raw := buildTestContent("generic", 0.5, "Testing...", "")
 	var m map[string]any
@@ -459,6 +472,9 @@ func TestHandleTestActivityLifecycle_UpdateOngoingFails(t *testing.T) {
 			w.Header().Set("Content-Type", "application/problem+json")
 			w.WriteHeader(http.StatusInternalServerError)
 			w.Write([]byte(`{"type":"about:blank","title":"Internal Server Error","status":500,"detail":"update failed","code":"server.error"}`))
+		case r.Method == http.MethodDelete:
+			// Best-effort cleanup of the created activity after the failure.
+			w.WriteHeader(http.StatusNoContent)
 		default:
 			w.WriteHeader(http.StatusNotFound)
 		}
@@ -480,10 +496,14 @@ func TestHandleTestActivityLifecycle_UpdateOngoingFails(t *testing.T) {
 	if !strings.Contains(text, "ongoing: FAIL") {
 		t.Errorf("expected step 2 FAIL, got: %s", text)
 	}
-	// When ONGOING update fails, the function returns early (only steps 1 and 2)
+	// On the early return after the ONGOING failure (steps 1 and 2), the created
+	// activity is cleaned up (cleanup defaults to true) so it isn't orphaned.
+	if !strings.Contains(text, "Cleanup: deleted the created activity") {
+		t.Errorf("expected best-effort cleanup of the created activity, got: %s", text)
+	}
 	lines := strings.Split(strings.TrimSpace(text), "\n")
-	if len(lines) != 2 {
-		t.Errorf("expected 2 lines (early return after ONGOING fail), got %d:\n%s", len(lines), text)
+	if len(lines) != 3 {
+		t.Errorf("expected 3 lines (create, ongoing FAIL, cleanup), got %d:\n%s", len(lines), text)
 	}
 }
 

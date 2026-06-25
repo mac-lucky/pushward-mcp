@@ -68,7 +68,7 @@ func (p *Provider) resourceOK(resource string) bool {
 
 // handleAuthorize renders the consent screen (GET) and processes it (POST).
 func (p *Provider) handleAuthorize(w http.ResponseWriter, r *http.Request) {
-	if !p.authorizeLimiter.Allow(clientIP(r, p.cfg.TrustProxy)) {
+	if !p.authorizeLimiter.Allow(p.clientIP(r)) {
 		http.Error(w, "rate limited", http.StatusTooManyRequests)
 		return
 	}
@@ -152,6 +152,7 @@ func (p *Provider) renderConsent(w http.ResponseWriter, pr authzParams, c *Clien
 	}
 	_ = consentTmpl.Execute(w, consentData{
 		ClientName:          name,
+		Verified:            c.IsCIMD,
 		ResponseType:        pr.ResponseType,
 		ClientID:            pr.ClientID,
 		RedirectURI:         pr.RedirectURI,

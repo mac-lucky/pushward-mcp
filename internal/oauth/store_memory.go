@@ -39,9 +39,73 @@ func newMemoryStore() *memoryStore {
 func (m *memoryStore) SaveClient(_ context.Context, c *Client) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	now := m.now()
 	cp := *c
+	cp.UpdatedAt = now
+	if existing, ok := m.clients[c.ID]; ok {
+		cp.CreatedAt = existing.CreatedAt // preserve original creation time on upsert
+	} else {
+		if cp.CreatedAt.IsZero() {
+			cp.CreatedAt = now
+		}
+		// New key: keep the map bounded. Evict expired-by-retention clients, then,
+		// if still at the cap, the least-recently-written one.
+		if len(m.clients) >= clientCacheMax {
+			m.evictStaleClientsLocked(now)
+			if len(m.clients) >= clientCacheMax {
+				m.evictOldestClientLocked()
+			}
+		}
+	}
 	m.clients[c.ID] = &cp
 	return nil
+}
+
+// evictOldestClientLocked removes the client with the oldest UpdatedAt. Caller
+// holds m.mu.
+func (m *memoryStore) evictOldestClientLocked() {
+	var oldestID string
+	var oldest time.Time
+	for id, c := range m.clients {
+		if oldestID == "" || c.UpdatedAt.Before(oldest) {
+			oldestID, oldest = id, c.UpdatedAt
+		}
+	}
+	if oldestID != "" {
+		delete(m.clients, oldestID)
+	}
+}
+
+// evictStaleClientsLocked drops clients past clientRetention that hold no refresh
+// token and no live auth code, mirroring the Postgres Cleanup. Caller holds m.mu.
+func (m *memoryStore) evictStaleClientsLocked(now time.Time) {
+	for id, c := range m.clients {
+		if now.Sub(c.UpdatedAt) <= clientRetention {
+			continue
+		}
+		if m.clientHasTokenLocked(id) || m.clientHasCodeLocked(id) {
+			continue
+		}
+		delete(m.clients, id)
+	}
+}
+
+func (m *memoryStore) clientHasTokenLocked(clientID string) bool {
+	for _, rt := range m.refresh {
+		if rt.ClientID == clientID {
+			return true
+		}
+	}
+	return false
+}
+
+func (m *memoryStore) clientHasCodeLocked(clientID string) bool {
+	for _, mc := range m.codes {
+		if mc.ac.ClientID == clientID {
+			return true
+		}
+	}
+	return false
 }
 
 func (m *memoryStore) GetClient(_ context.Context, id string) (*Client, error) {
@@ -69,12 +133,14 @@ func (m *memoryStore) ConsumeAuthCode(_ context.Context, codeHash string) (*Auth
 	if !ok {
 		return nil, ErrNotFound
 	}
-	if mc.ac.ExpiresAt.Before(m.now()) {
-		delete(m.codes, codeHash)
-		return nil, ErrNotFound
-	}
+	// Check reuse BEFORE expiry (and do not delete on read) so a replay of an
+	// expired-but-used code is still reported as ErrCodeAlreadyUsed with its
+	// user_id — matching the Postgres store's retention. Cleanup handles eviction.
 	if mc.usedAt != nil {
-		return nil, ErrCodeAlreadyUsed
+		return &AuthCode{CodeHash: codeHash, UserID: mc.ac.UserID}, ErrCodeAlreadyUsed
+	}
+	if mc.ac.ExpiresAt.Before(m.now()) {
+		return nil, ErrNotFound
 	}
 	t := m.now()
 	mc.usedAt = &t
@@ -150,17 +216,28 @@ func (m *memoryStore) Cleanup(_ context.Context) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	now := m.now()
+	// Keep codes (used or not) until 1h past expiry so a replay stays detectable as
+	// ErrCodeAlreadyUsed, matching the Postgres retention window.
 	for h, mc := range m.codes {
-		if mc.ac.ExpiresAt.Before(now) || (mc.usedAt != nil && now.Sub(*mc.usedAt) > authCodeTTL) {
+		if mc.ac.ExpiresAt.Before(now.Add(-time.Hour)) {
 			delete(m.codes, h)
 		}
 	}
 	for h, rt := range m.refresh {
-		if rt.ExpiresAt.Before(now) || (rt.RevokedAt != nil && now.Sub(*rt.RevokedAt) > refreshGrace) {
+		if rt.ExpiresAt.Before(now) || (rt.RevokedAt != nil && now.Sub(*rt.RevokedAt) > time.Hour) {
 			delete(m.refresh, h)
 		}
 	}
+	m.evictStaleClientsLocked(now)
 	return nil
+}
+
+// setNow swaps the clock under the lock so a concurrent reader (the janitor's
+// sweep, or a request) never races the test-only clock override.
+func (m *memoryStore) setNow(now func() time.Time) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.now = now
 }
 
 func (m *memoryStore) Close() {}

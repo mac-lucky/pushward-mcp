@@ -454,8 +454,8 @@ func handleCreateWidget(ctx context.Context, req mcp.CallToolRequest, api *clien
 	if err != nil {
 		return mcp.NewToolResultError(err.Error()), nil
 	}
-	if !json.Valid([]byte(contentStr)) {
-		return mcp.NewToolResultError("content_json is not valid JSON"), nil
+	if !isJSONObject(contentStr) {
+		return mcp.NewToolResultError("content_json must be a JSON object"), nil
 	}
 	paramName, err := req.RequireString("name")
 	if err != nil {
@@ -575,8 +575,8 @@ func handleUpdateActivity(ctx context.Context, req mcp.CallToolRequest, api *cli
 	if err != nil {
 		return mcp.NewToolResultError(err.Error()), nil
 	}
-	if !json.Valid([]byte(contentStr)) {
-		return mcp.NewToolResultError("content_json is not valid JSON"), nil
+	if !isJSONObject(contentStr) {
+		return mcp.NewToolResultError("content_json must be a JSON object"), nil
 	}
 	input := client.UpdateActivityInput{
 		Content: json.RawMessage(contentStr),
@@ -606,8 +606,8 @@ func handleUpdateWidget(ctx context.Context, req mcp.CallToolRequest, api *clien
 	if err != nil {
 		return mcp.NewToolResultError(err.Error()), nil
 	}
-	if !json.Valid([]byte(contentStr)) {
-		return mcp.NewToolResultError("content_json is not valid JSON"), nil
+	if !isJSONObject(contentStr) {
+		return mcp.NewToolResultError("content_json must be a JSON object"), nil
 	}
 	input := client.UpdateWidgetInput{
 		Content: json.RawMessage(contentStr),

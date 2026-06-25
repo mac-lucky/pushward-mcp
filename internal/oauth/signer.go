@@ -62,9 +62,15 @@ func keyID(priv *ecdsa.PrivateKey) string {
 }
 
 func elliptic2Bytes(priv *ecdsa.PrivateKey) []byte {
-	x := priv.X.Bytes()
-	y := priv.Y.Bytes()
-	return append(x, y...)
+	// Left-pad each coordinate to the curve's fixed 32-byte width before
+	// concatenating, so the kid is derived from a canonical byte layout that
+	// matches the padded x/y published in JWKS() — big.Int.Bytes() would strip
+	// leading zeros and make the X|Y boundary ambiguous.
+	const size = 32
+	out := make([]byte, 2*size)
+	priv.X.FillBytes(out[:size])
+	priv.Y.FillBytes(out[size:])
+	return out
 }
 
 // accessClaims are the registered claims of an issued access token.

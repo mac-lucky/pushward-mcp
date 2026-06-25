@@ -791,9 +791,11 @@ func handle{{ .FuncName }}(ctx context.Context, req mcp.CallToolRequest, api *cl
 {{- end }}
 {{- else if eq .MCPType "Number" }}
 {{- if .Required }}
-	if v, err := req.RequireFloat({{ quote .Name }}); err == nil {
-		input.{{ .GoName }} = &v
+	param{{ .GoName }}, err := req.RequireFloat({{ quote .Name }})
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
 	}
+	input.{{ .GoName }} = &param{{ .GoName }}
 {{- else }}
 	if v := req.GetFloat({{ quote .Name }}, math.NaN()); !math.IsNaN(v) {
 		input.{{ .GoName }} = &v
@@ -802,6 +804,11 @@ func handle{{ .FuncName }}(ctx context.Context, req mcp.CallToolRequest, api *cl
 {{- else if eq .MCPType "Boolean" }}
 	{{ template "boolField" . }}
 {{- else if eq .MCPType "Object" }}
+{{- if .Required }}
+	if _, ok := req.GetArguments()[{{ quote .Name }}]; !ok {
+		return mcp.NewToolResultError("missing required parameter: {{ .Name }}"), nil
+	}
+{{- end }}
 	if v, ok := req.GetArguments()[{{ quote .Name }}]; ok && v != nil {
 		buf, err := json.Marshal(v)
 		if err != nil {
@@ -814,6 +821,11 @@ func handle{{ .FuncName }}(ctx context.Context, req mcp.CallToolRequest, api *cl
 		input.{{ .GoName }} = parsed
 	}
 {{- else if eq .MCPType "Array" }}
+{{- if .Required }}
+	if _, ok := req.GetArguments()[{{ quote .Name }}]; !ok {
+		return mcp.NewToolResultError("missing required parameter: {{ .Name }}"), nil
+	}
+{{- end }}
 	if v, ok := req.GetArguments()[{{ quote .Name }}]; ok && v != nil {
 		buf, err := json.Marshal(v)
 		if err != nil {
@@ -839,8 +851,8 @@ func handle{{ .FuncName }}(ctx context.Context, req mcp.CallToolRequest, api *cl
 	if err != nil {
 		return mcp.NewToolResultError(err.Error()), nil
 	}
-	if !json.Valid([]byte(contentStr)) {
-		return mcp.NewToolResultError("content_json is not valid JSON"), nil
+	if !isJSONObject(contentStr) {
+		return mcp.NewToolResultError("content_json must be a JSON object"), nil
 	}
 {{- range .Params }}
 {{- if eq .MCPType "String" }}
@@ -957,8 +969,8 @@ func handle{{ .FuncName }}(ctx context.Context, req mcp.CallToolRequest, relay *
 	if err != nil {
 		return mcp.NewToolResultError(err.Error()), nil
 	}
-	if !json.Valid([]byte(payloadStr)) {
-		return mcp.NewToolResultError("payload_json is not valid JSON"), nil
+	if !isJSONObject(payloadStr) {
+		return mcp.NewToolResultError("payload_json must be a JSON object"), nil
 	}
 	raw, err := relay.PostWebhook(ctx, {{ quote .Provider }}, json.RawMessage(payloadStr))
 {{- else }}
@@ -973,7 +985,9 @@ func handle{{ .FuncName }}(ctx context.Context, req mcp.CallToolRequest, relay *
 		body[{{ quote .Name }}] = v
 	}
 {{- else if eq .MCPType "Boolean" }}
-	if v := req.GetBool({{ quote .Name }}, false); v {
+	// Assign on a real boolean (incl. an explicit false) so false is not dropped;
+	// RequireBool errors on absent/null, which leaves the field unset.
+	if v, err := req.RequireBool({{ quote .Name }}); err == nil {
 		body[{{ quote .Name }}] = v
 	}
 {{- end }}

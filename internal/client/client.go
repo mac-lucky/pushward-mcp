@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -46,19 +47,30 @@ func NewBase(baseURL, token string) *Base {
 	}
 }
 
-// newTransport tunes the connection pool for a single shared client that serves
-// every user in http mode (the per-user token rides in the request context). The
-// stdlib default keeps only 2 idle connections per host, forcing TLS
-// re-handshakes to api.pushward.app under concurrent load; raise the idle pool so
-// connections are reused.
+// newTransport returns the process-wide shared *http.Transport. A single transport
+// (and thus a single connection pool) is reused by every Base — the long-lived API
+// and relay clients AND the short-lived Base that validateHLK spins up per consent —
+// so a throwaway client never leaves behind its own idle connection pool. The pool
+// is tuned for the shared http-mode client that serves every user (the per-user
+// token rides in the request context): the stdlib default keeps only 2 idle
+// connections per host, forcing TLS re-handshakes to api.pushward.app under
+// concurrent load, so the idle pool is raised for connection reuse.
 func newTransport() *http.Transport {
-	t := http.DefaultTransport.(*http.Transport).Clone()
-	t.MaxIdleConns = 200
-	t.MaxIdleConnsPerHost = 100
-	t.MaxConnsPerHost = 200
-	t.IdleConnTimeout = 90 * time.Second
-	return t
+	sharedTransportOnce.Do(func() {
+		t := http.DefaultTransport.(*http.Transport).Clone()
+		t.MaxIdleConns = 200
+		t.MaxIdleConnsPerHost = 100
+		t.MaxConnsPerHost = 200
+		t.IdleConnTimeout = 90 * time.Second
+		sharedTransport = t
+	})
+	return sharedTransport
 }
+
+var (
+	sharedTransport     *http.Transport
+	sharedTransportOnce sync.Once
+)
 
 // ParseBearer extracts the token from an "Authorization: Bearer <token>" header
 // value, matching the scheme case-insensitively. It returns "" when the value is

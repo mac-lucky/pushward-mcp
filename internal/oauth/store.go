@@ -19,6 +19,9 @@ type Client struct {
 	RedirectURIs []string
 	IsCIMD       bool
 	CreatedAt    time.Time
+	// UpdatedAt is the last time this client row was written (registration or CIMD
+	// re-fetch). It drives the CIMD re-fetch TTL and the stale-client Cleanup.
+	UpdatedAt time.Time
 }
 
 // AuthCode is a pending authorization code grant. Code is stored hashed. The
@@ -36,8 +39,11 @@ type AuthCode struct {
 	ExpiresAt     time.Time
 }
 
-// RefreshToken is an issued refresh token (stored hashed) with rotation
-// lineage for theft detection.
+// RefreshToken is an issued refresh token (stored hashed). Rotation-reuse theft
+// detection is implemented by the atomic single-winner revoke in
+// RevokeRefreshToken plus the post-grace family revoke in grantRefreshToken — not
+// by walking PrevHash, which is retained only as audit lineage of the rotation
+// chain (it is written and scanned, but no logic branches on it).
 type RefreshToken struct {
 	TokenHash string
 	UserID    string
@@ -56,9 +62,10 @@ type Store interface {
 
 	SaveAuthCode(ctx context.Context, ac *AuthCode) error
 	// ConsumeAuthCode atomically fetches and marks an unexpired, unused code as
-	// used. It returns ErrNotFound if missing/expired and ErrCodeAlreadyUsed if
-	// the code was already consumed (the caller should treat reuse as an attack
-	// and revoke any tokens minted from it).
+	// used. It returns ErrNotFound if missing/expired and ErrCodeAlreadyUsed if the
+	// code was already consumed — and on that reuse path it returns a non-nil
+	// *AuthCode carrying at least the UserID, so the caller can treat the replay as
+	// an attack and revoke the tokens minted from that grant.
 	ConsumeAuthCode(ctx context.Context, codeHash string) (*AuthCode, error)
 
 	SaveRefreshToken(ctx context.Context, rt *RefreshToken) error
@@ -76,8 +83,9 @@ type Store interface {
 	SaveUserCredential(ctx context.Context, userID string, encryptedHLK []byte) error
 	GetUserCredential(ctx context.Context, userID string) ([]byte, error)
 
-	// Cleanup purges expired authorization codes and expired/long-revoked
-	// refresh tokens so neither table grows without bound.
+	// Cleanup purges expired authorization codes, expired/long-revoked refresh
+	// tokens, and stale clients (older than clientRetention with no active refresh
+	// token or live auth code) so none of the tables grows without bound.
 	Cleanup(ctx context.Context) error
 
 	Close()

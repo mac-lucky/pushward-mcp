@@ -14,7 +14,7 @@ func (p *Provider) handleToken(w http.ResponseWriter, r *http.Request) {
 		oauthError(w, http.StatusMethodNotAllowed, "invalid_request", "POST required")
 		return
 	}
-	if !p.tokenLimiter.Allow(clientIP(r, p.cfg.TrustProxy)) {
+	if !p.tokenLimiter.Allow(p.clientIP(r)) {
 		oauthError(w, http.StatusTooManyRequests, "temporarily_unavailable", "rate limited")
 		return
 	}
@@ -47,7 +47,17 @@ func (p *Provider) grantAuthorizationCode(w http.ResponseWriter, r *http.Request
 
 	ac, err := p.store.ConsumeAuthCode(r.Context(), hashToken(code))
 	if errors.Is(err, ErrCodeAlreadyUsed) {
-		// Replay of a consumed code: treat as compromise of that grant.
+		// Replay of a consumed code is treated as compromise of that grant: revoke
+		// the user's refresh-token family so any tokens minted from the first use
+		// are killed (RFC 6749 §4.1.2 / OAuth 2.1). ConsumeAuthCode surfaces the
+		// user_id on the reuse path so this is actionable.
+		if ac != nil && ac.UserID != "" {
+			if rerr := p.store.RevokeUserRefreshTokens(r.Context(), ac.UserID); rerr != nil {
+				p.log.Warn("failed to revoke tokens after auth code replay", "user", ac.UserID, "err", rerr)
+			} else {
+				p.log.Warn("authorization code replay detected; revoked user refresh tokens", "user", ac.UserID)
+			}
+		}
 		oauthError(w, http.StatusBadRequest, "invalid_grant", "authorization code already used")
 		return
 	}
