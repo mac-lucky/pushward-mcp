@@ -41,7 +41,7 @@ const (
 
 // lifecycleTemplates is the set of content templates the test_activity_lifecycle
 // tool advertises and that buildTestContent knows how to populate. Single source
-// so the enum, the switch, and the parity test can't drift — mirrors the
+// so the enum, the switch, and the parity test can't drift - mirrors the
 // relayTestProviders pattern.
 var lifecycleTemplates = []string{
 	tmplGeneric, tmplCountdown, tmplSteps, tmplAlert, tmplGauge, tmplTimeline,
@@ -49,7 +49,7 @@ var lifecycleTemplates = []string{
 }
 
 // relayTestProviders is the set of providers accepted by the test_relay_provider
-// tool's enum. Every entry must have a fixture in testPayloads — enforced by
+// tool's enum. Every entry must have a fixture in testPayloads - enforced by
 // TestTestPayloads_AllProvidersPresent so the two lists can never drift.
 var relayTestProviders = []string{
 	"argocd", "backrest", "bazarr", "changedetection", "gatus",
@@ -86,7 +86,7 @@ func registerCompositeTools(s *mcpserver.MCPServer, api *client.APIClient, relay
 		},
 	)
 
-	// get_ready — kept as a composite because /ready is filtered out of the
+	// get_ready - kept as a composite because /ready is filtered out of the
 	// public OpenAPI spec the generator consumes (PublicOperationIDs in
 	// pushward-server/internal/api/openapi_filter.go).
 	s.AddTool(
@@ -182,7 +182,7 @@ func registerCompositeTools(s *mcpserver.MCPServer, api *client.APIClient, relay
 		},
 	)
 
-	// test_relay_provider — only registered when relay tools are enabled.
+	// test_relay_provider - only registered when relay tools are enabled.
 	if relayEnabled {
 		s.AddTool(
 			mcp.NewTool("test_relay_provider",
@@ -226,7 +226,7 @@ func registerCompositeTools(s *mcpserver.MCPServer, api *client.APIClient, relay
 		},
 	)
 
-	// get_activity (enhanced, replaces generated version) — adds
+	// get_activity (enhanced, replaces generated version) - adds
 	// include_log_backlog, which the generator can't express because it ignores
 	// OpenAPI query parameters.
 	s.AddTool(
@@ -275,7 +275,7 @@ func registerCompositeTools(s *mcpserver.MCPServer, api *client.APIClient, relay
 	// bulk_end_activities
 	s.AddTool(
 		mcp.NewTool("bulk_end_activities",
-			mcp.WithDescription("End multiple activities matching filters. At least one filter is required. Defaults to dry-run — pass confirm=true to actually end matching activities."),
+			mcp.WithDescription("End multiple activities matching filters. At least one filter is required. Defaults to dry-run - pass confirm=true to actually end matching activities."),
 			mcp.WithDestructiveHintAnnotation(true),
 			mcp.WithOpenWorldHintAnnotation(true),
 			mcp.WithString("state",
@@ -311,7 +311,7 @@ func handleTestHealth(ctx context.Context, api *client.APIClient, relay *client.
 		results = append(results, fmt.Sprintf("API: %s", string(apiRaw)))
 	}
 
-	// relay is nil when relay tools are disabled (http/remote mode) — only the
+	// relay is nil when relay tools are disabled (http/remote mode) - only the
 	// API health is reported in that case.
 	if relay != nil {
 		relayRaw, _, err := relay.Base.DoJSON(ctx, "GET", "/health", nil)
@@ -464,7 +464,7 @@ func buildTestContent(tmpl string, progress float64, state, tapURL string) json.
 		// into start/end dates, so this satisfies validation on both PATCHes.
 		content["duration"] = "5m"
 	case tmplTimeline:
-		// timeline value must be a labeled map ({key: number}), not a scalar —
+		// timeline value must be a labeled map ({key: number}), not a scalar -
 		// the server rejects a bare number for this template.
 		content["value"] = map[string]any{"Value": progress * 100}
 	case tmplBoard:
@@ -652,7 +652,7 @@ func handleListActivities(ctx context.Context, req mcp.CallToolRequest, api *cli
 	summary := req.GetBool("summary", false)
 	limit := max(int(req.GetFloat("limit", 0)), 0)
 
-	// No filters and no summary — return raw response (backwards compat)
+	// No filters and no summary - return raw response (backwards compat)
 	if stateFilter == "" && sourceFilter == "" && !summary && limit == 0 {
 		return mcp.NewToolResultText(withTruncationNote(string(raw), truncated)), nil
 	}
@@ -848,7 +848,7 @@ func handleBulkEndActivities(ctx context.Context, req mcp.CallToolRequest, api *
 	var ended []string
 	var failed []string
 	for _, a := range toEnd {
-		// Stop early if the caller cancelled — don't keep firing PATCHes.
+		// Stop early if the caller cancelled - don't keep firing PATCHes.
 		if err := ctx.Err(); err != nil {
 			failed = append(failed, fmt.Sprintf("(aborted after %d: %v)", len(ended), err))
 			break
@@ -877,7 +877,7 @@ func handleBulkEndActivities(ctx context.Context, req mcp.CallToolRequest, api *
 
 	out := withTruncationNote(strings.Join(parts, "\n"), truncated)
 	// Nothing ended but failures occurred (every PATCH failed or the caller
-	// cancelled before the first success) — surface it as an MCP error so the
+	// cancelled before the first success) - surface it as an MCP error so the
 	// agent can detect total failure via IsError, mirroring the lifecycle tool,
 	// instead of having to parse the text.
 	if len(ended) == 0 && len(failed) > 0 {

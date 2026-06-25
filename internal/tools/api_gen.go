@@ -23,7 +23,7 @@ func registerAPITools(s *mcpserver.MCPServer, api *client.APIClient) {
 			// default so clients don't treat it as a data-clobbering operation.
 			mcp.WithDestructiveHintAnnotation(false),
 			// Every tool proxies an external REST API (api.pushward.app), so its
-			// results cross a trust boundary — keep the open-world hint explicit.
+			// results cross a trust boundary - keep the open-world hint explicit.
 			mcp.WithOpenWorldHintAnnotation(true),
 			mcp.WithNumber("ended_ttl",
 				mcp.Description("Seconds after ENDED before auto-delete (1s to 30 days) (min: 1, max: 2592000)"),
@@ -56,7 +56,7 @@ func registerAPITools(s *mcpserver.MCPServer, api *client.APIClient) {
 			// default so clients don't treat it as a data-clobbering operation.
 			mcp.WithDestructiveHintAnnotation(false),
 			// Every tool proxies an external REST API (api.pushward.app), so its
-			// results cross a trust boundary — keep the open-world hint explicit.
+			// results cross a trust boundary - keep the open-world hint explicit.
 			mcp.WithOpenWorldHintAnnotation(true),
 			mcp.WithArray("actions",
 				mcp.Description("Server-driven action buttons. Max 10 (Apple cap)."),
@@ -73,7 +73,7 @@ func registerAPITools(s *mcpserver.MCPServer, api *client.APIClient) {
 				mcp.Description("Collapse ID for replacing notifications"),
 			),
 			mcp.WithString("icon_url",
-				mcp.Description("http or https URL for per-notification source avatar, shown as the Communication Notification avatar on iOS. Recommended ≤256×256 and ≤100 KB; responses larger than 512 KB are rejected by the iOS extension to protect the 24 MB memory budget."),
+				mcp.Description("http or https URL for per-notification source avatar, shown as the Communication Notification avatar on iOS. Recommended <=256x256 and <=100 KB; responses larger than 512 KB are rejected by the iOS extension to protect the 24 MB memory budget."),
 			),
 			mcp.WithString("level",
 				mcp.Description("Interruption level (default: active)"),
@@ -121,7 +121,7 @@ func registerAPITools(s *mcpserver.MCPServer, api *client.APIClient) {
 			// default so clients don't treat it as a data-clobbering operation.
 			mcp.WithDestructiveHintAnnotation(false),
 			// Every tool proxies an external REST API (api.pushward.app), so its
-			// results cross a trust boundary — keep the open-world hint explicit.
+			// results cross a trust boundary - keep the open-world hint explicit.
 			mcp.WithOpenWorldHintAnnotation(true),
 			mcp.WithString("name",
 				mcp.Required(),
@@ -136,7 +136,7 @@ func registerAPITools(s *mcpserver.MCPServer, api *client.APIClient) {
 			),
 			mcp.WithString("content_json",
 				mcp.Required(),
-				mcp.Description("Widget content as a JSON object. Send the full content object (template is required). Fields: template (value|progress|status|gauge|stat_list — selects the visual style), value (number), label, unit, trend (up|down|flat), severity, min_value, max_value, stat_rows (array of stat rows, used by stat_list), icon, subtitle, accent_color, background_color, text_color, tap_action ({url}), url_action, secondary_url_action."),
+				mcp.Description("Widget content as a JSON object. Send the full content object (template is required). Fields: template (value|progress|status|gauge|stat_list - selects the visual style), value (number), label, unit, trend (up|down|flat), severity, min_value, max_value, stat_rows (array of stat rows, used by stat_list), icon, subtitle, accent_color, background_color, text_color, tap_action ({url}), url_action, secondary_url_action."),
 			),
 		),
 		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -151,7 +151,7 @@ func registerAPITools(s *mcpserver.MCPServer, api *client.APIClient) {
 			mcp.WithDestructiveHintAnnotation(true),
 			mcp.WithIdempotentHintAnnotation(true),
 			// Every tool proxies an external REST API (api.pushward.app), so its
-			// results cross a trust boundary — keep the open-world hint explicit.
+			// results cross a trust boundary - keep the open-world hint explicit.
 			mcp.WithOpenWorldHintAnnotation(true),
 			mcp.WithString("slug",
 				mcp.Required(),
@@ -170,7 +170,7 @@ func registerAPITools(s *mcpserver.MCPServer, api *client.APIClient) {
 			mcp.WithDestructiveHintAnnotation(true),
 			mcp.WithIdempotentHintAnnotation(true),
 			// Every tool proxies an external REST API (api.pushward.app), so its
-			// results cross a trust boundary — keep the open-world hint explicit.
+			// results cross a trust boundary - keep the open-world hint explicit.
 			mcp.WithOpenWorldHintAnnotation(true),
 			mcp.WithString("slug",
 				mcp.Required(),
@@ -188,7 +188,7 @@ func registerAPITools(s *mcpserver.MCPServer, api *client.APIClient) {
 			mcp.WithDescription("Health check"),
 			mcp.WithReadOnlyHintAnnotation(true),
 			// Every tool proxies an external REST API (api.pushward.app), so its
-			// results cross a trust boundary — keep the open-world hint explicit.
+			// results cross a trust boundary - keep the open-world hint explicit.
 			mcp.WithOpenWorldHintAnnotation(true),
 		),
 		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -202,7 +202,7 @@ func registerAPITools(s *mcpserver.MCPServer, api *client.APIClient) {
 			mcp.WithDescription("Get current user profile"),
 			mcp.WithReadOnlyHintAnnotation(true),
 			// Every tool proxies an external REST API (api.pushward.app), so its
-			// results cross a trust boundary — keep the open-world hint explicit.
+			// results cross a trust boundary - keep the open-world hint explicit.
 			mcp.WithOpenWorldHintAnnotation(true),
 		),
 		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -216,7 +216,7 @@ func registerAPITools(s *mcpserver.MCPServer, api *client.APIClient) {
 			mcp.WithDescription("Get widget"),
 			mcp.WithReadOnlyHintAnnotation(true),
 			// Every tool proxies an external REST API (api.pushward.app), so its
-			// results cross a trust boundary — keep the open-world hint explicit.
+			// results cross a trust boundary - keep the open-world hint explicit.
 			mcp.WithOpenWorldHintAnnotation(true),
 			mcp.WithString("slug",
 				mcp.Required(),
@@ -234,7 +234,7 @@ func registerAPITools(s *mcpserver.MCPServer, api *client.APIClient) {
 			mcp.WithDescription("List widgets"),
 			mcp.WithReadOnlyHintAnnotation(true),
 			// Every tool proxies an external REST API (api.pushward.app), so its
-			// results cross a trust boundary — keep the open-world hint explicit.
+			// results cross a trust boundary - keep the open-world hint explicit.
 			mcp.WithOpenWorldHintAnnotation(true),
 		),
 		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -250,7 +250,7 @@ func registerAPITools(s *mcpserver.MCPServer, api *client.APIClient) {
 			// default so clients don't treat it as a data-clobbering operation.
 			mcp.WithDestructiveHintAnnotation(false),
 			// Every tool proxies an external REST API (api.pushward.app), so its
-			// results cross a trust boundary — keep the open-world hint explicit.
+			// results cross a trust boundary - keep the open-world hint explicit.
 			mcp.WithOpenWorldHintAnnotation(true),
 			mcp.WithString("html_body",
 				mcp.Description("HTML body. Provide html_body, text_body, or both."),
@@ -283,7 +283,7 @@ func registerAPITools(s *mcpserver.MCPServer, api *client.APIClient) {
 			mcp.WithDestructiveHintAnnotation(false),
 			mcp.WithIdempotentHintAnnotation(true),
 			// Every tool proxies an external REST API (api.pushward.app), so its
-			// results cross a trust boundary — keep the open-world hint explicit.
+			// results cross a trust boundary - keep the open-world hint explicit.
 			mcp.WithOpenWorldHintAnnotation(true),
 			mcp.WithString("slug",
 				mcp.Required(),
@@ -297,11 +297,11 @@ func registerAPITools(s *mcpserver.MCPServer, api *client.APIClient) {
 				mcp.Enum("default", "chime", "alert", "success", "warning", "bell", "ding", "buzz", "notification"),
 			),
 			mcp.WithString("state",
-				mcp.Description("Target state. Accepts ongoing or ended (case-insensitive). Optional — if omitted, the current stored state is kept. Setting ended on an ongoing activity dismisses the Live Activity."),
+				mcp.Description("Target state. Accepts ongoing or ended (case-insensitive). Optional - if omitted, the current stored state is kept. Setting ended on an ongoing activity dismisses the Live Activity."),
 			),
 			mcp.WithString("content_json",
 				mcp.Required(),
-				mcp.Description("Activity content as JSON object. PATCH applies RFC 7396 JSON Merge Patch semantics — only send the fields you want to change, null clears a field, absent preserves. Fields: template (generic|countdown|steps|alert|gauge|timeline|board|log), progress (0.0-1.0), state, icon, subtitle, accent_color, background_color, text_color. Template-specific: countdown (duration as integer seconds (60) or duration string (\"60s\", \"1h30m\"), end_date [unix timestamp], warning_threshold, completion_message, alarm, snooze_seconds (60-3600, default 300; how far the /snooze action and iOS AlarmKit snooze extend the timer, only with alarm); if both duration and end_date are sent, end_date wins), steps (current_step, total_steps, step_labels), alert (severity: critical|warning|info, fired_at), gauge (value, min_value, max_value, unit), timeline (value as {key:number}, history as {key:[{timestamp,value}]}, scale, thresholds), board (tiles: 1-4 labeled tiles, each {label, value [string], unit, icon, color, trend [up|down|flat], url_action {url}}, replaced wholesale per update), log (lines: 1-20 newest-first entries, each {text, at [unix seconds], level [info|warn|error]}, replaced wholesale per update; the server also keeps a read-only rolling log_backlog, fetch it via get_activity include_log_backlog)."),
+				mcp.Description("Activity content as JSON object. PATCH applies RFC 7396 JSON Merge Patch semantics - only send the fields you want to change, null clears a field, absent preserves. Fields: template (generic|countdown|steps|alert|gauge|timeline|board|log), progress (0.0-1.0), state, icon, subtitle, accent_color, background_color, text_color. Template-specific: countdown (duration as integer seconds (60) or duration string (\"60s\", \"1h30m\"), end_date [unix timestamp], warning_threshold, completion_message, alarm, snooze_seconds (60-3600, default 300; how far the /snooze action and iOS AlarmKit snooze extend the timer, only with alarm); if both duration and end_date are sent, end_date wins), steps (current_step, total_steps, step_labels), alert (severity: critical|warning|info, fired_at), gauge (value, min_value, max_value, unit), timeline (value as {key:number}, history as {key:[{timestamp,value}]}, scale, thresholds), board (tiles: 1-4 labeled tiles, each {label, value [string], unit, icon, color, trend [up|down|flat], url_action {url}}, replaced wholesale per update), log (lines: 1-20 newest-first entries, each {text, at [unix seconds], level [info|warn|error]}, replaced wholesale per update; the server also keeps a read-only rolling log_backlog, fetch it via get_activity include_log_backlog)."),
 			),
 		),
 		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -320,7 +320,7 @@ func registerAPITools(s *mcpserver.MCPServer, api *client.APIClient) {
 			mcp.WithDestructiveHintAnnotation(false),
 			mcp.WithIdempotentHintAnnotation(true),
 			// Every tool proxies an external REST API (api.pushward.app), so its
-			// results cross a trust boundary — keep the open-world hint explicit.
+			// results cross a trust boundary - keep the open-world hint explicit.
 			mcp.WithOpenWorldHintAnnotation(true),
 			mcp.WithString("slug",
 				mcp.Required(),
@@ -334,7 +334,7 @@ func registerAPITools(s *mcpserver.MCPServer, api *client.APIClient) {
 			),
 			mcp.WithString("content_json",
 				mcp.Required(),
-				mcp.Description("Widget content as a JSON object. PATCH applies RFC 7396 JSON Merge Patch semantics — only send the fields you want to change, null clears a field, absent preserves. Fields: template (value|progress|status|gauge|stat_list — selects the visual style), value (number), label, unit, trend (up|down|flat), severity, min_value, max_value, stat_rows (array of stat rows, used by stat_list), icon, subtitle, accent_color, background_color, text_color, tap_action ({url}), url_action, secondary_url_action."),
+				mcp.Description("Widget content as a JSON object. PATCH applies RFC 7396 JSON Merge Patch semantics - only send the fields you want to change, null clears a field, absent preserves. Fields: template (value|progress|status|gauge|stat_list - selects the visual style), value (number), label, unit, trend (up|down|flat), severity, min_value, max_value, stat_rows (array of stat rows, used by stat_list), icon, subtitle, accent_color, background_color, text_color, tap_action ({url}), url_action, secondary_url_action."),
 			),
 		),
 		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -390,7 +390,7 @@ func handleCreateNotification(ctx context.Context, req mcp.CallToolRequest, api 
 		if err != nil {
 			return mcp.NewToolResultError("encoding actions: " + err.Error()), nil
 		}
-		// Forward opaque JSON — server is the source of truth for the
+		// Forward opaque JSON - server is the source of truth for the
 		// actions schema, so new fields don't require an MCP rebuild.
 		input.Actions = json.RawMessage(buf)
 	}
@@ -418,8 +418,8 @@ func handleCreateNotification(ctx context.Context, req mcp.CallToolRequest, api 
 		input.Media = parsed
 	}
 	// Send the field only when the caller supplied a real boolean, so an omitted
-	// (or null) value inherits the server-side default — e.g. push defaults to
-	// true — instead of being forced to false. RequireBool errors on absent, null,
+	// (or null) value inherits the server-side default - e.g. push defaults to
+	// true - instead of being forced to false. RequireBool errors on absent, null,
 	// or non-bool input; assign only on success. Requires a *bool client field.
 	if v, err := req.RequireBool("push"); err == nil {
 		input.Push = &v

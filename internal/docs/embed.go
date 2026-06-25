@@ -1,6 +1,6 @@
-// Package docs serves PushWard's reference material — the published llms.txt /
+// Package docs serves PushWard's reference material - the published llms.txt /
 // llms-full.txt docs, the API and relay OpenAPI specs, and a curated
-// best-practices guide — embedded into the binary at build time so coding
+// best-practices guide - embedded into the binary at build time so coding
 // agents can pull it into context offline. The assets are refreshed by
 // cmd/generate, except best-practices.md, which is hand-authored.
 package docs
@@ -35,7 +35,7 @@ var kindFiles = map[Kind]string{
 }
 
 // Doc returns the full text of the reference document for kind. It returns an
-// error for an unrecognized kind — the get_pushward_docs handler relies on this
+// error for an unrecognized kind - the get_pushward_docs handler relies on this
 // to validate input, since mcp-go does not enforce enums server-side.
 func Doc(kind Kind) (string, error) {
 	path, ok := kindFiles[kind]

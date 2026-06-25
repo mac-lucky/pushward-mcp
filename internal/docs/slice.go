@@ -7,7 +7,7 @@ import (
 
 var (
 	// ATX headings only: 1-6 '#', a space, the text, an optional closing '#'
-	// sequence. Setext (underline) headings are intentionally not supported —
+	// sequence. Setext (underline) headings are intentionally not supported -
 	// the PushWard docs use ATX exclusively.
 	headingRE = regexp.MustCompile(`^(#{1,6})[ \t]+(.+?)[ \t]*#*[ \t]*$`)
 	// A line that opens or closes a fenced code block.

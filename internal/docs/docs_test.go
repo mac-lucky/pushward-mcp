@@ -96,7 +96,7 @@ func TestSection_ExactAndSubstring(t *testing.T) {
 }
 
 func TestSection_IgnoresFencedHashes(t *testing.T) {
-	// The '#' line lives inside a code fence — it must be content, never a
+	// The '#' line lives inside a code fence - it must be content, never a
 	// heading boundary, and must not be matchable as a section.
 	text, ok, _ := Section(fenceDoc, "real-section")
 	if !ok {
@@ -168,13 +168,13 @@ func TestSection_RealFullBundle(t *testing.T) {
 }
 
 func TestNavigableHeadings_PrefersShallowestMultiLevel(t *testing.T) {
-	// Single H1 with several H2s (the llms.txt shape) → H2s are the nav set.
+	// Single H1 with several H2s (the llms.txt shape) -> H2s are the nav set.
 	indexShape := parseHeadings("# Root\n\n## A\n\ntext\n\n## B\n\ntext\n\n## C\n")
 	got := navigableHeadings(indexShape)
 	if len(got) != 3 || got[0] != "A" || got[2] != "C" {
 		t.Errorf("navigableHeadings(index shape) = %v, want [A B C]", got)
 	}
-	// Many H1s (the llms-full.txt shape) → H1s are the nav set.
+	// Many H1s (the llms-full.txt shape) -> H1s are the nav set.
 	fullShape := parseHeadings("# One\n\n## sub\n\n# Two\n\n# Three\n")
 	got2 := navigableHeadings(fullShape)
 	if len(got2) != 3 || got2[0] != "One" {

@@ -1,12 +1,13 @@
 # PushWard Integration Best Practices
 
-A curated guide for writing correct, production-grade code against PushWard.
-Pair it with the live reference: call `get_pushward_docs(kind="index")` first to
-see what exists, then `kind="full"` (with `section`) for guides, or
-`kind="api_openapi"` / `kind="relay_openapi"` for exact request/response schemas.
+Rules for writing PushWard integrations that hold up in production. This is the
+short list of things that actually bite bridges, not a feature tour. Pair it with
+the live reference: call `get_pushward_docs(kind="index")` first to see what
+exists, then `kind="full"` (with `section`) for guides, or `kind="api_openapi"` /
+`kind="relay_openapi"` for exact request/response schemas.
 
 The H2 headings below are the `topic` values accepted by
-`get_pushward_best_practices` — request one to get just that section.
+`get_pushward_best_practices`. Request one to get just that section.
 
 ## integration
 
@@ -14,7 +15,7 @@ General rules for any code that talks to the PushWard REST API
 (`https://api.pushward.app`).
 
 - **Authentication.** Send `Authorization: Bearer <key>`. User integration keys
-  are prefixed `hlk_`. Never hard-code a key — read it from config/env (the
+  are prefixed `hlk_`. Never hard-code a key; read it from config/env (the
   bridges use the `PUSHWARD_*` env prefix, where env always overrides file
   config).
 - **Idempotency via slugs.** An activity is identified by a unique `slug`.
@@ -24,17 +25,18 @@ General rules for any code that talks to the PushWard REST API
   activity instead of creating duplicates.
 - **Respect rate limits and 429s.** The API returns RFC 9457 problem responses;
   on `429` it includes `retry_after_ms`. Back off and retry with jitter rather
-  than hammering — the relay enforces both per-IP and per-key limits. Bound your
-  retries (the reference bridges retry ~5× with exponential backoff).
+  than hammering. The relay enforces both per-IP and per-key limits, so bound
+  your retries (the reference bridges retry about 5 times with exponential
+  backoff).
 - **Metadata caps.** Activity/notification metadata is capped at **20 key/value
-  pairs**, each value **≤512 characters**. Truncate or summarize before sending;
-  oversized payloads are rejected.
+  pairs**, each value **512 characters max**. Truncate or summarize before
+  sending; oversized payloads are rejected.
 - **Lifecycle & cleanup.** Set a sensible `priority` (higher wins when the device
   hits Apple's concurrent-activity ceiling). Let the server clean up ended
   activities via `ended_ttl` (the bridges expose this as `cleanup_delay`) and
-  stale ongoing ones via `stale_timeout` — don't rely on your process staying
+  stale ongoing ones via `stale_timeout`. Don't rely on your process staying
   alive to delete them.
-- **Send only what changed.** `PATCH` is a merge-patch — include the fields you
+- **Send only what changed.** `PATCH` is a merge-patch, so include the fields you
   are updating plus the `content.template`. Avoid resending unchanged large
   blobs on every tick.
 
@@ -49,24 +51,24 @@ Screen.
   matrix), `alert` (severity-based monitoring with deep links), `gauge`
   (numeric value within min/max, progress auto-computed server-side), `timeline`
   (real-time sparkline; each push appends a data point and the server keeps the
-  history), `board` (a grid of 1–4 labeled status tiles — room sensors, service
-  health — `tiles` replaced wholesale per update), `log` (a scrolling feed of
-  1–20 newest-first `lines`, replaced wholesale per update; the server also keeps
-  a rolling backlog readable via `GET /activities/{slug}?include=log_backlog`).
+  history), `board` (a grid of 1-4 labeled status tiles such as room sensors or
+  service health, `tiles` replaced wholesale per update), `log` (a scrolling feed
+  of 1-20 newest-first `lines`, replaced wholesale per update; the server also
+  keeps a rolling backlog readable via `GET /activities/{slug}?include=log_backlog`).
   Always set `content.template`.
 - **Two-phase end.** To end an activity with a clean final frame: first `PATCH`
   to `state="ongoing"` with the *final* content (so the last visible frame is
   correct), pause briefly so the user sees it, then `PATCH` to `state="ended"` to
   dismiss. Ending in one step can flash a stale frame before dismissal. The MCP
   `end_activity` tool follows this pattern and preserves the existing template,
-  updating only the state text — mirror it.
+  updating only the state text. Mirror it.
 - **State text.** On end, set a short human reason as the state text
   (e.g. "Completed", "Failed", "Cancelled") rather than leaving the last
   in-progress label.
 - **`tap_action` routing.** Set `content.tap_action` to make the activity
   tappable: a foreground HTTPS URL opens in-app, a custom scheme routes
   cross-app, and an HTTP URL with method/headers/body fires a silent webhook.
-- **Countdown specifics.** For `countdown`, set it and forget it — the server
+- **Countdown specifics.** For `countdown`, set it and forget it: the server
   drives the warning and completion pushes from the target time. Use
   `snooze_seconds` to extend rather than recreating the activity.
 
@@ -79,7 +81,7 @@ Wiring an external service's webhook to PushWard through the relay
   the relay's provider endpoint (e.g. `POST /grafana`, `/sonarr`, `/proxmox`).
   The relay is multi-tenant: it extracts the caller's `hlk_` key from the
   `Authorization` header, so no per-user container or config is needed.
-- **Check the exact payload shape.** Each provider has its own request schema —
+- **Check the exact payload shape.** Each provider has its own request schema, so
   pull `get_pushward_docs(kind="relay_openapi")` and read the provider's
   `*Payload` schema before constructing test or production payloads. Some
   providers accept flat top-level fields, others nest under an object.
@@ -88,8 +90,8 @@ Wiring an external service's webhook to PushWard through the relay
   alert fingerprints, media by TMDB/TVDB id) into a single activity. Send a
   stable identifier in the payload so grouping works; don't generate a fresh id
   per delivery.
-- **Per-tenant isolation.** The relay pools an API client per tenant key — keep
-  one integration key per logical source so activities and limits are scoped
+- **Per-tenant isolation.** The relay pools an API client per tenant key, so keep
+  one integration key per logical source and activities and limits stay scoped
   correctly.
 - **Test before shipping.** Use the MCP `test_relay_provider` tool (or
   `relay_<provider>`) to send a representative payload and confirm the response
@@ -102,7 +104,7 @@ Sending transactional email through `POST /emails`.
 - **Recipients must be verified.** Email only delivers to an address that is
   registered **and** double-opt-in verified on the account, and not
   unsubscribed. Registering/verifying recipients is an account-owner (`hla_`) /
-  dashboard operation — it is **not** reachable with an `hlk_` integration key,
+  dashboard operation; it is **not** reachable with an `hlk_` integration key,
   so a bridge (or this MCP) can send to an existing verified recipient but
   cannot add one.
 - **Provide a body.** `subject` and `to` are required; send `html_body`,
@@ -111,8 +113,8 @@ Sending transactional email through `POST /emails`.
   email-log record: `status` is `sent` / `bounced` / `complained` / `failed` /
   `suppressed`, and `delivery` is `all` or `none`. When `delivery` is `none`,
   `reason` explains it (`suppressed` = recipient not verified or unsubscribed;
-  `send_failed` = provider error). A `2xx` does not guarantee delivery — inspect
-  `status`.
+  `send_failed` = provider error). A `2xx` does not guarantee delivery, so always
+  inspect `status`.
 - **Test it.** Use the MCP `test_email` tool (or `send_email`) with a known
   verified recipient and confirm a `sent` status before pointing real traffic
   at it.
@@ -120,7 +122,7 @@ Sending transactional email through `POST /emails`.
 ## references
 
 - PushWard docs index: <https://pushward.app/llms.txt> (and the full bundle
-  <https://pushward.app/llms-full.txt>) — also available offline via
+  <https://pushward.app/llms-full.txt>), also available offline via
   `get_pushward_docs`.
 - API explorer: <https://pushward.app/api>; OpenAPI: <https://api.pushward.app/openapi.yaml>.
 - Limits and examples: <https://pushward.app/docs/limits>, <https://pushward.app/docs/examples>.

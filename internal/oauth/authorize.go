@@ -183,7 +183,7 @@ func (p *Provider) authorizePost(w http.ResponseWriter, r *http.Request) {
 	// invalidated by a concurrent render. A failure means it expired (the page sat
 	// open past csrfTokenTTL) or was tampered with; re-render with a fresh token so
 	// the user recovers in one click. No code is minted here, and a forged
-	// cross-site POST achieves nothing — it cannot supply the victim's pasted key.
+	// cross-site POST achieves nothing - it cannot supply the victim's pasted key.
 	if !p.csrf.verify(r.PostFormValue(csrfFormName), pr.ClientID) {
 		p.renderConsent(w, pr, c, "Your authorization session expired. Please review and authorize again.", http.StatusOK)
 		return

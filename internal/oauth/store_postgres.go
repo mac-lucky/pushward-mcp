@@ -16,7 +16,7 @@ import (
 // advisory lock so concurrently-booting replicas don't race the DDL. Migration 1
 // is the original schema (idempotent CREATE ... IF NOT EXISTS, so it no-ops on an
 // already-provisioned database and just records the version); later migrations
-// evolve it with idempotent ALTERs. APPEND new migrations — never edit or reorder
+// evolve it with idempotent ALTERs. APPEND new migrations - never edit or reorder
 // existing entries, or deployed databases will diverge.
 var migrations = []string{
 	// 1: initial schema.

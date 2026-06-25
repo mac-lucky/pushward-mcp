@@ -135,7 +135,7 @@ func TestBuildTestContent_TapAction(t *testing.T) {
 		t.Errorf("tap_action.url = %v, want %s", tap["url"], url)
 	}
 
-	// Empty tap_action_url must NOT inject the field — kept backward-compatible
+	// Empty tap_action_url must NOT inject the field - kept backward-compatible
 	// for callers that don't opt in.
 	rawNo := buildTestContent("generic", 0.5, "Testing...", "")
 	var mNo map[string]any
@@ -153,7 +153,7 @@ func TestBuildTestContent_Countdown(t *testing.T) {
 	if err := json.Unmarshal(raw, &m); err != nil {
 		t.Fatalf("invalid JSON: %v", err)
 	}
-	// countdown requires a duration/end_date — without it the server rejects the
+	// countdown requires a duration/end_date - without it the server rejects the
 	// PATCH, so the lifecycle tool must supply one.
 	if m["duration"] != "5m" {
 		t.Errorf("duration = %v, want 5m", m["duration"])
@@ -242,7 +242,7 @@ func TestBuildTestContent_AllLifecycleTemplatesValidJSON(t *testing.T) {
 		"log":       {"template", "lines"},
 	}
 	// Parity: the assertions below must cover exactly the templates the tool
-	// advertises in lifecycleTemplates — adding one to the enum without a fixture
+	// advertises in lifecycleTemplates - adding one to the enum without a fixture
 	// here (or a buildTestContent case) should fail this test, not ship silently.
 	if len(required) != len(lifecycleTemplates) {
 		t.Errorf("required has %d templates, lifecycleTemplates has %d", len(required), len(lifecycleTemplates))
@@ -726,7 +726,7 @@ func TestHandleTestEmail_Defaults(t *testing.T) {
 	defer srv.Close()
 
 	api := client.NewAPIClient(srv.URL, "test-token")
-	// Only `to` provided — subject and body must fall back to the defaults.
+	// Only `to` provided - subject and body must fall back to the defaults.
 	req := newReq(map[string]any{"to": "user@example.com"})
 
 	if _, err := handleTestEmail(context.Background(), req, api); err != nil {
@@ -963,7 +963,7 @@ func TestHandleGetActivity_PlainAndBacklog(t *testing.T) {
 
 	// Without the flag: the GET must still reach the server, with no query string
 	// (lean default). Asserting the request arrived distinguishes "sent without
-	// include" from "never sent" — an empty RawQuery alone cannot, since that is
+	// include" from "never sent" - an empty RawQuery alone cannot, since that is
 	// also its zero value.
 	if _, err := handleGetActivity(context.Background(), newReq(map[string]any{"slug": "test-log"}), api); err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -1254,7 +1254,7 @@ func TestHandleBulkEndActivities_HappyPath(t *testing.T) {
 }
 
 func TestHandleBulkEndActivities_PartialFailure(t *testing.T) {
-	// One PATCH succeeds, one fails — the result must report both the Ended and
+	// One PATCH succeeds, one fails - the result must report both the Ended and
 	// the Failed counts so a partial bulk operation is visible to the caller.
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
@@ -1333,7 +1333,7 @@ func TestHandleBulkEndActivities_ContextCancelled(t *testing.T) {
 	// Cancelling mid-run must trip the loop's ctx.Err() guard so the remaining
 	// activities are not patched. cancel() runs inside the PATCH handler before
 	// the response is written, so it is observed before the next iteration's
-	// guard check — making "fewer than all" PATCHes deterministic.
+	// guard check - making "fewer than all" PATCHes deterministic.
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	var patchCount atomic.Int32
@@ -1387,7 +1387,7 @@ func TestHandleBulkEndActivities_DryRunByDefault(t *testing.T) {
 	defer srv.Close()
 
 	api := client.NewAPIClient(srv.URL, "test-token")
-	req := newReq(map[string]any{"source": "grafana"}) // confirm omitted → dry-run
+	req := newReq(map[string]any{"source": "grafana"}) // confirm omitted -> dry-run
 
 	result, err := handleBulkEndActivities(context.Background(), req, api)
 	if err != nil {

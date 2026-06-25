@@ -11,7 +11,7 @@ import (
 // relayProviderPattern bounds the provider path segment to a safe shape. The
 // provider reaches this client as a tool-call argument; even though tool
 // schemas restrict it via an enum, validating the format here is
-// defense-in-depth — it prevents a path-traversal ("../"), an absolute path, or
+// defense-in-depth - it prevents a path-traversal ("../"), an absolute path, or
 // an unexpected-host segment from ever being concatenated into the request URL,
 // without coupling to (and drifting from) the relay's generated provider set.
 var relayProviderPattern = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,63}$`)

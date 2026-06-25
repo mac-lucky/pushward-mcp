@@ -12,12 +12,12 @@ import (
 )
 
 // TestHandleCreateNotification_PushPresence exercises the generated handler's
-// boolean presence logic (req.RequireBool → *bool). This is the behavior the
+// boolean presence logic (req.RequireBool -> *bool). This is the behavior the
 // *bool/omitempty change exists for, and it is NOT covered by the client-level
 // marshaling test: omitting push must drop the key entirely (so the server
 // default of true applies), while an explicit false must be sent as false. A
-// regression to the old `GetBool(..., false)` codegen — which forced push=false
-// on omission, silently disabling APNs push — would fail this test.
+// regression to the old `GetBool(..., false)` codegen - which forced push=false
+// on omission, silently disabling APNs push - would fail this test.
 func TestHandleCreateNotification_PushPresence(t *testing.T) {
 	cases := []struct {
 		name        string

@@ -135,7 +135,7 @@ func (m *memoryStore) ConsumeAuthCode(_ context.Context, codeHash string) (*Auth
 	}
 	// Check reuse BEFORE expiry (and do not delete on read) so a replay of an
 	// expired-but-used code is still reported as ErrCodeAlreadyUsed with its
-	// user_id — matching the Postgres store's retention. Cleanup handles eviction.
+	// user_id - matching the Postgres store's retention. Cleanup handles eviction.
 	if mc.usedAt != nil {
 		return &AuthCode{CodeHash: codeHash, UserID: mc.ac.UserID}, ErrCodeAlreadyUsed
 	}

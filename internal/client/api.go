@@ -112,7 +112,7 @@ func (c *APIClient) ListAllActivities(ctx context.Context) (json.RawMessage, err
 		if !page.HasMore {
 			break
 		}
-		// Server reports more pages but gave no cursor to fetch them — we cannot
+		// Server reports more pages but gave no cursor to fetch them - we cannot
 		// continue, so flag the result as partial rather than silently complete.
 		if page.NextCursor == "" {
 			truncated = true
@@ -149,7 +149,7 @@ func (c *APIClient) CreateActivity(ctx context.Context, input CreateActivityInpu
 }
 
 // GetActivity returns a single activity by slug. Optional includes (e.g.
-// "log_backlog") are sent as a comma-separated ?include= query — the server
+// "log_backlog") are sent as a comma-separated ?include= query - the server
 // returns server-owned extras like the log template's rolling backlog only
 // when asked, omitting them from the default lean response.
 func (c *APIClient) GetActivity(ctx context.Context, slug string, includes ...string) (json.RawMessage, error) {
@@ -174,7 +174,7 @@ func (c *APIClient) DeleteActivity(ctx context.Context, slug string) error {
 }
 
 // UpdateActivityInput is the request body for PATCH /activities/{slug}.
-// State is optional under RFC 7396 merge-patch semantics — omit to inherit
+// State is optional under RFC 7396 merge-patch semantics - omit to inherit
 // the stored state (unless the activity is preempted).
 type UpdateActivityInput struct {
 	State    string          `json:"state,omitempty"`
@@ -249,7 +249,7 @@ func (c *APIClient) CreateNotification(ctx context.Context, input CreateNotifica
 }
 
 // SendEmailInput is the request body for POST /emails. `To` must already be a
-// verified, non-unsubscribed recipient of the calling account — registering and
+// verified, non-unsubscribed recipient of the calling account - registering and
 // verifying recipients is an hla_/dashboard operation, not reachable with the
 // hlk_ integration key this MCP uses. Provide HTMLBody, TextBody, or both.
 type SendEmailInput struct {
@@ -269,7 +269,7 @@ func (c *APIClient) SendEmail(ctx context.Context, input SendEmailInput) (json.R
 // integration key with the `widgets` permission flag.
 //
 // `Content` is forwarded as opaque `json.RawMessage` so new server-side widget
-// content fields flow through without an MCP rebuild — the server owns the
+// content fields flow through without an MCP rebuild - the server owns the
 // schema.
 type CreateWidgetInput struct {
 	Slug         string          `json:"slug"`
@@ -300,7 +300,7 @@ func (c *APIClient) GetWidget(ctx context.Context, slug string) (json.RawMessage
 }
 
 // UpdateWidgetInput is the request body for PATCH /widgets/{slug}. Applied
-// with RFC 7396 JSON merge-patch semantics — omitted fields are preserved,
+// with RFC 7396 JSON merge-patch semantics - omitted fields are preserved,
 // explicit `null` clears.
 type UpdateWidgetInput struct {
 	Name         string          `json:"name,omitempty"`
