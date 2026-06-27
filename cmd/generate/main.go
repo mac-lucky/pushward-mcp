@@ -195,6 +195,7 @@ func foldSpecASCII(path string) {
 	if folded == string(data) {
 		return
 	}
+	// #nosec G703 -- path is a build-time constant joined to the repo root, not runtime input.
 	if err := os.WriteFile(path, []byte(folded), 0o600); err != nil {
 		fmt.Fprintf(os.Stderr, "writing %s: %v\n", path, err)
 		os.Exit(1)
