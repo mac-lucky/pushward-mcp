@@ -14,7 +14,7 @@ A fully-expanded Markdown bundle of every docs page lives at [/llms-full.txt](ht
 
 ## Live Activities
 
-- [Live Activities](https://pushward.app/docs/live-activities): A Live Activity is an iOS feature that shows live, glanceable information right on the Lock Screen, in the Dynamic Island, and in StandBy — without the recipient ever opening an app. PushWard turns a single HTTP request into one.
+- [Live Activities](https://pushward.app/docs/live-activities): A Live Activity is an iOS feature that shows live, glanceable information right on the Lock Screen, in the Dynamic Island, and in StandBy - without the recipient ever opening an app. PushWard turns a single HTTP request into one.
 - [Generic Template](https://pushward.app/docs/live-activities/generic): A flexible progress-based template suitable for builds, downloads, deployments, and any long-running task.
 - [Countdown Template](https://pushward.app/docs/live-activities/countdown): A timer-based template with server-managed lifecycle. Set it and forget it -- the server handles warning and completion pushes automatically.
 - [Steps Template](https://pushward.app/docs/live-activities/steps): A step-based template designed for CI/CD pipelines and multi-stage workflows. Visualizes parallel jobs with a matrix indicator.
@@ -24,18 +24,18 @@ A fully-expanded Markdown bundle of every docs page lives at [/llms-full.txt](ht
 
 ## Notifications
 
-- [Notifications](https://pushward.app/docs/notifications): Send a JSON recipe — title, body, and any extras — and PushWard delivers a real iOS push.
-- [Basics](https://pushward.app/docs/notifications/basics): Title, body, subtitle, and interruption level — the minimum payload for a push notification.
+- [Notifications](https://pushward.app/docs/notifications): Send a JSON recipe - title, body, and any extras - and PushWard delivers a real iOS push.
+- [Basics](https://pushward.app/docs/notifications/basics): Title, body, subtitle, and interruption level - the minimum payload for a push notification.
 - [Rich Media](https://pushward.app/docs/notifications/rich-media): Attach an image, video, or audio file. iOS downloads and renders the attachment inline when the user expands the notification.
 - [Actions](https://pushward.app/docs/notifications/actions): Add up to 10 buttons that appear when the user long-presses (or pulls down) the notification. Each button can foreground the app, require authentication, or be styled as destructive.
-- [Communication Style](https://pushward.app/docs/notifications/communication): Set icon_url to render the notification with iOS Communication Notification styling — a round avatar on the side, like an iMessage. Combine with thread_id for grouping in Notification Center.
+- [Communication Style](https://pushward.app/docs/notifications/communication): Set icon_url to render the notification with iOS Communication Notification styling - a round avatar on the side, like an iMessage. Combine with thread_id for grouping in Notification Center.
 - [Activity Link](https://pushward.app/docs/notifications/activity-link): Tie a notification to an existing Live Activity by setting activity_slug. Tapping the notification deep-links into that activity in the PushWard iOS app.
 - [Notifications API](https://pushward.app/docs/notifications/api): Send a notification to a user's inbox, with optional APNs push delivery to their devices.
 
 ## Widgets
 
 - [Widgets](https://pushward.app/docs/widgets): Push-driven iOS Home Screen, Lock Screen, and StandBy widgets. Declare a widget once, update its content with a PATCH, and the user's WidgetKit instances refresh automatically.
-- [Widgets API](https://pushward.app/docs/widgets/api): Register, update, list, and delete widgets via REST. Widgets are push-driven — each PATCH triggers a thin APNs payload that reloads the iOS extension's timeline.
+- [Widgets API](https://pushward.app/docs/widgets/api): Register, update, list, and delete widgets via REST. Widgets are push-driven - each PATCH triggers a thin APNs payload that reloads the iOS extension's timeline.
 
 ## Email
 
@@ -44,7 +44,7 @@ A fully-expanded Markdown bundle of every docs page lives at [/llms-full.txt](ht
 ## Integrations
 
 - [Integrations](https://pushward.app/docs/integrations): Connect PushWard to your existing tools and services. Each integration uses a dedicated integration key for scoped access.
-- [Relay](https://pushward.app/docs/integrations/relay): The easiest way to connect your services to PushWard. Point webhooks at relay.pushward.app — no Docker containers, no self-hosting, no per-user configuration needed.
+- [Relay](https://pushward.app/docs/integrations/relay): The easiest way to connect your services to PushWard. Point webhooks at relay.pushward.app - no Docker containers, no self-hosting, no per-user configuration needed.
 - [Grafana](https://pushward.app/docs/integrations/grafana): Turn Grafana alerts into timeline sparklines on your Lock Screen. See metric history at a glance with real-time updates while alerts are firing.
 - [Home Assistant](https://pushward.app/docs/integrations/home-assistant): A native HACS integration that bridges Home Assistant entity state changes to PushWard Live Activities on your iPhone.
 - [GitHub Actions](https://pushward.app/docs/integrations/github-actions): Track CI/CD workflow progress in real-time on your Lock Screen using the steps template.

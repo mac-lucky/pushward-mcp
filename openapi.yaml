@@ -44,7 +44,7 @@ components:
           readOnly: true
           type: string
         content:
-          description: Live Activity content payload. The shape depends on `template` — pick a tab below to see only the fields for that template.
+          description: Live Activity content payload. The shape depends on `template` - pick a tab below to see only the fields for that template.
           discriminator:
             mapping:
               alert: "#/components/schemas/ContentAlert"
@@ -97,7 +97,7 @@ components:
           minimum: 1
           type: integer
         id:
-          description: Stable surrogate identifier — globally unique and immutable. Use this to address an activity unambiguously (e.g. the same slug owned by you and shared to you). The slug remains the owner's human-facing key.
+          description: Stable surrogate identifier - globally unique and immutable. Use this to address an activity unambiguously (e.g. the same slug owned by you and shared to you). The slug remains the owner's human-facing key.
           examples:
             - 550e8400-e29b-41d4-a716-446655440000
           format: uuid
@@ -137,7 +137,7 @@ components:
           minimum: 1
           type: integer
         state:
-          description: Current state. preempted is server-set only — appears when an activity was evicted to make room for a higher-priority one. Clients can only PATCH the state to ongoing or ended.
+          description: Current state. preempted is server-set only - appears when an activity was evicted to make room for a higher-priority one. Clients can only PATCH the state to ongoing or ended.
           enum:
             - ended
             - ongoing
@@ -197,7 +197,7 @@ components:
             - both
           type: string
         id:
-          description: Server-assigned release ID. Strictly monotonic — used by clients to ratchet 'last seen'.
+          description: Server-assigned release ID. Strictly monotonic - used by clients to ratchet 'last seen'.
           format: int64
           type: integer
         min_supported_version:
@@ -272,7 +272,7 @@ components:
       type: object
     ContentAlert:
       additionalProperties: true
-      description: One-shot alert with a severity level — critical, warning, or info.
+      description: One-shot alert with a severity level - critical, warning, or info.
       properties:
         accent_color:
           description: "Accent color: named color or hex (#RRGGBB / #RRGGBBAA)."
@@ -304,7 +304,7 @@ components:
           description: Secondary button. See url_action for semantics.
           properties:
             body:
-              description: HTTP request body for silent webhook. ≤1KB. Ignored for custom-scheme URLs.
+              description: HTTP request body for silent webhook. <=1KB. Ignored for custom-scheme URLs.
               maxLength: 1024
               type: string
             foreground:
@@ -313,7 +313,7 @@ components:
             headers:
               additionalProperties:
                 type: string
-              description: HTTP headers for silent webhook. Total ≤1KB. Ignored for custom-scheme URLs.
+              description: HTTP headers for silent webhook. Total <=1KB. Ignored for custom-scheme URLs.
               type: object
             icon:
               description: SF Symbol name (e.g. checkmark.circle).
@@ -363,7 +363,7 @@ components:
           description: Widget-wide tap action. When set, overrides the default behavior (opening the PushWard app to the activity detail page). The whole Live Activity becomes tappable as a single target.
           properties:
             body:
-              description: HTTP request body for silent webhook. ≤1KB. Ignored for custom-scheme URLs.
+              description: HTTP request body for silent webhook. <=1KB. Ignored for custom-scheme URLs.
               maxLength: 1024
               type: string
             foreground:
@@ -372,7 +372,7 @@ components:
             headers:
               additionalProperties:
                 type: string
-              description: HTTP headers for silent webhook. Total ≤1KB. Ignored for custom-scheme URLs.
+              description: HTTP headers for silent webhook. Total <=1KB. Ignored for custom-scheme URLs.
               type: object
             method:
               description: HTTP method for silent webhook (foreground=false). Defaults to GET. Ignored for custom-scheme URLs.
@@ -407,7 +407,7 @@ components:
           description: Primary button. Replaces the legacy url string when richer routing semantics (silent webhook, custom HTTP) are needed. When both url and url_action are set, url_action wins on iOS clients that understand it.
           properties:
             body:
-              description: HTTP request body for silent webhook. ≤1KB. Ignored for custom-scheme URLs.
+              description: HTTP request body for silent webhook. <=1KB. Ignored for custom-scheme URLs.
               maxLength: 1024
               type: string
             foreground:
@@ -416,7 +416,7 @@ components:
             headers:
               additionalProperties:
                 type: string
-              description: HTTP headers for silent webhook. Total ≤1KB. Ignored for custom-scheme URLs.
+              description: HTTP headers for silent webhook. Total <=1KB. Ignored for custom-scheme URLs.
               type: object
             icon:
               description: SF Symbol name (e.g. checkmark.circle).
@@ -449,7 +449,7 @@ components:
       type: object
     ContentBoard:
       additionalProperties: true
-      description: A grid of 1–4 labeled tiles, each with a value, optional unit, icon, color, and trend arrow (e.g. a room of sensors). Tiles are replaced wholesale on each update.
+      description: A grid of 1-4 labeled tiles, each with a value, optional unit, icon, color, and trend arrow (e.g. a room of sensors). Tiles are replaced wholesale on each update.
       properties:
         accent_color:
           description: "Accent color: named color or hex (#RRGGBB / #RRGGBBAA)."
@@ -478,7 +478,7 @@ components:
           description: Secondary button. See url_action for semantics.
           properties:
             body:
-              description: HTTP request body for silent webhook. ≤1KB. Ignored for custom-scheme URLs.
+              description: HTTP request body for silent webhook. <=1KB. Ignored for custom-scheme URLs.
               maxLength: 1024
               type: string
             foreground:
@@ -487,7 +487,7 @@ components:
             headers:
               additionalProperties:
                 type: string
-              description: HTTP headers for silent webhook. Total ≤1KB. Ignored for custom-scheme URLs.
+              description: HTTP headers for silent webhook. Total <=1KB. Ignored for custom-scheme URLs.
               type: object
             icon:
               description: SF Symbol name (e.g. checkmark.circle).
@@ -530,7 +530,7 @@ components:
           description: Widget-wide tap action. When set, overrides the default behavior (opening the PushWard app to the activity detail page). The whole Live Activity becomes tappable as a single target.
           properties:
             body:
-              description: HTTP request body for silent webhook. ≤1KB. Ignored for custom-scheme URLs.
+              description: HTTP request body for silent webhook. <=1KB. Ignored for custom-scheme URLs.
               maxLength: 1024
               type: string
             foreground:
@@ -539,7 +539,7 @@ components:
             headers:
               additionalProperties:
                 type: string
-              description: HTTP headers for silent webhook. Total ≤1KB. Ignored for custom-scheme URLs.
+              description: HTTP headers for silent webhook. Total <=1KB. Ignored for custom-scheme URLs.
               type: object
             method:
               description: HTTP method for silent webhook (foreground=false). Defaults to GET. Ignored for custom-scheme URLs.
@@ -567,7 +567,7 @@ components:
           description: "Text color: named color or hex."
           type: string
         tiles:
-          description: 1–4 labeled tiles. Replaced wholesale on each update (no server accumulation). Required when template is board.
+          description: 1-4 labeled tiles. Replaced wholesale on each update (no server accumulation). Required when template is board.
           items:
             $ref: "#/components/schemas/BoardTile"
           maxItems: 4
@@ -581,7 +581,7 @@ components:
           description: Primary button. Replaces the legacy url string when richer routing semantics (silent webhook, custom HTTP) are needed. When both url and url_action are set, url_action wins on iOS clients that understand it.
           properties:
             body:
-              description: HTTP request body for silent webhook. ≤1KB. Ignored for custom-scheme URLs.
+              description: HTTP request body for silent webhook. <=1KB. Ignored for custom-scheme URLs.
               maxLength: 1024
               type: string
             foreground:
@@ -590,7 +590,7 @@ components:
             headers:
               additionalProperties:
                 type: string
-              description: HTTP headers for silent webhook. Total ≤1KB. Ignored for custom-scheme URLs.
+              description: HTTP headers for silent webhook. Total <=1KB. Ignored for custom-scheme URLs.
               type: object
             icon:
               description: SF Symbol name (e.g. checkmark.circle).
@@ -646,7 +646,7 @@ components:
             - pattern: ^(\d+|(\d+[hms])+)$
               type: string
         end_date:
-          description: Unix timestamp for countdown end. Required if duration is not set. Wins over duration when both are set — duration is ignored.
+          description: Unix timestamp for countdown end. Required if duration is not set. Wins over duration when both are set - duration is ignored.
           type: integer
         icon:
           description: "Icon name. SF Symbol (e.g. washer, flame) or Material Design Icon with mdi: prefix (e.g. mdi:thermometer)."
@@ -669,7 +669,7 @@ components:
           description: Secondary button. See url_action for semantics.
           properties:
             body:
-              description: HTTP request body for silent webhook. ≤1KB. Ignored for custom-scheme URLs.
+              description: HTTP request body for silent webhook. <=1KB. Ignored for custom-scheme URLs.
               maxLength: 1024
               type: string
             foreground:
@@ -678,7 +678,7 @@ components:
             headers:
               additionalProperties:
                 type: string
-              description: HTTP headers for silent webhook. Total ≤1KB. Ignored for custom-scheme URLs.
+              description: HTTP headers for silent webhook. Total <=1KB. Ignored for custom-scheme URLs.
               type: object
             icon:
               description: SF Symbol name (e.g. checkmark.circle).
@@ -729,7 +729,7 @@ components:
           description: Widget-wide tap action. When set, overrides the default behavior (opening the PushWard app to the activity detail page). The whole Live Activity becomes tappable as a single target.
           properties:
             body:
-              description: HTTP request body for silent webhook. ≤1KB. Ignored for custom-scheme URLs.
+              description: HTTP request body for silent webhook. <=1KB. Ignored for custom-scheme URLs.
               maxLength: 1024
               type: string
             foreground:
@@ -738,7 +738,7 @@ components:
             headers:
               additionalProperties:
                 type: string
-              description: HTTP headers for silent webhook. Total ≤1KB. Ignored for custom-scheme URLs.
+              description: HTTP headers for silent webhook. Total <=1KB. Ignored for custom-scheme URLs.
               type: object
             method:
               description: HTTP method for silent webhook (foreground=false). Defaults to GET. Ignored for custom-scheme URLs.
@@ -773,7 +773,7 @@ components:
           description: Primary button. Replaces the legacy url string when richer routing semantics (silent webhook, custom HTTP) are needed. When both url and url_action are set, url_action wins on iOS clients that understand it.
           properties:
             body:
-              description: HTTP request body for silent webhook. ≤1KB. Ignored for custom-scheme URLs.
+              description: HTTP request body for silent webhook. <=1KB. Ignored for custom-scheme URLs.
               maxLength: 1024
               type: string
             foreground:
@@ -782,7 +782,7 @@ components:
             headers:
               additionalProperties:
                 type: string
-              description: HTTP headers for silent webhook. Total ≤1KB. Ignored for custom-scheme URLs.
+              description: HTTP headers for silent webhook. Total <=1KB. Ignored for custom-scheme URLs.
               type: object
             icon:
               description: SF Symbol name (e.g. checkmark.circle).
@@ -858,7 +858,7 @@ components:
           description: Secondary button. See url_action for semantics.
           properties:
             body:
-              description: HTTP request body for silent webhook. ≤1KB. Ignored for custom-scheme URLs.
+              description: HTTP request body for silent webhook. <=1KB. Ignored for custom-scheme URLs.
               maxLength: 1024
               type: string
             foreground:
@@ -867,7 +867,7 @@ components:
             headers:
               additionalProperties:
                 type: string
-              description: HTTP headers for silent webhook. Total ≤1KB. Ignored for custom-scheme URLs.
+              description: HTTP headers for silent webhook. Total <=1KB. Ignored for custom-scheme URLs.
               type: object
             icon:
               description: SF Symbol name (e.g. checkmark.circle).
@@ -910,7 +910,7 @@ components:
           description: Widget-wide tap action. When set, overrides the default behavior (opening the PushWard app to the activity detail page). The whole Live Activity becomes tappable as a single target.
           properties:
             body:
-              description: HTTP request body for silent webhook. ≤1KB. Ignored for custom-scheme URLs.
+              description: HTTP request body for silent webhook. <=1KB. Ignored for custom-scheme URLs.
               maxLength: 1024
               type: string
             foreground:
@@ -919,7 +919,7 @@ components:
             headers:
               additionalProperties:
                 type: string
-              description: HTTP headers for silent webhook. Total ≤1KB. Ignored for custom-scheme URLs.
+              description: HTTP headers for silent webhook. Total <=1KB. Ignored for custom-scheme URLs.
               type: object
             method:
               description: HTTP method for silent webhook (foreground=false). Defaults to GET. Ignored for custom-scheme URLs.
@@ -947,7 +947,7 @@ components:
           description: "Text color: named color or hex."
           type: string
         unit:
-          description: Unit label displayed after the value (e.g. °C, %, rpm).
+          description: Unit label displayed after the value (e.g. degC, %, rpm).
           maxLength: 32
           type: string
         url:
@@ -958,7 +958,7 @@ components:
           description: Primary button. Replaces the legacy url string when richer routing semantics (silent webhook, custom HTTP) are needed. When both url and url_action are set, url_action wins on iOS clients that understand it.
           properties:
             body:
-              description: HTTP request body for silent webhook. ≤1KB. Ignored for custom-scheme URLs.
+              description: HTTP request body for silent webhook. <=1KB. Ignored for custom-scheme URLs.
               maxLength: 1024
               type: string
             foreground:
@@ -967,7 +967,7 @@ components:
             headers:
               additionalProperties:
                 type: string
-              description: HTTP headers for silent webhook. Total ≤1KB. Ignored for custom-scheme URLs.
+              description: HTTP headers for silent webhook. Total <=1KB. Ignored for custom-scheme URLs.
               type: object
             icon:
               description: SF Symbol name (e.g. checkmark.circle).
@@ -1032,7 +1032,7 @@ components:
           description: Secondary button. See url_action for semantics.
           properties:
             body:
-              description: HTTP request body for silent webhook. ≤1KB. Ignored for custom-scheme URLs.
+              description: HTTP request body for silent webhook. <=1KB. Ignored for custom-scheme URLs.
               maxLength: 1024
               type: string
             foreground:
@@ -1041,7 +1041,7 @@ components:
             headers:
               additionalProperties:
                 type: string
-              description: HTTP headers for silent webhook. Total ≤1KB. Ignored for custom-scheme URLs.
+              description: HTTP headers for silent webhook. Total <=1KB. Ignored for custom-scheme URLs.
               type: object
             icon:
               description: SF Symbol name (e.g. checkmark.circle).
@@ -1084,7 +1084,7 @@ components:
           description: Widget-wide tap action. When set, overrides the default behavior (opening the PushWard app to the activity detail page). The whole Live Activity becomes tappable as a single target.
           properties:
             body:
-              description: HTTP request body for silent webhook. ≤1KB. Ignored for custom-scheme URLs.
+              description: HTTP request body for silent webhook. <=1KB. Ignored for custom-scheme URLs.
               maxLength: 1024
               type: string
             foreground:
@@ -1093,7 +1093,7 @@ components:
             headers:
               additionalProperties:
                 type: string
-              description: HTTP headers for silent webhook. Total ≤1KB. Ignored for custom-scheme URLs.
+              description: HTTP headers for silent webhook. Total <=1KB. Ignored for custom-scheme URLs.
               type: object
             method:
               description: HTTP method for silent webhook (foreground=false). Defaults to GET. Ignored for custom-scheme URLs.
@@ -1128,7 +1128,7 @@ components:
           description: Primary button. Replaces the legacy url string when richer routing semantics (silent webhook, custom HTTP) are needed. When both url and url_action are set, url_action wins on iOS clients that understand it.
           properties:
             body:
-              description: HTTP request body for silent webhook. ≤1KB. Ignored for custom-scheme URLs.
+              description: HTTP request body for silent webhook. <=1KB. Ignored for custom-scheme URLs.
               maxLength: 1024
               type: string
             foreground:
@@ -1137,7 +1137,7 @@ components:
             headers:
               additionalProperties:
                 type: string
-              description: HTTP headers for silent webhook. Total ≤1KB. Ignored for custom-scheme URLs.
+              description: HTTP headers for silent webhook. Total <=1KB. Ignored for custom-scheme URLs.
               type: object
             icon:
               description: SF Symbol name (e.g. checkmark.circle).
@@ -1170,7 +1170,7 @@ components:
       type: object
     ContentLog:
       additionalProperties: true
-      description: A scrolling log of 1–20 lines (newest first), each with optional timestamp and level (info/warn/error). Lines are replaced wholesale on each update; the server additionally accumulates a rolling backlog (up to 1000 lines) fetchable via ?include=log_backlog for in-app scroll-back.
+      description: A scrolling log of 1-20 lines (newest first), each with optional timestamp and level (info/warn/error). Lines are replaced wholesale on each update; the server additionally accumulates a rolling backlog (up to 1000 lines) fetchable via ?include=log_backlog for in-app scroll-back.
       properties:
         accent_color:
           description: "Accent color: named color or hex (#RRGGBB / #RRGGBBAA)."
@@ -1183,7 +1183,7 @@ components:
           maxLength: 128
           type: string
         lines:
-          description: 1–20 log lines, newest first. Replaced wholesale on each update (no server accumulation). Required when template is log.
+          description: 1-20 log lines, newest first. Replaced wholesale on each update (no server accumulation). Required when template is log.
           items:
             $ref: "#/components/schemas/LogLine"
           maxItems: 20
@@ -1213,7 +1213,7 @@ components:
           description: Secondary button. See url_action for semantics.
           properties:
             body:
-              description: HTTP request body for silent webhook. ≤1KB. Ignored for custom-scheme URLs.
+              description: HTTP request body for silent webhook. <=1KB. Ignored for custom-scheme URLs.
               maxLength: 1024
               type: string
             foreground:
@@ -1222,7 +1222,7 @@ components:
             headers:
               additionalProperties:
                 type: string
-              description: HTTP headers for silent webhook. Total ≤1KB. Ignored for custom-scheme URLs.
+              description: HTTP headers for silent webhook. Total <=1KB. Ignored for custom-scheme URLs.
               type: object
             icon:
               description: SF Symbol name (e.g. checkmark.circle).
@@ -1265,7 +1265,7 @@ components:
           description: Widget-wide tap action. When set, overrides the default behavior (opening the PushWard app to the activity detail page). The whole Live Activity becomes tappable as a single target.
           properties:
             body:
-              description: HTTP request body for silent webhook. ≤1KB. Ignored for custom-scheme URLs.
+              description: HTTP request body for silent webhook. <=1KB. Ignored for custom-scheme URLs.
               maxLength: 1024
               type: string
             foreground:
@@ -1274,7 +1274,7 @@ components:
             headers:
               additionalProperties:
                 type: string
-              description: HTTP headers for silent webhook. Total ≤1KB. Ignored for custom-scheme URLs.
+              description: HTTP headers for silent webhook. Total <=1KB. Ignored for custom-scheme URLs.
               type: object
             method:
               description: HTTP method for silent webhook (foreground=false). Defaults to GET. Ignored for custom-scheme URLs.
@@ -1309,7 +1309,7 @@ components:
           description: Primary button. Replaces the legacy url string when richer routing semantics (silent webhook, custom HTTP) are needed. When both url and url_action are set, url_action wins on iOS clients that understand it.
           properties:
             body:
-              description: HTTP request body for silent webhook. ≤1KB. Ignored for custom-scheme URLs.
+              description: HTTP request body for silent webhook. <=1KB. Ignored for custom-scheme URLs.
               maxLength: 1024
               type: string
             foreground:
@@ -1318,7 +1318,7 @@ components:
             headers:
               additionalProperties:
                 type: string
-              description: HTTP headers for silent webhook. Total ≤1KB. Ignored for custom-scheme URLs.
+              description: HTTP headers for silent webhook. Total <=1KB. Ignored for custom-scheme URLs.
               type: object
             icon:
               description: SF Symbol name (e.g. checkmark.circle).
@@ -1384,7 +1384,7 @@ components:
           description: Secondary button. See url_action for semantics.
           properties:
             body:
-              description: HTTP request body for silent webhook. ≤1KB. Ignored for custom-scheme URLs.
+              description: HTTP request body for silent webhook. <=1KB. Ignored for custom-scheme URLs.
               maxLength: 1024
               type: string
             foreground:
@@ -1393,7 +1393,7 @@ components:
             headers:
               additionalProperties:
                 type: string
-              description: HTTP headers for silent webhook. Total ≤1KB. Ignored for custom-scheme URLs.
+              description: HTTP headers for silent webhook. Total <=1KB. Ignored for custom-scheme URLs.
               type: object
             icon:
               description: SF Symbol name (e.g. checkmark.circle).
@@ -1446,7 +1446,7 @@ components:
           description: Widget-wide tap action. When set, overrides the default behavior (opening the PushWard app to the activity detail page). The whole Live Activity becomes tappable as a single target.
           properties:
             body:
-              description: HTTP request body for silent webhook. ≤1KB. Ignored for custom-scheme URLs.
+              description: HTTP request body for silent webhook. <=1KB. Ignored for custom-scheme URLs.
               maxLength: 1024
               type: string
             foreground:
@@ -1455,7 +1455,7 @@ components:
             headers:
               additionalProperties:
                 type: string
-              description: HTTP headers for silent webhook. Total ≤1KB. Ignored for custom-scheme URLs.
+              description: HTTP headers for silent webhook. Total <=1KB. Ignored for custom-scheme URLs.
               type: object
             method:
               description: HTTP method for silent webhook (foreground=false). Defaults to GET. Ignored for custom-scheme URLs.
@@ -1494,7 +1494,7 @@ components:
           description: Primary button. Replaces the legacy url string when richer routing semantics (silent webhook, custom HTTP) are needed. When both url and url_action are set, url_action wins on iOS clients that understand it.
           properties:
             body:
-              description: HTTP request body for silent webhook. ≤1KB. Ignored for custom-scheme URLs.
+              description: HTTP request body for silent webhook. <=1KB. Ignored for custom-scheme URLs.
               maxLength: 1024
               type: string
             foreground:
@@ -1503,7 +1503,7 @@ components:
             headers:
               additionalProperties:
                 type: string
-              description: HTTP headers for silent webhook. Total ≤1KB. Ignored for custom-scheme URLs.
+              description: HTTP headers for silent webhook. Total <=1KB. Ignored for custom-scheme URLs.
               type: object
             icon:
               description: SF Symbol name (e.g. checkmark.circle).
@@ -1554,7 +1554,7 @@ components:
             items:
               $ref: "#/components/schemas/HistoryPoint"
             type: array
-          description: Historical points per series. Server-managed after the first seed — subsequent updates accumulate automatically.
+          description: Historical points per series. Server-managed after the first seed - subsequent updates accumulate automatically.
           type: object
         icon:
           description: "Icon name. SF Symbol (e.g. washer, flame) or Material Design Icon with mdi: prefix (e.g. mdi:thermometer)."
@@ -1583,7 +1583,7 @@ components:
           description: Secondary button. See url_action for semantics.
           properties:
             body:
-              description: HTTP request body for silent webhook. ≤1KB. Ignored for custom-scheme URLs.
+              description: HTTP request body for silent webhook. <=1KB. Ignored for custom-scheme URLs.
               maxLength: 1024
               type: string
             foreground:
@@ -1592,7 +1592,7 @@ components:
             headers:
               additionalProperties:
                 type: string
-              description: HTTP headers for silent webhook. Total ≤1KB. Ignored for custom-scheme URLs.
+              description: HTTP headers for silent webhook. Total <=1KB. Ignored for custom-scheme URLs.
               type: object
             icon:
               description: SF Symbol name (e.g. checkmark.circle).
@@ -1638,7 +1638,7 @@ components:
           description: Widget-wide tap action. When set, overrides the default behavior (opening the PushWard app to the activity detail page). The whole Live Activity becomes tappable as a single target.
           properties:
             body:
-              description: HTTP request body for silent webhook. ≤1KB. Ignored for custom-scheme URLs.
+              description: HTTP request body for silent webhook. <=1KB. Ignored for custom-scheme URLs.
               maxLength: 1024
               type: string
             foreground:
@@ -1647,7 +1647,7 @@ components:
             headers:
               additionalProperties:
                 type: string
-              description: HTTP headers for silent webhook. Total ≤1KB. Ignored for custom-scheme URLs.
+              description: HTTP headers for silent webhook. Total <=1KB. Ignored for custom-scheme URLs.
               type: object
             method:
               description: HTTP method for silent webhook (foreground=false). Defaults to GET. Ignored for custom-scheme URLs.
@@ -1681,7 +1681,7 @@ components:
           maxItems: 5
           type: array
         unit:
-          description: Unit label displayed after the value (e.g. °C, %, rpm).
+          description: Unit label displayed after the value (e.g. degC, %, rpm).
           maxLength: 32
           type: string
         units:
@@ -1697,7 +1697,7 @@ components:
           description: Primary button. Replaces the legacy url string when richer routing semantics (silent webhook, custom HTTP) are needed. When both url and url_action are set, url_action wins on iOS clients that understand it.
           properties:
             body:
-              description: HTTP request body for silent webhook. ≤1KB. Ignored for custom-scheme URLs.
+              description: HTTP request body for silent webhook. <=1KB. Ignored for custom-scheme URLs.
               maxLength: 1024
               type: string
             foreground:
@@ -1706,7 +1706,7 @@ components:
             headers:
               additionalProperties:
                 type: string
-              description: HTTP headers for silent webhook. Total ≤1KB. Ignored for custom-scheme URLs.
+              description: HTTP headers for silent webhook. Total <=1KB. Ignored for custom-scheme URLs.
               type: object
             icon:
               description: SF Symbol name (e.g. checkmark.circle).
@@ -1834,7 +1834,7 @@ components:
           maxLength: 64
           type: string
         icon_url:
-          description: http or https URL for per-notification source avatar, shown as the Communication Notification avatar on iOS. Recommended ≤256×256 and ≤100 KB; responses larger than 512 KB are rejected by the iOS extension to protect the 24 MB memory budget.
+          description: http or https URL for per-notification source avatar, shown as the Communication Notification avatar on iOS. Recommended <=256x256 and <=100 KB; responses larger than 512 KB are rejected by the iOS extension to protect the 24 MB memory budget.
           maxLength: 2048
           type: string
         level:
@@ -2188,7 +2188,7 @@ components:
         id:
           description: Server-assigned recipient ID.
           examples:
-            - 7b1c…
+            - 7b1c...
           readOnly: true
           type: string
         label:
@@ -2778,7 +2778,7 @@ components:
           description: Require device unlock before firing
           type: boolean
         body:
-          description: HTTP request body for http(s) action URLs. ≤1KB. Ignored for custom-scheme URLs.
+          description: HTTP request body for http(s) action URLs. <=1KB. Ignored for custom-scheme URLs.
           maxLength: 1024
           type: string
         destructive:
@@ -2790,7 +2790,7 @@ components:
         headers:
           additionalProperties:
             type: string
-          description: HTTP headers for http(s) action URLs. Total ≤1KB. Ignored for custom-scheme URLs.
+          description: HTTP headers for http(s) action URLs. Total <=1KB. Ignored for custom-scheme URLs.
           type: object
         icon:
           description: SF Symbol name (iOS 15+)
@@ -3233,7 +3233,7 @@ components:
       additionalProperties: false
       properties:
         content:
-          description: Live Activity content payload. The shape depends on `template` — pick a tab below to see only the fields for that template.
+          description: Live Activity content payload. The shape depends on `template` - pick a tab below to see only the fields for that template.
           discriminator:
             mapping:
               alert: "#/components/schemas/ContentAlert"
@@ -3279,7 +3279,7 @@ components:
             - notification
           type: string
         state:
-          description: Target state. Accepts ongoing or ended (case-insensitive). Optional — if omitted, the current stored state is kept. Setting ended on an ongoing activity dismisses the Live Activity.
+          description: Target state. Accepts ongoing or ended (case-insensitive). Optional - if omitted, the current stored state is kept. Setting ended on an ongoing activity dismisses the Live Activity.
           type: string
       required:
         - content
@@ -3396,7 +3396,7 @@ components:
           readOnly: true
           type: integer
         nickname:
-          description: Display name. Set via the iOS app — not writable from integration keys.
+          description: Display name. Set via the iOS app - not writable from integration keys.
           readOnly: true
           type:
             - string
@@ -3420,12 +3420,12 @@ components:
           readOnly: true
           type: integer
         quota_resets_at:
-          description: Instant the active notifications counter resets — next UTC midnight for paid tier, next UTC month for free tier.
+          description: Instant the active notifications counter resets - next UTC midnight for paid tier, next UTC month for free tier.
           format: date-time
           readOnly: true
           type: string
         quota_resets_day_at:
-          description: "Paid-tier only: instant the daily counters reset — next UTC midnight."
+          description: "Paid-tier only: instant the daily counters reset - next UTC midnight."
           format: date-time
           readOnly: true
           type: string
@@ -3623,11 +3623,11 @@ info:
 
     **Transitions via `PATCH /activities/{slug}`:**
 
-    | From → To | Push Action |
+    | From -> To | Push Action |
     |---|---|
-    | ENDED → ONGOING | Push-to-start (starts Live Activity) |
-    | ONGOING → ONGOING | Push update (updates content) |
-    | ONGOING → ENDED | Push end (dismisses after 4 hours) |
+    | ENDED -> ONGOING | Push-to-start (starts Live Activity) |
+    | ONGOING -> ONGOING | Push update (updates content) |
+    | ONGOING -> ENDED | Push end (dismisses after 4 hours) |
 
     ## Countdown Lifecycle
 
@@ -3856,12 +3856,12 @@ paths:
           required: true
           schema:
             type: string
-        - description: Comma-separated extras to include in the response. Currently supports 'log_backlog' — the server-accumulated rolling log history for the log template (newest-first, up to 1000 lines / ~300 KiB). Omitted by default.
+        - description: Comma-separated extras to include in the response. Currently supports 'log_backlog' - the server-accumulated rolling log history for the log template (newest-first, up to 1000 lines / ~300 KiB). Omitted by default.
           explode: false
           in: query
           name: include
           schema:
-            description: Comma-separated extras to include in the response. Currently supports 'log_backlog' — the server-accumulated rolling log history for the log template (newest-first, up to 1000 lines / ~300 KiB). Omitted by default.
+            description: Comma-separated extras to include in the response. Currently supports 'log_backlog' - the server-accumulated rolling log history for the log template (newest-first, up to 1000 lines / ~300 KiB). Omitted by default.
             type: string
       responses:
         "200":
@@ -3906,7 +3906,7 @@ paths:
       tags:
         - Activities
     patch:
-      description: Partial update using RFC 7396 JSON Merge Patch semantics. Fields present in the request body overwrite stored values; fields set to null clear them; absent fields are preserved. Top-level `state` is optional — if omitted, the current stored state is kept (unless the activity is PREEMPTED, in which case the caller must set ONGOING or ENDED explicitly). Once set, alarm and warning_threshold persist across updates until explicitly cleared with null. If both end_date and duration are provided, end_date wins. When state transitions to ENDED the server clears alarm, snoozed_until, and warning_pushed unconditionally.
+      description: Partial update using RFC 7396 JSON Merge Patch semantics. Fields present in the request body overwrite stored values; fields set to null clear them; absent fields are preserved. Top-level `state` is optional - if omitted, the current stored state is kept (unless the activity is PREEMPTED, in which case the caller must set ONGOING or ENDED explicitly). Once set, alarm and warning_threshold persist across updates until explicitly cleared with null. If both end_date and duration are provided, end_date wins. When state transitions to ENDED the server clears alarm, snoozed_until, and warning_pushed unconditionally.
       operationId: updateActivity
       parameters:
         - in: path

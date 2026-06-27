@@ -35,7 +35,7 @@ var consentTmpl = template.Must(template.New("consent").Parse(`<!doctype html>
     <p class="sub"><strong>{{.ClientName}}</strong> is requesting access to your PushWard account.</p>
 {{- else}}
     <p class="sub">An app identifying itself as <strong>{{.ClientName}}</strong> is requesting access to your PushWard account.</p>
-    <p class="warn">⚠ This name is not verified. Only continue if you recognize the destination below.</p>
+    <p class="warn">Warning: this name is not verified. Only continue if you recognize the destination below.</p>
 {{- end}}
     {{if .Error}}<p class="err">{{.Error}}</p>{{end}}
     <form method="post" action="/oauth/authorize">

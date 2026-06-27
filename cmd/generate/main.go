@@ -161,7 +161,45 @@ func main() {
 	refreshAsset(useLocal, apiSpecYAMLURL, filepath.Join(assetsDir, "api-openapi.yaml"))
 	refreshAsset(useLocal, relaySpecJSONURL, filepath.Join(assetsDir, "relay-openapi.json"))
 
+	// Upstream serves the specs and llms docs with Unicode punctuation (em
+	// dashes, arrows, the degree sign) in their text. Fold the committed copies to
+	// ASCII so the public repo stays grep-clean, regardless of whether the content
+	// came from the network or the local fallback. asciiReplacer only touches that
+	// punctuation, so the llms docs keep their intentional middot separators,
+	// callout symbols, and box-drawing diagrams.
+	for _, p := range []string{
+		filepath.Join(rootDir, "openapi.yaml"),
+		filepath.Join(rootDir, "relay-openapi.json"),
+		filepath.Join(assetsDir, "api-openapi.yaml"),
+		filepath.Join(assetsDir, "relay-openapi.json"),
+		filepath.Join(assetsDir, "llms.txt"),
+		filepath.Join(assetsDir, "llms-full.txt"),
+	} {
+		foldSpecASCII(p)
+	}
+
 	fmt.Printf("Generated %d API tools and %d relay tools\n", len(apiTools), len(relayTools))
+}
+
+// foldSpecASCII rewrites a committed spec file in place through asciiReplacer,
+// matching the folding the generator already applies to tool descriptions. The
+// upstream spec (refreshed from prod) may carry Unicode; the public repo copy
+// should not. Idempotent: a no-op when the file is already ASCII.
+func foldSpecASCII(path string) {
+	data, err := os.ReadFile(path) // #nosec G304 -- build-time constant paths
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "fold %s: %v\n", path, err)
+		os.Exit(1)
+	}
+	folded := asciiReplacer.Replace(string(data))
+	if folded == string(data) {
+		return
+	}
+	if err := os.WriteFile(path, []byte(folded), 0o600); err != nil {
+		fmt.Fprintf(os.Stderr, "writing %s: %v\n", path, err)
+		os.Exit(1)
+	}
+	fmt.Fprintf(os.Stderr, "ascii-folded %s\n", path)
 }
 
 // refreshAsset fetches url and overwrites destPath with the response, refreshing
@@ -645,6 +683,7 @@ var asciiReplacer = strings.NewReplacer(
 	"\u2264", "<=", // less-than or equal
 	"\u2265", ">=", // greater-than or equal
 	"\u00d7", "x", // multiplication sign
+	"\u00b0", "deg", // degree sign
 	"\u00a7", "section ", // section sign
 	"\u2018", "'", "\u2019", "'", // single curly quotes
 	"\u201c", "\"", "\u201d", "\"", // double curly quotes
