@@ -127,6 +127,20 @@ func registerRelayTools(s *mcpserver.MCPServer, relay *client.RelayClient) {
 		},
 	)
 
+	// relay_forgejo
+	s.AddTool(
+		mcp.NewTool("relay_forgejo",
+			mcp.WithDescription("Receive Forgejo Actions webhook. Pass the full JSON payload."),
+			mcp.WithString("payload_json",
+				mcp.Required(),
+				mcp.Description("Full webhook JSON payload for forgejo"),
+			),
+		),
+		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			return handleRelayForgejo(ctx, req, relay)
+		},
+	)
+
 	// relay_gatus
 	s.AddTool(
 		mcp.NewTool("relay_gatus",
@@ -155,6 +169,20 @@ func registerRelayTools(s *mcpserver.MCPServer, relay *client.RelayClient) {
 		},
 	)
 
+	// relay_gitea
+	s.AddTool(
+		mcp.NewTool("relay_gitea",
+			mcp.WithDescription("Receive Gitea Actions webhook. Pass the full JSON payload."),
+			mcp.WithString("payload_json",
+				mcp.Required(),
+				mcp.Description("Full webhook JSON payload for gitea"),
+			),
+		),
+		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			return handleRelayGitea(ctx, req, relay)
+		},
+	)
+
 	// relay_grafana
 	s.AddTool(
 		mcp.NewTool("relay_grafana",
@@ -180,6 +208,20 @@ func registerRelayTools(s *mcpserver.MCPServer, relay *client.RelayClient) {
 		),
 		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 			return handleRelayJellyfin(ctx, req, relay)
+		},
+	)
+
+	// relay_komodo
+	s.AddTool(
+		mcp.NewTool("relay_komodo",
+			mcp.WithDescription("Receive Komodo alert webhook. Pass the full JSON payload."),
+			mcp.WithString("payload_json",
+				mcp.Required(),
+				mcp.Description("Full webhook JSON payload for komodo"),
+			),
+		),
+		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			return handleRelayKomodo(ctx, req, relay)
 		},
 	)
 
@@ -443,6 +485,21 @@ func handleRelayChangedetection(ctx context.Context, req mcp.CallToolRequest, re
 	return mcp.NewToolResultText(string(raw)), nil
 }
 
+func handleRelayForgejo(ctx context.Context, req mcp.CallToolRequest, relay *client.RelayClient) (*mcp.CallToolResult, error) {
+	payloadStr, err := req.RequireString("payload_json")
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
+	if !isJSONObject(payloadStr) {
+		return mcp.NewToolResultError("payload_json must be a JSON object"), nil
+	}
+	raw, err := relay.PostWebhook(ctx, "forgejo", json.RawMessage(payloadStr))
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
+	return mcp.NewToolResultText(string(raw)), nil
+}
+
 func handleRelayGatus(ctx context.Context, req mcp.CallToolRequest, relay *client.RelayClient) (*mcp.CallToolResult, error) {
 	body := map[string]any{}
 	if v := req.GetString("alert_description", ""); v != "" {
@@ -464,6 +521,21 @@ func handleRelayGatus(ctx context.Context, req mcp.CallToolRequest, relay *clien
 		body["status"] = v
 	}
 	raw, err := relay.PostWebhook(ctx, "gatus", body)
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
+	return mcp.NewToolResultText(string(raw)), nil
+}
+
+func handleRelayGitea(ctx context.Context, req mcp.CallToolRequest, relay *client.RelayClient) (*mcp.CallToolResult, error) {
+	payloadStr, err := req.RequireString("payload_json")
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
+	if !isJSONObject(payloadStr) {
+		return mcp.NewToolResultError("payload_json must be a JSON object"), nil
+	}
+	raw, err := relay.PostWebhook(ctx, "gitea", json.RawMessage(payloadStr))
 	if err != nil {
 		return mcp.NewToolResultError(err.Error()), nil
 	}
@@ -494,6 +566,21 @@ func handleRelayJellyfin(ctx context.Context, req mcp.CallToolRequest, relay *cl
 		return mcp.NewToolResultError("payload_json must be a JSON object"), nil
 	}
 	raw, err := relay.PostWebhook(ctx, "jellyfin", json.RawMessage(payloadStr))
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
+	return mcp.NewToolResultText(string(raw)), nil
+}
+
+func handleRelayKomodo(ctx context.Context, req mcp.CallToolRequest, relay *client.RelayClient) (*mcp.CallToolResult, error) {
+	payloadStr, err := req.RequireString("payload_json")
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
+	if !isJSONObject(payloadStr) {
+		return mcp.NewToolResultError("payload_json must be a JSON object"), nil
+	}
+	raw, err := relay.PostWebhook(ctx, "komodo", json.RawMessage(payloadStr))
 	if err != nil {
 		return mcp.NewToolResultError(err.Error()), nil
 	}

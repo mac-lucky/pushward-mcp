@@ -342,9 +342,10 @@ func TestBuildRelayTools_ExpectedSet(t *testing.T) {
 	}
 	want := []string{
 		"relay_argocd", "relay_backrest", "relay_bazarr", "relay_changedetection",
-		"relay_gatus", "relay_grafana", "relay_jellyfin", "relay_overseerr",
-		"relay_paperless", "relay_prowlarr", "relay_proxmox", "relay_radarr",
-		"relay_sonarr", "relay_unmanic", "relay_uptimekuma",
+		"relay_forgejo", "relay_gatus", "relay_gitea", "relay_grafana",
+		"relay_jellyfin", "relay_komodo", "relay_overseerr", "relay_paperless",
+		"relay_prowlarr", "relay_proxmox", "relay_radarr", "relay_sonarr",
+		"relay_unmanic", "relay_uptimekuma",
 	}
 	if len(tools) != len(want) {
 		t.Errorf("got %d relay tools, want %d", len(tools), len(want))

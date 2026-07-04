@@ -637,6 +637,13 @@ func buildRelayTools(spec *openAPISpec) []toolDef {
 			}
 
 			provider := strings.TrimPrefix(path, "/")
+			// Multi-segment routes (e.g. the OpsGenie-shaped /truenas/v2/alerts
+			// and its /{id} DELETE) carry path params the flat tool template
+			// cannot express, and their paths do not form valid Go identifiers.
+			// Providers are single-segment by convention; skip everything else.
+			if strings.ContainsAny(provider, "/{") {
+				continue
+			}
 			t := toolDef{
 				Name:        "relay_" + provider,
 				FuncName:    "Relay" + toPascalCase(provider),

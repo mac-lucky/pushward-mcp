@@ -2,7 +2,7 @@
 
 > Full Markdown bundle of every PushWard docs page, auto-generated from the prerendered HTML at build time. Source: https://pushward.app
 
-> Generated: 2026-06-21T22:04:09.823Z
+> Generated: 2026-07-04T19:35:19.590Z
 
 ---
 <!-- source: https://pushward.app/docs/getting-started -->
@@ -132,21 +132,89 @@ Unlike a regular push notification - which appears once and then slips into the 
 
 ## Templates
 
-PushWard provides six Live Activity templates. Each template has a distinct layout optimized for different use cases.
+PushWard provides eight Live Activity templates. Each template has a distinct layout optimized for different use cases.
 
-[### Generic
+[
 
-Track any progress with a customizable bar, state label, and countdown timer.](https://pushward.app/docs/live-activities/generic) [### Countdown
+### Generic
 
-Auto-managed timer with server-side warning and completion pushes.](https://pushward.app/docs/live-activities/countdown) [### Steps
+Track any progress with a customizable bar, state label, and countdown timer.
 
-CI/CD step indicator with matrix job support and stage tracking.](https://pushward.app/docs/live-activities/steps) [### Alert
+![](https://pushward.app/_app/immutable/assets/bambu-nolock-poster.BIPdx4kI.webp)
 
-Severity-based alerts with deep links to dashboards and alert rules.](https://pushward.app/docs/live-activities/alert) [### Gauge
 
-Monitor values within a range with auto-calculated progress and min/max labels.](https://pushward.app/docs/live-activities/gauge) [### Timeline
 
-Real-time sparkline chart with multi-series support, thresholds, and auto-scaling.](https://pushward.app/docs/live-activities/timeline)
+](https://pushward.app/docs/live-activities/generic)[
+
+### Countdown
+
+Auto-managed timer with server-side warning and completion pushes.
+
+![](https://pushward.app/_app/immutable/assets/timer-nolock-poster.CXzZFg_b.webp)
+
+
+
+](https://pushward.app/docs/live-activities/countdown)[
+
+### Steps
+
+CI/CD step indicator with matrix job support and stage tracking.
+
+![](https://pushward.app/_app/immutable/assets/github-nolock-poster.DYx9e9-e.webp)
+
+
+
+](https://pushward.app/docs/live-activities/steps)[
+
+### Alert
+
+Severity-based alerts with deep links to dashboards and alert rules.
+
+![](https://pushward.app/_app/immutable/assets/alert-nolock-poster.CkR84BUu.webp)
+
+
+
+](https://pushward.app/docs/live-activities/alert)[
+
+### Gauge
+
+Monitor values within a range with auto-calculated progress and min/max labels.
+
+![](https://pushward.app/_app/immutable/assets/gauge-nolock-poster.BQjhsviD.webp)
+
+
+
+](https://pushward.app/docs/live-activities/gauge)[
+
+### Timeline
+
+Real-time sparkline chart with multi-series support, thresholds, and auto-scaling.
+
+![](https://pushward.app/_app/immutable/assets/timeline-nolock-poster.CSdLxT0o.webp)
+
+
+
+](https://pushward.app/docs/live-activities/timeline)[
+
+### Board
+
+At-a-glance dashboard of up to four labeled tiles with values, units, icons, colors, and trend arrows.
+
+![](https://pushward.app/_app/immutable/assets/board-nolock-poster.tdV2awap.webp)
+
+
+
+](https://pushward.app/docs/live-activities/board)[
+
+### Log
+
+Streaming, newest-first feed of status lines with timestamps and severity levels.
+
+![](https://pushward.app/_app/immutable/assets/log-nolock-poster.BQPeLDfS.webp)
+
+
+
+](https://pushward.app/docs/live-activities/log)
 
 ---
 
@@ -156,7 +224,7 @@ Real-time sparkline chart with multi-series support, thresholds, and auto-scalin
 
 A flexible progress-based template suitable for builds, downloads, deployments, and any long-running task.
 
- 
+![Live Activity demonstration](https://pushward.app/_app/immutable/assets/bambu-poster.CnFQS_70.webp)
 
 ## Fields
 
@@ -219,7 +287,7 @@ The progress percentage is displayed in the top-right corner of the Live Activit
 
 A timer-based template with server-managed lifecycle. Set it and forget it -- the server handles warning and completion pushes automatically.
 
- 
+![Live Activity demonstration](https://pushward.app/_app/immutable/assets/timer-poster.Cfb8TqW1.webp)
 
 ## Fields
 
@@ -303,7 +371,7 @@ Requires iOS 26+ and user authorization on first use. Once set, the alarm persis
 
 A step-based template designed for CI/CD pipelines and multi-stage workflows. Visualizes parallel jobs with a matrix indicator.
 
- 
+![Live Activity demonstration](https://pushward.app/_app/immutable/assets/github-poster.CIGWInoZ.webp)
 
 ## Fields
 
@@ -389,7 +457,7 @@ Renders `url_action` and `secondary_url_action` as buttons under the segment bar
 
 A severity-based template for monitoring alerts. Displays firing alerts with deep-link buttons to dashboards and alert rules.
 
- 
+![Live Activity demonstration](https://pushward.app/_app/immutable/assets/alert-poster.67WWFVCt.webp)
 
 ## Fields
 
@@ -397,7 +465,8 @@ A severity-based template for monitoring alerts. Displays firing alerts with dee
 | --- | --- | --- |
 | `template` | string | **Required.** Must be `"alert"` |
 | `progress` | float | **Required.** Usually `0.0` for firing, `1.0` for resolved |
-| `severity` | string | **Required.** Alert severity: `"warning"` or `"info"` |
+| `severity` | string | **Required.** Alert severity: `"critical"`, `"warning"`, or `"info"` |
+| `severity_label` | string | Optional. Custom text shown in place of the Info/Warning/Critical badge |
 | `fired_at` | integer | Unix timestamp when the alert fired |
 | `url` | string | Primary URL -- tappable button on the Live Activity (e.g. link to alert rule) |
 | `secondary_url` | string | Secondary URL -- second tappable button (e.g. link to dashboard panel) |
@@ -421,7 +490,8 @@ Alert firing
     "state": "CPU usage is 94.2%",
     "icon": "exclamationmark.triangle.fill",
     "subtitle": "Grafana · nas-01",
-    "severity": "warning",
+    "severity": "critical",
+    "severity_label": "SEV1",
     "fired_at": 1750009000,
     "accent_color": "red",
     "url": "https://grafana.example.com/alerting/1afz29v7z/edit",
@@ -443,7 +513,7 @@ Alert resolved
     "state": "Resolved - CPU usage normalized",
     "icon": "checkmark.circle.fill",
     "subtitle": "Grafana · nas-01",
-    "severity": "warning",
+    "severity": "critical",
     "accent_color": "green",
     "url": "https://grafana.example.com/alerting/1afz29v7z/edit"
   }
@@ -476,7 +546,7 @@ The alert template is a natural fit for one-tap acknowledgements. Set `url_actio
 
 A range-based template for monitoring numeric values. Displays the current value with unit, and shows min/max labels on the progress bar endpoints. Progress is auto-calculated by the server.
 
- 
+![Live Activity demonstration](https://pushward.app/_app/immutable/assets/gauge-poster.B0wl5Au_.webp)
 
 ## Fields
 
@@ -567,7 +637,7 @@ The circular Dynamic Island variant has no inline buttons; `tap_action` is the m
 
 A real-time sparkline chart for tracking values over time. Each push sends a data point; the server accumulates history and delivers the sparkline data to iOS via push notifications.
 
- 
+![Live Activity demonstration](https://pushward.app/_app/immutable/assets/timeline-poster.CNIwLB3x.webp)
 
 ## Fields
 
@@ -655,6 +725,172 @@ Renders `url_action` and `secondary_url_action` as buttons below the sparkline; 
 -   **3D printing** - hotend/bed temperature curves during a print
 -   **CI/CD** - build time trends, test suite duration over consecutive runs
 -   **IoT** - sensor readings over time with threshold alerts
+
+---
+
+<!-- source: https://pushward.app/docs/live-activities/board -->
+
+# Board Template
+
+A compact dashboard that shows up to four labeled tiles side by side. Each tile carries a value, optional unit, icon, color, trend arrow, and its own tap target - ideal for surfacing several related metrics at a glance.
+
+![Live Activity demonstration](https://pushward.app/_app/immutable/assets/board-nolock-poster.tdV2awap.webp)
+
+## Fields
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `template` | string | **Required.** Must be `"board"` |
+| `tiles` | array | **Required.** 1-4 tile objects (see below). More than four are dropped to fit the layout |
+| `title` | string | Board heading shown above the tiles |
+| `state` | string | Status text shown beside the title (e.g. "All systems nominal") |
+| `icon` | string | SF Symbol name (e.g. `"server.rack"`) or MDI icon with `mdi:` prefix |
+| `accent_color` | string | Named color or hex used for the heading icon and tile values. Default: `blue` |
+| `background_color` | string | Background color override |
+| `text_color` | string | Text color override |
+
+## Tile object
+
+Each entry in `tiles` is an object:
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `label` | string | **Required.** Tile caption. Max 32 characters |
+| `value` | string | **Required.** Primary value. Max 16 characters |
+| `unit` | string | Unit suffix shown after the value (e.g. "%", "GB"). Max 8 characters |
+| `icon` | string | SF Symbol or MDI icon shown beside the label |
+| `color` | string | Named color or hex for this tile's value. Falls back to `accent_color` |
+| `trend` | string | One of `up`, `down`, `flat` - renders a trend arrow |
+| `url_action` | object | Per-tile tap target. Same shape as [tap actions](https://pushward.app/docs/api/activities#tap-actions) |
+
+ℹ Info
+
+Send **1 to 4 tiles**. The board fits inside the same ~4 KB APNs payload as every other template, so keep labels and values short - long strings are truncated to the limits above.
+
+## Example: Service Status Board
+
+Service status board 
+
+```
+{
+  "state": "ongoing",
+  "content": {
+    "template": "board",
+    "title": "Homelab",
+    "state": "All systems nominal",
+    "icon": "server.rack",
+    "accent_color": "green",
+    "tiles": [
+      { "label": "Uptime", "value": "99.98", "unit": "%", "icon": "checkmark.circle", "color": "green", "trend": "flat" },
+      { "label": "CPU", "value": "47", "unit": "%", "icon": "cpu", "color": "cyan", "trend": "up" },
+      { "label": "Memory", "value": "6.2", "unit": "GB", "color": "blue" },
+      {
+        "label": "Errors",
+        "value": "3",
+        "unit": "/h",
+        "icon": "exclamationmark.triangle",
+        "color": "orange",
+        "trend": "down",
+        "url_action": { "url": "https://grafana.example.com/errors", "foreground": true }
+      }
+    ]
+  }
+}
+```
+
+## Typical Flow
+
+1.  **Start the board** (`ended -> ongoing`): Send the initial set of tiles
+2.  **Update tiles** (`ongoing -> ongoing`): Re-send the `tiles` array with new values - the board redraws in place
+3.  **Finish** (`ongoing -> ended`): Optionally send a final snapshot, then end the activity
+
+## Buttons & tap targets
+
+Each tile can carry its own `url_action`, so a single board can deep-link to several destinations - one per metric. See [Tap actions](https://pushward.app/docs/api/activities#tap-actions) for the action object shape.
+
+## Use Cases
+
+-   **Infrastructure** - uptime, CPU, memory, and error-rate at a glance
+-   **Smart home** - room temperatures, energy use, device states
+-   **Media servers** - active streams, queue depth, transcodes, library size
+-   **Sports & finance** - scoreboards, portfolio tickers, KPI dashboards
+
+---
+
+<!-- source: https://pushward.app/docs/live-activities/log -->
+
+# Log Template
+
+A streaming feed of up to 20 newest-first lines, each with optional timestamp and severity. The server keeps a scroll-back backlog you can fetch in-app, while the Live Activity always shows the most recent lines.
+
+![Live Activity demonstration](https://pushward.app/_app/immutable/assets/log-nolock-poster.BQPeLDfS.webp)
+
+## Fields
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `template` | string | **Required.** Must be `"log"` |
+| `lines` | array | **Required.** 1-20 line objects, **newest first** (see below) |
+| `title` | string | Log heading shown above the feed |
+| `state` | string | Status text shown beside the title (e.g. the source name) |
+| `icon` | string | SF Symbol name (e.g. `"doc.text"`) or MDI icon with `mdi:` prefix |
+| `accent_color` | string | Named color or hex used for the heading icon. Default: `blue` |
+| `background_color` | string | Background color override |
+| `text_color` | string | Text color override |
+
+## Line object
+
+Each entry in `lines` is an object:
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `text` | string | **Required.** The log message. Max 512 characters |
+| `at` | integer | Unix timestamp (seconds) shown as the line's time |
+| `level` | string | One of `info`, `warn`, `error` - tints the line and its marker |
+
+ℹ Info
+
+Send the **newest line first**, up to **20 lines** per push. To stream a feed, prepend the new line and re-send the array. The Live Activity always shows the most recent lines that fit the ~4 KB APNs payload.
+
+💡 Tip
+
+The server keeps a rolling **scroll-back backlog** beyond what fits on screen. The PushWard app fetches it with `GET /activities/{slug}?include=log_backlog` to show full history in-app - the field is read-only and never needs to be sent.
+
+## Example: Streaming Deploy Log
+
+Streaming deploy log 
+
+```
+{
+  "state": "ongoing",
+  "content": {
+    "template": "log",
+    "title": "Deploy Log",
+    "state": "pushward-server",
+    "icon": "doc.text",
+    "accent_color": "purple",
+    "lines": [
+      { "text": "Rollout complete - 3/3 pods healthy", "at": 1718990000, "level": "info" },
+      { "text": "Image pull slow on node arm-2", "at": 1718989950, "level": "warn" },
+      { "text": "Applied manifest revision d86246c", "at": 1718989930, "level": "info" },
+      { "text": "Sync started by webhook", "at": 1718989900, "level": "info" }
+    ]
+  }
+}
+```
+
+## Typical Flow
+
+1.  **Start the feed** (`ended -> ongoing`): Send the first batch of lines, newest first
+2.  **Append events** (`ongoing -> ongoing`): Prepend each new line and re-send `lines` - older lines roll into the backlog
+3.  **Finish** (`ongoing -> ended`): Send a closing line, then end the activity
+
+## Use Cases
+
+-   **CI/CD** - live deploy and pipeline logs
+-   **Home automation** - event feeds (motion, doors, presence)
+-   **Monitoring** - rolling alert and incident streams
+-   **Self-hosting** - download/import progress, backup steps, sync activity
 
 ---
 
@@ -1210,7 +1446,8 @@ Create an in-app notification and optionally push it to all user devices. No sub
 | `title` | string | Yes | Notification title |
 | `body` | string | Yes | Notification body text |
 | `subtitle` | string | No | Optional subtitle |
-| `level` | string | No | `passive`, `active` (default), or `time-sensitive`. Controls iOS interruption level. |
+| `level` | string | No | `passive`, `active` (default), `time-sensitive`, or `critical`. Controls iOS interruption level. |
+| `volume` | number | No | Sound volume for critical alerts (0.0-1.0). Only used when level is `critical`. Defaults to 1.0. |
 | `thread_id` | string | No | Groups notifications in Notification Center |
 | `collapse_id` | string | No | APNs deduplication key (max 64 chars). Not stored or returned in responses. |
 | `source` | string | No | Source identifier (e.g. integration name) |
@@ -1339,6 +1576,10 @@ Up to six label/value rows. Best for compact dashboards - MRR / Subs / Trials, U
 **Required:** stat\_rows (array, 1 - 6 entries)
 
   ![Stat list widget - On-call card with Primary, Secondary, and Time left rows.](https://pushward.app/_app/immutable/assets/stats-540.C5CvAym5.png)](https://pushward.app/docs/widgets/api#stat-list)  
+
+ℹ Info
+
+`stat_list` stores up to 6 rows, but how many render depends on the placement size. By default, medium and large Home Screen widgets show all 6; the small widget shows 4, and the Lock Screen rectangular shows 3, packing rows two-up to fit up to 6 when every value is very short (a single status glyph, a small count). You can change Row Density per widget in the PushWard app: _Compact_ packs two columns to surface up to 6 rows on any size (labels may truncate on the small placements), and _Comfortable_ keeps a single column with larger rows (showing fewer on the smaller sizes). To see all 6 rows with full labels, use a medium or large widget, or set Compact.
 
 ## How it works
 
@@ -1771,7 +2012,7 @@ Email errors use the same [RFC 9457 Problem Details](https://pushward.app/docs/a
 
 Connect PushWard to your existing tools and services. Each integration uses a dedicated integration key for scoped access.
 
-The fastest way to get started is the [**Relay**](https://pushward.app/docs/integrations/relay) - point webhooks from 12+ services at `relay.pushward.app` with no deployment needed.
+The fastest way to get started is the [**Relay**](https://pushward.app/docs/integrations/relay) - point webhooks from 19+ services at `relay.pushward.app` with no deployment needed.
 
 [
 
@@ -1779,7 +2020,7 @@ The fastest way to get started is the [**Relay**](https://pushward.app/docs/inte
 
 ### Relay Recommended
 
-Point webhooks from 12+ services at relay.pushward.app - no deployment needed, just add your integration key.
+Point webhooks from 19+ services at relay.pushward.app - no deployment needed, just add your integration key.
 
 
 
@@ -1839,7 +2080,7 @@ Track 3D print progress with layer counts, nozzle temperature, and ETA via local
 
 ### Unraid
 
-Monitor parity checks, array state, disk alerts, and UPS events via GraphQL WebSocket.
+Forward Unraid notifications and watch parity checks, backups, mover, and UPS events as Live Activities.
 
 
 
@@ -1861,7 +2102,7 @@ The easiest way to connect your services to PushWard. Point webhooks at `relay.p
 
 ## Supported Providers
 
-              
+                  
 
 ### Grafana
 
@@ -1876,7 +2117,7 @@ notification
 -   Firing
 -   Resolved (grouped by alertname)
 
- 
+![Live Activity demonstration](https://pushward.app/_app/immutable/assets/alert-poster.67WWFVCt.webp)
 
 ## Public Relay
 
@@ -1894,7 +2135,7 @@ Authorization: Bearer hlk_YOUR_INTEGRATION_KEY
 
 💡 Tip
 
-The public relay supports all 12+ providers listed above. If you prefer to self-host, see the [self-hosted setup](#self-hosted) further down.
+The public relay supports all 19 providers listed above. If you prefer to self-host, see the [self-hosted setup](#self-hosted) further down.
 
 ## How It Works
 
@@ -1993,23 +2234,13 @@ Each provider can be individually enabled/disabled and configured with its own p
 
 Turn Grafana alerts into timeline sparklines on your Lock Screen. See metric history at a glance with real-time updates while alerts are firing.
 
- 
+![Live Activity demonstration](https://pushward.app/_app/immutable/assets/timeline-poster.CNIwLB3x.webp)
 
 ℹ Info
 
-This page covers the **standalone pushward-grafana** service for timeline sparklines. For simple alert-style notifications (firing/resolved), use the [Relay](https://pushward.app/docs/integrations/relay) integration instead - no extra container needed.
+Two ways to bring Grafana into PushWard. The **app plugin** below is the recommended path - it runs the timeline bridge and a widget engine _inside_ Grafana, with one-click setup. For simple alert-style notifications (firing/resolved, no history), the [Relay](https://pushward.app/docs/integrations/relay) integration needs no plugin or container at all.
 
-## How It Works
-
-1.  **Webhook** - Grafana fires an alert and sends the webhook to pushward-grafana
-2.  **Query** - The service queries Prometheus or VictoriaMetrics for the metric's recent history
-3.  **Timeline** - A Live Activity starts with a sparkline chart showing the metric over time
-4.  **Poll** - While the alert is firing, the service polls for new data points and pushes updates
-5.  **Resolve** - When the alert resolves, the activity ends with a final snapshot
-
-## Setup
-
-### 1\. Get Your Integration Key
+## Get Your Integration Key
 
 Open the PushWard app -> **Settings -> Integration Key** to find your default `hlk_` key.
 
@@ -2020,7 +2251,70 @@ To create a dedicated key for this integration:
 3.  Set name (e.g. "Grafana"), choose , **Full management** scope, and restrict to`grafana-*`
 4.  Copy the generated `hlk_` key
 
-### 2\. Deploy the Service
+## Grafana App Plugin (Recommended)
+
+The PushWard app plugin is the in-Grafana setup and management layer. One click wires up the webhook contact point, validates your key, and renders the live timeline sparkline **inside Grafana** using your existing datasource - no separate container and no extra Prometheus config. It can also poll PromQL on a schedule and publish the results as iOS Home and Lock Screen widgets, so it fully replaces the standalone container described further down.
+
+ℹ Info
+
+Grafana hardcodes its native contact-point types in core, so no third party can add one - every integration (including Grafana's own OnCall) delivers through a **webhook** contact point. This plugin makes that setup first-class and one-click; it doesn't replace the webhook.
+
+### Requirements
+
+-   Grafana **12.3 or newer** (unified alerting plus app-plugin IAM service accounts)
+-   A PushWard integration key (`hlk_` prefix) - the `notifications` capability for test pushes, and `widgets` to publish widgets
+-   A Prometheus or VictoriaMetrics datasource in Grafana (for the timeline history)
+
+### 1\. Install the Plugin
+
+Self-hosted today: download the release ZIP from the [plugin repository](https://github.com/mac-lucky/pushward-grafana-plugin/releases), unzip it into your Grafana `plugins/` directory, and allowlist the unsigned plugin:
+
+grafana.ini 
+
+```
+[plugins]
+allow_loading_unsigned_plugins = pushward-alerts-app
+```
+
+Restart Grafana, then enable the app under **Administration > Plugins > PushWard** and open its **Configuration** page.
+
+### 2\. Connect
+
+On the **Connect** page, one click creates the PushWard webhook contact point (no manual URL or header copying) along with a scoped Grafana service-account token, and validates your integration key against the PushWard API. Add that contact point to any alert rule's notification policy to start receiving timelines.
+
+### 3\. Configure
+
+On the **Configuration** page (Admin only) you set:
+
+-   **Integration key** - your `hlk_` key
+-   **Datasource** - the Prometheus/VictoriaMetrics datasource the backend queries for metric history
+-   **Severity mapping** - which alert label drives the accent color and icon
+-   **History window and poll interval** - how far back to backfill and how often to refresh while firing
+-   **Widgets** - the widget definitions described below
+
+### Widget Engine
+
+Beyond timelines, the backend can poll PromQL on a schedule and publish the results as iOS widgets. Declare `value`, `progress`, `status`, `gauge`, and `stat_list` widgets in the configuration; each runs on its own interval with an `on_change` or `always` trigger mode, and a multi-series query fans out into one widget update per series.
+
+### Management and Dashboard
+
+The **Overview**, **Activities**, and **Widgets** pages show current Live Activities, a recent delivery log, and your declared widgets, and let you send a test notification or fire a test timeline. Enabling the app also imports a **PushWard Delivery** dashboard that charts backend metrics - alerts received, activities created, pushes sent, and errors. Alert rules and instances get a **View in PushWard** action too.
+
+## Standalone Container (Legacy)
+
+⚠ Warning
+
+The standalone `pushward-grafana` container will soon be deprecated in favor of the app plugin above, which covers the same timeline bridge plus widgets with no separate deployment. Use it only if you can't run an app plugin on your Grafana.
+
+### How It Works
+
+1.  **Webhook** - Grafana fires an alert and sends the webhook to pushward-grafana
+2.  **Query** - The service queries Prometheus or VictoriaMetrics for the metric's recent history
+3.  **Timeline** - A Live Activity starts with a sparkline chart showing the metric over time
+4.  **Poll** - While the alert is firing, the service polls for new data points and pushes updates
+5.  **Resolve** - When the alert resolves, the activity ends with a final snapshot
+
+### Deploy the Service
 
 docker-compose.yml 
 
@@ -2042,7 +2336,7 @@ services:
     restart: unless-stopped
 ```
 
-### 3\. Configure Grafana Contact Point
+### Configure the Grafana Contact Point
 
 1.  Navigate to **Alerts & IRM > Alerting > Contact points**
 2.  Click **\+ Add contact point**
@@ -2053,7 +2347,7 @@ services:
 
 Create a **Notification policy** that routes alerts to this contact point.
 
-## Configuration
+### Configuration
 
 | Environment Variable | Description | Default |
 | --- | --- | --- |
@@ -2073,13 +2367,13 @@ Create a **Notification policy** that routes alerts to this contact point.
 | `PUSHWARD_TIMELINE_SCALE` | `linear` or `logarithmic` | `linear` |
 | `PUSHWARD_TIMELINE_DECIMALS` | Value precision | `1` |
 
-## Dashboard Links
+### Dashboard Links
 
 The bridge forwards the alert's `silenceURL`, `generatorURL`, and panel links straight through to the notification - both `http://` and `https://` schemes are accepted, so a self-hosted Grafana on a LAN (e.g. `http://grafana.internal/d/abc`) round-trips cleanly for users on VPN. URLs without an `http(s)://` scheme are dropped on the way in.
 
 ## PromQL Resolution
 
-pushward-grafana needs a PromQL expression to query metric history. It resolves the query in this order:
+The timeline needs a PromQL expression to query metric history. The app plugin reads the firing rule's query from your datasource automatically; the standalone container resolves the query in this order:
 
 1.  **Auto-extract** (recommended) - If `PUSHWARD_GRAFANA_URL` and `PUSHWARD_GRAFANA_API_TOKEN` are set, the service reads the alert rule's PromQL expression via the Grafana API. No per-rule configuration needed.
 2.  **Annotations** - Add annotations to your Grafana alert rules to specify the query explicitly.
@@ -2087,7 +2381,7 @@ pushward-grafana needs a PromQL expression to query metric history. It resolves 
 
 ### Per-Rule Annotations
 
-Add these annotations to your Grafana alert rules when not using auto-extract:
+Add these annotations to your Grafana alert rules to override the query or tune the sparkline:
 
 | Annotation | Description | Example |
 | --- | --- | --- |
@@ -2102,12 +2396,13 @@ The sparkline accent color and icon are derived from the `severity` label on the
 
 | Severity Label | Color | Icon |
 | --- | --- | --- |
+| `critical` | Red | Alert circle |
 | `warning` | Orange | Alert |
 | `info` | Blue | Information |
 
 💡 Tip
 
-Add a `severity` label to your alert rules (e.g. `severity = warning`) for automatic color and icon theming.
+Add a `severity` label to your alert rules (e.g. `severity = critical`) for automatic color and icon theming.
 
 ---
 
@@ -2169,7 +2464,7 @@ After setup, click "Add tracked entity" on the integration card. Each entity bec
 | Activity Name | Entity ID | Display name shown on iPhone |
 | Icon | Domain default | SF Symbol name (e.g., `washer`, `thermometer`) or MDI icon with `mdi:` prefix (e.g., `mdi:washing-machine`, `mdi:thermometer`) |
 | Priority | 1 | 0-10 eviction priority |
-| Template | `generic` | `generic`, `countdown`, `alert`, `steps`, `gauge`, or `timeline` |
+| Template | `generic` | `generic`, `countdown`, `alert`, `steps`, `gauge`, `timeline`, `board`, or `log` |
 | Start States | Domain default | Comma-separated states that start the activity |
 | End States | Domain default | Comma-separated states that end the activity |
 | Min. Update Interval | 5s | Cooldown between mid-activity updates |
@@ -2178,6 +2473,8 @@ After setup, click "Add tracked entity" on the integration card. Each entity bec
 | Accent Color | Blue | Color for the Live Activity accent |
 
 Each value (remaining time, progress, subtitle, gauge value, current step, fired-at) can read from a **separate entity** instead of the tracked entity. Leave the source entity empty to use the tracked entity; set it to read that entity's state, or pair it with an attribute to read an attribute off it. This means an appliance with one sensor for its state and another for the time remaining works without a template helper.
+
+The `board` and `log` templates compose several entities into one activity. A **board** shows 1-4 tiles, each reading from a separate entity; a **log** shows a newest-first list of up to 20 lines, with optional extra columns (an attribute or another entity's value) and a per-line severity level.
 
 ## Domain Defaults
 
@@ -2226,9 +2523,23 @@ The integration is entirely event-driven - it listens for HA state changes, not 
 
 Beyond mirroring entities to Live Activities, the integration exposes services for the rest of the PushWard surface. Each needs the matching capability on your integration key - your default key has all three enabled:
 
--   **iOS widgets** - add a **tracked widget** sub-entry (event- or poll-triggered, 10-3600 s) to push Home Screen widgets in the `value`, `progress`, `gauge`, `status`, and `stat_list` templates, or call the `pushward.widget_refresh` service to force a refresh. Needs the `widgets` capability.
--   **Push notifications** - the `pushward.send_notification` service sends a regular (non-Live-Activity) [push](https://pushward.app/docs/notifications) with title, body, level, actions, and rich media. Needs the `notifications` capability.
+-   **iOS widgets** - add a **tracked widget** sub-entry (event- or poll-triggered, 10-3600 s) to push Home Screen widgets in the `value`, `progress`, `gauge`, `status`, and `stat_list` templates, or call `pushward.widget_refresh` to force a refresh and `pushward.delete_widget` to remove one. Needs the `widgets` capability.
+-   **Push notifications** - the `pushward.send_notification` service sends a regular (non-Live-Activity) [push](https://pushward.app/docs/notifications) with title, body, level (including `critical`), actions, and rich media. Needs the `notifications` capability.
 -   **Transactional email** - the `pushward.send_email` service delivers [email](https://pushward.app/docs/email) to a verified recipient of your account. Needs the `emails` capability.
+
+For driving an activity straight from an automation (rather than tracking an entity), the create, update, end, and delete services are all available. Update actions are template-specific - `pushward.update_activity_generic`, `..._steps`, `..._gauge`, and so on - so each action's form only shows the fields that template uses.
+
+## Account Sensors
+
+The integration also creates five sensors that track your PushWard usage against your plan, refreshed about every 15 minutes:
+
+-   `sensor.pushward_notifications_used`
+-   `sensor.pushward_live_activity_updates_used`
+-   `sensor.pushward_widget_updates_used`
+-   `sensor.pushward_emails_used`
+-   `sensor.pushward_subscription_tier` - `free` or `premium`
+
+Use them in automations to warn before you hit a quota, or just to keep an eye on consumption.
 
 ## Example: Washing Machine
 
@@ -2254,7 +2565,7 @@ When the washer starts, a Live Activity appears showing "Washing" with a progres
 
 Track CI/CD workflow progress in real-time on your Lock Screen using the steps template.
 
- 
+![Live Activity demonstration](https://pushward.app/_app/immutable/assets/github-poster.CIGWInoZ.webp)
 
 ## How It Works
 
@@ -2329,7 +2640,7 @@ Activities are created with the slug `gh-{repo-name}` (e.g. `gh-pushward-server`
 
 Track download progress on your Lock Screen. See file names, speed, ETA, and post-processing phases in real-time.
 
- 
+![Live Activity demonstration](https://pushward.app/_app/immutable/assets/sabnzbd-poster.4_7r6Srt.webp)
 
 ## How It Works
 
@@ -2386,8 +2697,11 @@ notify.sh
 
 ```
 #!/bin/bash
-curl -X POST http://pushward-sabnzbd:8090/webhook
+curl -X POST http://pushward-sabnzbd:8090/webhook \
+  -H "X-Webhook-Secret: your-secret"
 ```
+
+The secret is defined on the bridge container (the `PUSHWARD_SABNZBD_WEBHOOK_SECRET` env var above) and sent by this script; SABnzbd itself has no field for it.
 
 ## Configuration
 
@@ -2397,6 +2711,7 @@ curl -X POST http://pushward-sabnzbd:8090/webhook
 | `PUSHWARD_API_KEY` | Integration key (`hlk_` prefix) | \-- |
 | `PUSHWARD_SABNZBD_URL` | SABnzbd API URL | \-- |
 | `PUSHWARD_SABNZBD_API_KEY` | SABnzbd API key | \-- |
+| `PUSHWARD_SABNZBD_WEBHOOK_SECRET` | Optional shared secret. When set, `POST /webhook` requires a matching `X-Webhook-Secret` header. | \-- |
 | `PUSHWARD_SERVER_ADDRESS` | HTTP listen address | `:8090` |
 | `PUSHWARD_PRIORITY` | Activity priority (0-10) | `1` |
 | `PUSHWARD_POLL_INTERVAL` | Poll interval during tracking (min 1s) | `5s` |
@@ -2441,7 +2756,7 @@ Uses a fixed slug: `sabnzbd`. All downloads are tracked under a single activity.
 
 Track 3D print progress with layer counts, nozzle temperature, and ETA on your Lock Screen via local MQTT.
 
- 
+![Live Activity demonstration](https://pushward.app/_app/immutable/assets/bambu-poster.CnFQS_70.webp)
 
 ## How It Works
 
@@ -2544,26 +2859,32 @@ Uses the format `bambu-<serial>` (serial lowercased), e.g. `bambu-01s00a12345678
 
 # Unraid
 
-Monitor parity checks, array state changes, disk alerts, and UPS events on your Lock Screen via Unraid's GraphQL WebSocket API.
+A native Unraid plugin that forwards every Unraid notification to your iPhone and shows parity checks, backups, mover, and UPS events as Live Activities on your Lock Screen.
 
 ℹ Info
 
-**Coming soon.** The native Unraid plugin isn't released yet - this page previews how it will work. The Community Applications install link will be published here the moment it ships; everything below reflects the planned setup.
+**Beta.** The plugin works but expect some rough edges - please [report any issues](https://github.com/mac-lucky/pushward-unraid-plugin/issues).
 
 ## How It Works
 
-A native Unraid plugin - no Docker container required. Runs as an autostart service and connects to the local GraphQL API.
+A native Unraid plugin - no Docker container, and no Unraid API key. It installs a Dynamix notification agent plus a small background monitor that reads Unraid's own state, and talks to the PushWard REST API over HTTPS.
 
-1.  **Notification forwarding** - subscribes to Unraid's `notificationAdded` WebSocket and forwards every notification to PushWard. `ALERT` and `WARNING` importance map to active iOS notifications, `INFO` to passive.
-2.  **Parity tracking** - polls the GraphQL API every 10 seconds for parity-check progress and array state changes, surfaced as a Live Activity while the check runs.
+1.  **Notifications** - the agent forwards every Unraid notification to your iPhone. `ALERT` and `WARNING` map to active iOS pushes, everything else to passive (turn on `INFO` too under **Settings -> Notifications**). The full message body is sent, not just the subject.
+2.  **Live Activities** - a background monitor (started by an array-event hook, kept alive by a 1-minute watchdog cron) reads Unraid's state and drives Live Activities for long-running jobs. They appear via push-to-start with no app interaction, update as the job runs, and end automatically when it finishes.
+
+| Source | What you see |
+| --- | --- |
+| Parity check / rebuild / clear | Percent complete, speed, ETA, and the error count on parity checks |
+| Appdata backup | Step-by-step progress, one step per container |
+| Mover | Files listed as they move, with percent and transfer speed |
+| VM backup | Step-by-step progress, one step per VM |
+| UPS on battery | Battery charge and runtime countdown while running on battery |
+
+The monitor only reads status - it never touches Unraid or the source plugins - and stays under your PushWard update quota by pushing only on a meaningful change. A few notes on the file-level sources: the mover lists files only when **Mover logging** is on (**Settings -> Scheduler -> Mover Settings**); with it off you get a percent and bytes bar instead. VM backup tracks the `vmbackup` plugin's own scheduled or manual runs. The UPS source reads `apcupsd` via `apcaccess` and only appears while on battery (NUT is not supported).
 
 ## Setup
 
-### 1\. Generate an Unraid API Key
-
-On your Unraid server, go to **Settings -> Management Access -> API Keys** and create a new key. Read access on `array` and `notifications` is sufficient.
-
-### 2\. Get Your PushWard Integration Key
+### 1\. Get Your PushWard Integration Key
 
 Open the PushWard app -> **Settings -> Integration Key** to find your default `hlk_` key.
 
@@ -2574,46 +2895,49 @@ To create a dedicated key for this integration:
 3.  Set name (e.g. "Unraid"), choose , **Full management** scope, and restrict to`unraid-*`
 4.  Copy the generated `hlk_` key
 
-### 3\. Install the Plugin
+One `hlk_` key covers both features. Notifications need the `notifications` capability and work on any plan; Live Activities need the `activity:manage` scope and an active PushWard subscription.
 
-When the plugin ships, you'll install it from the Unraid web UI via **Plugins -> Install Plugin** by pasting the published `.plg` URL (or straight from Community Applications). That install link will appear here at launch.
+### 2\. Install the Plugin
 
-The plugin downloads the `pushward-unraid` binary into `/usr/local/bin/`, drops a control script and Settings page into `/usr/local/emhttp/plugins/pushward-unraid/`, and registers an autostart symlink at `/usr/local/etc/rc.d/rc.pushward-unraid`. Unraid 6.12 or later is required.
+In the Unraid web UI, open **Plugins -> Install Plugin** and paste:
 
-### 4\. Configure
+```
+https://github.com/mac-lucky/pushward-unraid-plugin/raw/main/pushward-unraid.plg
+```
 
-Open **Settings -> PushWard** in the Unraid web UI and fill in:
+Unraid 6.12 or later is required.
+
+### 3\. Configure
+
+Open **Settings -> PushWard** (in the **User Utilities** row). On the **Settings** tab, fill in:
 
 | Field | Description | Default |
 | --- | --- | --- |
-| Service | Set to `Enable` to autostart the bridge | `Enable` |
+| Live Activities | Master switch for progress activities | `On` |
 | PushWard server URL | PushWard API URL | `https://api.pushward.app` |
-| PushWard integration API key | The `hlk_...` key from step 2 (needs `activity:manage` scope) | \-- |
-| Unraid host | Hostname Unraid is reachable on (the plugin runs on the same host) | `localhost` |
-| Unraid port | Port Unraid's nginx serves `/graphql` on | `80` |
-| Use TLS | Set to `Yes` if you reach the Unraid GUI over HTTPS only | `No` |
-| Unraid API key | The API key from step 1 | \-- |
-| Server display name | Shown in PushWard Live Activities (e.g. "Tower") | \-- |
+| PushWard API key | The `hlk_...` key from step 1 | \-- |
+| Server display name | Shown under notifications and used to name activities (e.g. "Tower") | \-- |
+| Track parity / appdata backup / mover / VM backup / UPS | Per-source toggles for the Live Activities above | `On` |
+| Poll interval | How often the monitor checks state | `15s` |
+| Activity priority | 0-10, used when PushWard evicts to make room for higher-priority activities | `5` |
 
-Click **Apply**. Values are persisted to `/boot/config/plugins/pushward-unraid/pushward-unraid.cfg` and survive reboots and plugin upgrades.
+Click **Apply**, then use the test buttons to confirm each path. The Settings tab shows live status - whether the key is valid, the subscription is active, and the monitor is running. Values are saved under `/boot/config/plugins/pushward-unraid/` and survive reboots and plugin upgrades. The **Activities** tab lists the current Live Activities and lets you end them.
 
-## Logs and Manual Control
+## Logs
 
 ```
-tail -f /var/log/pushward-unraid.log
-
-/usr/local/emhttp/plugins/pushward-unraid/pushward-unraid.sh status
-/usr/local/emhttp/plugins/pushward-unraid/pushward-unraid.sh restart
-/usr/local/emhttp/plugins/pushward-unraid/pushward-unraid.sh stop
+tail -f /var/log/pushward-monitor.log
 ```
+
+That follows the Live Activity monitor. Notification-delivery problems are logged to the Unraid system log under the `pushward` tag.
 
 ## Updates
 
-The `.plg` manifest auto-bumps when a new `unraid-v*` release is published. Pick up the latest version via **Plugins -> Check for Updates** inside Unraid.
+The plugin uses a date-based version (e.g. `2026.06.26`). Pick up new releases via **Plugins -> Check for Updates** inside Unraid.
 
 ## Uninstall
 
-**Plugins -> PushWard -> Remove**. The binary, autostart symlink, ramdisk plugin directory, and log file are removed. Your config under `/boot/config/plugins/pushward-unraid/` is left intact, so reinstalling restores your API keys.
+**Plugins -> PushWard -> Remove**. The agent, monitor, settings and dashboard pages, and cron are removed, and any active Live Activities are ended. Your config under `/boot/config/plugins/pushward-unraid/` is left intact, so reinstalling restores your API key.
 
 ---
 
@@ -2722,8 +3046,10 @@ Create and revoke integration keys in the iOS app's settings screen. A default `
 
 | Scope | Access |
 | --- | --- |
-| `activity:update` (default) | Update existing activities and read state |
-| `activity:manage` | All of `activity:update`, plus create and delete activities |
+| `activity:update` (default) | Update existing activities and read state. Cannot create or delete activities. |
+| `activity:manage` | Everything `activity:update` can do, plus create and delete activities. |
+
+If your integration creates its own activities, use `activity:manage`; use `activity:update` for keys that should only push updates to activities created elsewhere.
 
 Each key can additionally restrict access to specific activity slugs or prefix patterns (trailing `*`) and toggle three independent permission flags:
 
@@ -2797,7 +3123,7 @@ Activities are the core resource in PushWard. Each activity represents a trackab
 
 ℹ Info
 
-Each user can have a maximum of **25 activities**. Attempting to create more returns `409` with a [Problem Details](#errors) body whose `code` is `"activity.limit_exceeded"` and a `Retry-After` header.
+Each user can have a maximum of **50 activities**. Attempting to create more returns `409` with a [Problem Details](#errors) body whose `code` is `"activity.limit_exceeded"` and a `Retry-After` header.
 
 ## Create Activity
 
@@ -3120,11 +3446,14 @@ The `content` object is shared across all templates. Only `template` is required
 
 | Field | Type | Description |
 | --- | --- | --- |
-| `template` | string | **Required.** One of: `generic`, `countdown`, `steps`, `alert`, `gauge`, `timeline` |
+| `template` | string | **Required.** One of: `generic`, `countdown`, `steps`, `alert`, `gauge`, `timeline`, `board`, `log` |
 | `progress` | float | Optional. Value between `0.0` and `1.0`. Computed automatically for `gauge` from `value`/`min_value`/`max_value`. |
 | `alarm` | boolean | Optional. Opt-in iOS AlarmKit alarm at `end_date`. Rings through silent mode and Focus. Requires `end_date`; iOS 26+ only. See [Alarms](#alarm). |
 | `snooze_seconds` | integer | Optional. How many seconds `POST /activities/{slug}/snooze` extends `end_date`, and the iOS AlarmKit snooze window. `60`-`3600`; defaults to `300` (5 min) when omitted. Only meaningful with `alarm: true`. |
 | `snoozed_until` | integer | Read-only. Unix timestamp set when the user snoozes an alarm from iOS. When non-null and in the future, iOS renders a "Snoozed" banner; it auto-clears when the client sees `snoozed_until <= now`. Any client-supplied value is stripped on `PATCH`. |
+| `tiles` | array | Required for the `board` template. 1-4 tile objects. See [Board](https://pushward.app/docs/live-activities/board). |
+| `lines` | array | Required for the `log` template. 1-20 line objects, newest first. See [Log](https://pushward.app/docs/live-activities/log). |
+| `log_backlog` | array | Read-only (`log` template). Server-kept scroll-back history, returned only on `GET /activities/{slug}?include=log_backlog`. Never sent by clients. |
 
 See the [Live Activities](https://pushward.app/docs/live-activities) section for template-specific fields.
 
@@ -3225,7 +3554,7 @@ The same expiration is sent to iOS as the APNs `stale-date`, so the Lock Screen 
 
 💡 Tip
 
-Use `ended_ttl` to let the server clean up finished activities automatically _and_ remove the Live Activity from the iOS lock screen at the same moment - the value is sent to APNs as `dismissal-date`. Integration bridges typically set this on creation so activities don't pile up either in the database or on the user's lock screen. Apple caps lock-screen dismissal at 4 hours; larger values still control row deletion but the on-device dismissal happens at 4h.
+Use `ended_ttl` to let the server clean up finished activities automatically _and_ remove the Live Activity from the iOS lock screen at the same moment - the value is sent to APNs as `dismissal-date`. Integration bridges typically set this on creation so activities don't pile up either in the database or on the user's lock screen. Apple caps lock-screen dismissal at 4 hours; larger values still control row deletion but the on-device dismissal happens at 4h. An activity that reaches `ended` without an explicit `ended_ttl` is still removed automatically: the server deletes it 30 days after its last change.
 
 ## Alarms (iOS 26+ AlarmKit)
 
@@ -3292,7 +3621,7 @@ All errors follow [RFC 9457 Problem Details](https://www.rfc-editor.org/rfc/rfc9
   "type": "about:blank",
   "title": "Conflict",
   "status": 409,
-  "detail": "Activity limit reached (max 25).",
+  "detail": "Activity limit reached (max 50).",
   "instance": "/activities",
   "code": "activity.limit_exceeded",
   "retry_after_ms": 3000,
@@ -3352,6 +3681,78 @@ Retry-After: 1209600
 💡 Tip
 
 Pin clients to the `code` field, not the HTTP status - the same `429` means very different things for `rate_limit.exceeded` (transient, retry after a few seconds) versus `quota.exceeded` (sticky until the start of next month, or until the user upgrades). For `quota.exceeded`, surface an upgrade prompt rather than a blind retry loop.
+
+---
+
+<!-- source: https://pushward.app/docs/api/mcp -->
+
+# MCP Server
+
+Drive PushWard from Claude and other AI agents over the Model Context Protocol. The hosted MCP server lets an agent create Live Activities, send notifications, and manage widgets through your integration key.
+
+PushWard runs a remote [Model Context Protocol](https://modelcontextprotocol.io) (MCP) server, so AI agents like Claude can drive your account in natural language - create and update Live Activities, send notifications, manage Home Screen widgets, send email, and run health checks. It's a hosted server with nothing to install: your client connects over OAuth and you authorize it once with your integration key.
+
+ℹ Info
+
+The MCP server is the same PushWard REST API behind a tool interface for AI agents. It uses your `hlk_` integration key, so an agent can only do what that key's scopes and capabilities allow.
+
+## Connect from Claude Code
+
+Add the server with one command. OAuth runs interactively the first time the agent uses a tool.
+
+```
+claude mcp add --transport http pushward https://mcp.pushward.app/mcp
+```
+
+## Connect from other clients
+
+Any MCP client that supports remote servers over OAuth - Claude Desktop, the Claude apps, and others - can connect by adding a remote (custom) connector pointed at the endpoint below:
+
+```
+https://mcp.pushward.app/mcp
+```
+
+The client discovers the OAuth endpoints automatically and walks you through authorization on first connect.
+
+## Authorize
+
+The first time you connect, a browser opens a PushWard consent screen. Paste your `hlk_` integration key once and approve access. The server validates the key, stores it encrypted, and issues short-lived tokens for the session - your raw key is never shared with the MCP client.
+
+Get your integration key from the iOS app's settings screen. See [Authentication](https://pushward.app/docs/api/authentication) for how keys, scopes, and capability flags work.
+
+💡 Tip
+
+Create a dedicated integration key for the MCP server instead of reusing your default key. Scope it to just the capabilities the agent needs (notifications, widgets, email) so you can revoke it independently.
+
+## What you can do
+
+The remote server exposes tools covering the full API surface:
+
+-   **Live Activities** - create, update, end, get, list, and delete activities, plus bulk-end by filter.
+-   **Notifications** - send inbox notifications with optional push delivery.
+-   **Widgets** - full CRUD for Home Screen widgets.
+-   **Email** - send transactional email to verified recipients.
+-   **Health** - liveness and readiness checks for the API.
+-   **Test workflows** - composite helpers that run a full lifecycle (for example, create an activity, push a few updates, then end it) in one call.
+-   **Reference** - built-in tools that return the PushWard docs bundle and integration best practices, so the agent grounds its calls in the real API.
+
+ℹ Info
+
+Relay webhook-simulation tools (Grafana, Sonarr, ArgoCD, and the rest) are only available in the local build of the MCP server, not the hosted endpoint. For production webhooks use the [Relay](https://pushward.app/docs/integrations/relay) integration directly.
+
+## Endpoint
+
+| Property | Value |
+| --- | --- |
+| Endpoint | `https://mcp.pushward.app/mcp` |
+| Transport | Streamable HTTP |
+| Authentication | OAuth 2.1, authorized with an `hlk_` integration key |
+
+## Next steps
+
+-   [API Reference](https://pushward.app/docs/api) - every endpoint the MCP tools map to
+-   [Authentication](https://pushward.app/docs/api/authentication) - integration keys, scopes, and capability flags
+-   [Getting Started](https://pushward.app/docs/getting-started) - create your first Live Activity
 
 ---
 
@@ -3765,13 +4166,15 @@ A `429 Too Many Requests` response includes a `Retry-After: 60` header.
 
 | Limit | Default |
 | --- | --- |
-| Max total activities per user | **25** |
+| Max total activities per user | **50** |
 | Max live (`ongoing`) activities per user | **5** |
 | Max registered devices per user (Free) | **3** |
-| Max registered devices per user (Individual / Family / Founding) | **10** |
+| Max registered devices per user (Individual / Family) | **10** |
 | Max integration keys per user | **25** |
 | Max [widgets](https://pushward.app/docs/widgets) per user | **50** |
 | Max verified [email recipients](https://pushward.app/docs/email) per account | **50** |
+
+Ended activities are automatically deleted 30 days after they last changed, and once deleted they no longer count toward this total. Setting an explicit `ended_ttl` on an activity deletes it sooner.
 
 ### Free Tier Quotas
 
@@ -3839,7 +4242,7 @@ The `slug` must start with an alphanumeric character and may contain letters, nu
 | Steps | `total_steps` | >= 1 |
 | Steps | `current_step` | 0 - `total_steps` |
 | Steps | `step_rows` values | 1 - 10 per row |
-| Alert | `severity` | `warning` or `info` |
+| Alert | `severity` | `critical`, `warning`, or `info` |
 | Gauge | `value`, `min_value`, `max_value` | All three required. `min_value` < `max_value`. `value` must be within range. `progress` is auto-calculated. |
 | Gauge | `unit` | Max 32 characters |
 | Timeline | `value` or `values` | At least one required. `values` max 10 series, keys max 32 characters. |
@@ -4417,7 +4820,7 @@ Flags: `-config` (default `config.yml`) and `-pushward-url` (overrides `PUSHWARD
 
 ## Endpoints
 
-All `POST` webhook routes require an `hlk_` key (Bearer or HTTP Basic password), enforce a 1 MB body limit, and return `200` with `{"status":"ok"}` on success - `401` if the key is missing, `429` when rate-limited. Requests with a missing or `text/plain` `Content-Type` are normalized to `application/json` so misconfigured senders are still accepted.
+All webhook routes require an `hlk_` key (Bearer, HTTP Basic password, or the OpsGenie `GenieKey` scheme), enforce a 1 MB body limit, and return `200` with `{"status":"ok"}` on success - `401` if the key is missing, `429` when rate-limited. Requests with a missing or `text/plain` `Content-Type` are normalized to `application/json` so misconfigured senders are still accepted.
 
 | Method | Path | Description |
 |---|---|---|
@@ -4436,6 +4839,11 @@ All `POST` webhook routes require an `hlk_` key (Bearer or HTTP Basic password),
 | POST | `/uptimekuma` | Uptime Kuma monitor webhooks |
 | POST | `/gatus` | Gatus health-check alert webhooks |
 | POST | `/backrest` | Backrest backup/prune/check/forget webhooks |
+| POST | `/gitea` | Gitea Actions workflow_run/workflow_job webhooks |
+| POST | `/forgejo` | Forgejo Actions action_run_* webhooks |
+| POST | `/komodo` | Komodo Custom-alerter webhooks |
+| POST | `/truenas/v2/alerts` | TrueNAS OpsGenie create-alert calls |
+| DELETE | `/truenas/v2/alerts/{id}` | TrueNAS OpsGenie close-alert calls |
 | GET | `/health` | Liveness - returns `ok` |
 | GET | `/ready` | Readiness - `ready`, or `503` if the DB ping fails |
 | GET | `/openapi.json` | Auto-generated OpenAPI 3.1 spec |
@@ -4461,13 +4869,18 @@ All `POST` webhook routes require an `hlk_` key (Bearer or HTTP Basic password),
 | Uptime Kuma | `POST /uptimekuma` | Bearer | Live Activity (alert) | Yes |
 | Gatus | `POST /gatus` | Bearer | Live Activity (alert) | Yes |
 | Backrest | `POST /backrest` | Bearer | Live Activity (steps) | Yes |
+| Gitea | `POST /gitea` | Bearer | Live Activity (steps) | Yes |
+| Forgejo | `POST /forgejo` | Bearer | Live Activity (generic) | Yes |
+| Komodo | `POST /komodo` | Basic | Live Activity (alert) + push | Yes |
+| TrueNAS | `POST /truenas/v2/alerts` · `DELETE /truenas/v2/alerts/{id}` | GenieKey | Live Activity (alert) + push | Yes |
 
 ### Authentication
 
 Every route requires the `hlk_` integration key. The relay accepts it two ways (scheme match is case-insensitive):
 
-- **Bearer** (default) - `Authorization: Bearer hlk_...`. Used by Grafana, ArgoCD, Jellyfin, Paperless, Changedetection, Unmanic, Proxmox, Overseerr, Uptime Kuma, Gatus, Backrest.
-- **HTTP Basic** - the `hlk_` key is the password (username ignored), because the webhook UIs require Basic Auth. Used by **Radarr, Sonarr, Prowlarr, and Bazarr**.
+- **Bearer** (default) - `Authorization: Bearer hlk_...`. Used by Grafana, ArgoCD, Jellyfin, Paperless, Changedetection, Unmanic, Proxmox, Overseerr, Uptime Kuma, Gatus, Backrest, Gitea, Forgejo.
+- **HTTP Basic** - the `hlk_` key is the password (username ignored), because the sender only offers Basic Auth or a URL with userinfo. Used by **Radarr, Sonarr, Prowlarr, Bazarr, and Komodo**.
+- **GenieKey** - the OpsGenie scheme (`Authorization: GenieKey hlk_...`). Used by **TrueNAS** (its OpsGenie alert service sends the key this way).
 
 ---
 
@@ -4676,12 +5089,12 @@ jsons://relay.pushward.app/unmanic?+Authorization=Bearer+hlk_YOUR_KEY
 
 ### Proxmox VE
 
-Receives Proxmox VE notification webhooks for backup, replication, fencing, and package-update events.
+Receives Proxmox VE notification webhooks for backup, replication, fencing, package-update, and general system (`system-mail`) events. The Datacenter test button is supported too.
 
 | | |
 |---|---|
-| Route | `POST /proxmox` · Template `steps` (backup/replication), `alert` (fencing/package-updates) · Auth Bearer |
-| Slug | `proxmox-backup-<hash>`, `proxmox-repl-<hash>`, `proxmox-fence-<hash>`, `proxmox-updates-<hash>` |
+| Route | `POST /proxmox` · Template `steps` (backup/replication), `alert` (fencing/package-updates/system-mail) · Auth Bearer |
+| Slug | `proxmox-backup-<hash>`, `proxmox-repl-<hash>`, `proxmox-fence-<hash>`, `proxmox-updates-<hash>`, `proxmox-system-<hash>` |
 
 | Event | State | Icon | Color |
 |---|---|---|---|
@@ -4693,7 +5106,8 @@ Receives Proxmox VE notification webhooks for backup, replication, fencing, and 
 | `replication` (failed) | Replication Failed | `xmark.circle.fill` | red |
 | `fencing` | (title) | `exclamationmark.octagon.fill` | red |
 | `package-updates` | (title) | `arrow.down.circle` | blue |
-| `system` | test notification | varies | varies |
+| `system-mail` | (title) | `bell.fill` / `exclamationmark.triangle.fill` | by severity (blue/orange/red) |
+| test button (empty `type`) | test notification | varies | varies |
 
 **Setup:** In Proxmox VE, go to **Datacenter > Notifications** and add a webhook target:
 
@@ -4707,7 +5121,15 @@ Receives Proxmox VE notification webhooks for backup, replication, fencing, and 
 {"type":"{{ fields.type }}","title":"{{ escape title }}","message":"{{ escape message }}","severity":"{{ severity }}","hostname":"{{ fields.hostname }}"}
 ```
 
-Create a Matcher to route notifications (vzdump, replication, fencing, package-updates) to this target.
+A target on its own does nothing: Proxmox only calls it when a **matcher** selects a notification and lists that target. Add `PushWard` as a target on a matcher, either the built-in `default-matcher` or a dedicated one. In the UI go to **Datacenter > Notifications**, edit a matcher, and add `PushWard` under the targets to notify (a matcher can list several, so mail and PushWard both fire). Or from the shell:
+
+```
+pvesh set /cluster/notifications/matchers/default-matcher --target mail-to-root --target PushWard
+```
+
+`--target` replaces the whole list, so pass the existing targets too or you'll drop them. Skip this step and the webhook is never called: the target exists but no event reaches it.
+
+The test button on the same screen sends a webhook with an empty `type`, which the relay handles as a self-test so you can confirm delivery without waiting for a real event.
 
 ### Overseerr / Jellyseerr
 
@@ -4836,6 +5258,79 @@ Set the **Template** (Go template that renders the JSON body):
 ```
 {"event":"{{ .Event }}","plan":"{{ .Plan.Id }}","repo":"{{ .Repo.Id }}","snapshot_id":"{{ .SnapshotId }}","data_added":{{ if .SnapshotStats }}{{ .SnapshotStats.DataAdded }}{{ else }}0{{ end }},"error":"{{ .Error }}"}
 ```
+
+### Gitea
+
+Receives Gitea Actions webhooks and renders a run as a live build-progress Live Activity. Jobs are grouped into steps (matrix jobs fold into one group), and the activity is reused across consecutive runs of the same repo.
+
+| | |
+|---|---|
+| Route | `POST /gitea` · Template `steps` · Auth Bearer |
+| Slug | `gitea-<sha256(repo_full_name)[:8]>` (one activity per repo) |
+
+| Event | Behavior |
+|---|---|
+| `workflow_run` requested / in_progress | Creates the activity, seeds "Queued"/"Running" |
+| `workflow_job` queued / in_progress / completed | Updates per-job step progress |
+| `workflow_run` completed | Final frame (Success/Failed/Cancelled/Skipped) then two-phase end |
+
+A newer run supersedes an older one on the same repo; events for an older run, or jobs arriving after a run completed, are dropped. Runs with more than 10 step groups drop the per-step labels to stay inside the APNs payload budget.
+
+**Setup:** In Gitea, go to the repo (or org) **Settings > Webhooks > Add Webhook > Gitea**. Set the URL to `https://relay.pushward.app/gitea`, set **Authorization Header** to `Bearer hlk_...`, and under **Custom Events** enable **Workflow Run** and **Workflow Job**. Requires Gitea 1.24+ for `workflow_job` and 1.25+ for `workflow_run`; 1.26+ is recommended (earlier versions do not emit run-level `in_progress`).
+
+### Forgejo
+
+Receives Forgejo Actions webhooks. Forgejo emits only terminal run events (`action_run_success` / `action_run_failure` / `action_run_recover`), so it shows a completion result rather than live per-job progress.
+
+| | |
+|---|---|
+| Route | `POST /forgejo` · Template `generic` · Auth Bearer |
+| Slug | `forgejo-<sha256(repo_full_name)[:8]>` (one activity per repo) |
+
+| Action | State | Icon | Color |
+|---|---|---|---|
+| `success` | Succeeded | `checkmark.circle.fill` | green |
+| `recover` | Recovered | `checkmark.circle.fill` | green |
+| `failure` | Failed | `xmark.circle.fill` | red |
+
+**Setup:** In Forgejo, add a webhook the same way (repo/org **Settings > Webhooks**), URL `https://relay.pushward.app/forgejo`, **Authorization Header** `Bearer hlk_...`, and enable the **Action Run** events. If a future Forgejo release adds `workflow_run`/`workflow_job` webhooks, point it at `/gitea` instead for live progress. The exact minimum Forgejo version shipping the `action_run_*` events is not pinned here; check your Forgejo release notes.
+
+### Komodo
+
+Receives Komodo Custom-alerter events. Resolvable server conditions become a Live Activity that resolves when Komodo clears them; every other alert is a one-shot push notification.
+
+| | |
+|---|---|
+| Route | `POST /komodo` · Auth Basic (via URL userinfo) |
+| Slug | `komodo-<sha256(target_type/target_id/data_type)[:12]>` |
+
+| Alert kind | Output |
+|---|---|
+| Resolvable (`ServerUnreachable`, `ServerCpu`, `ServerMem`, `ServerDisk`, `ServerVersionMismatch`, `SwarmUnhealthy`) | Live Activity (alert) that resolves on clear + active/passive push |
+| One-shot (container/stack state change, image update, build/procedure/action failed, sync pending, scheduled run, custom, ...) | Push notification (OK -> passive, WARNING -> active, CRITICAL -> time-sensitive) |
+| `Test` | Test Live Activity |
+
+The activity is keyed on the alert condition (target + type), not the alert id, so a resolve collapses onto the same activity as its trigger. The resolve frame always renders "Resolved" (the payload's carried error is stale by then).
+
+**Setup:** In Komodo, go to **Settings > Alerters** and add a **Custom** alerter. Store your `hlk_` key as a Komodo Secret and set the alerter URL with the key in userinfo: `https://pushward:[[PUSHWARD_KEY]]@relay.pushward.app/komodo`. Komodo posts via reqwest, which turns the URL userinfo into an HTTP Basic `Authorization` header that the relay reads the key from.
+
+### TrueNAS
+
+Emulates the OpsGenie alert service that TrueNAS ships with. TrueNAS opens an alert with `POST /v2/alerts` and clears it with `DELETE /v2/alerts/{alias}`, so each alert becomes a Live Activity that ends when TrueNAS clears it.
+
+| | |
+|---|---|
+| Route | `POST /truenas/v2/alerts` · `DELETE /truenas/v2/alerts/{id}` · Auth GenieKey |
+| Slug | `truenas-<sha256(alias)[:12]>` |
+
+| Call | Behavior |
+|---|---|
+| `POST /v2/alerts` | Creates the activity (alert, warning/orange) + active push |
+| `DELETE /v2/alerts/{alias}` | Ends the activity (Resolved, green) + passive push; unknown alias is a no-op |
+
+**Setup:** In TrueNAS, go to **System Settings > Alert Services > Add**. Set **Type** to **OpsGenie**, **API Key** to your `hlk_` key, and **API URL** to `https://relay.pushward.app/truenas` (no trailing slash). Pick the alert **Level** to forward, then **Send Test Alert** to verify (a test flows as a real create then clear).
+
+**Limitations:** TrueNAS's OpsGenie payload carries no hostname (multi-NAS setups cannot tell boxes apart in the activity) and no severity level, so alerts render with a fixed warning style; filter what you forward using the per-service **Level** in TrueNAS. The API URL must have no trailing slash.
 
 ## Development
 
@@ -5506,7 +6001,14 @@ In SABnzbd, go to **Config -> Notifications -> Notification Script / URL** and P
 http://<pushward-sabnzbd-host>:8090/webhook
 ```
 
-If you set `PUSHWARD_SABNZBD_WEBHOOK_SECRET`, send the same value in an `X-Webhook-Secret` request header.
+If you set `PUSHWARD_SABNZBD_WEBHOOK_SECRET`, every call must carry the same value in an `X-Webhook-Secret` header. SABnzbd itself has no field for the secret, so use a notification script that adds the header:
+
+```bash
+#!/bin/sh
+curl -X POST -H "X-Webhook-Secret: YOUR_WEBHOOK_SECRET" http://<pushward-sabnzbd-host>:8090/webhook
+```
+
+The secret is defined only on the bridge (the env var above, or `sabnzbd.webhook_secret` in YAML); SABnzbd just sends it back with each call. Requests with a missing or wrong header get a 401.
 
 ## Configuration
 
@@ -5932,7 +6434,7 @@ The two surfaces are independent - separate config, managers, and caches - and s
 ## Features
 
 - **Track any HA entity** as a PushWard Live Activity (Dynamic Island + Lock Screen)
-- **6 activity templates** - generic, countdown, alert, steps, gauge, timeline
+- **8 activity templates** - generic, countdown, alert, steps, gauge, timeline, board, log
 - **5 widget templates** - value, progress, gauge, status, stat_list (up to 6 entity rows)
 - **Two widget trigger modes** - `event` (state-change) or `poll` (10-3600 s interval)
 - **Account usage sensors** - notifications, Live Activity updates, widget updates, and emails consumed vs. plan limits, plus subscription tier
@@ -6000,7 +6502,9 @@ A two-step flow. **Step 1** picks the entity and a template (a better template i
 | `alert` | Severity-based notification (critical/warning/info) |
 | `steps` | Multi-step process (e.g. build stages) |
 | `gauge` | Numeric value with a range (e.g. temperature, battery) |
-| `timeline` | Sparkline chart with labeled value series |
+| `timeline` | Sparkline chart, up to 10 named series from attributes or separate entities |
+| `board` | 1-4 tiles, each showing a value from a **separate** entity |
+| `log` | Newest-first list of log lines (up to 20), one per state change |
 
 **Step 2** configures the details (fields vary by template):
 
@@ -6020,8 +6524,13 @@ A two-step flow. **Step 1** picks the entity and a template (a better template i
 | Min / Max Value | Gauge range bounds (default: 0-100) |
 | Unit | Display unit (e.g. degC, %) |
 | Series | Attribute->label mapping for a multi-series timeline |
+| Series Entities | `[Label=]entity_id[:attribute]`, comma-separated, max 10 total - bind separate entities as timeline lines |
+| Primary Series | Label of the series shown as the headline value and used for the compact high/low range; empty = the tracked entity's own series (or the first configured one) |
 | Scale / Decimal Places / Smooth Lines / Thresholds | Timeline sparkline options |
 | Back-History Period | Minutes of history to seed the sparkline on start (0-1440) |
+| Board Tiles | `Label=entity_id[:attribute[:unit[:icon]]]`, comma-separated, max 4 (board template) |
+| Log Columns | `[Label=]source[\|unit]`, comma-separated, max 6 - extra values appended to each log line (log template) |
+| Log Level Attribute | Attribute supplying each line's `info`/`warn`/`error` level (log template) |
 | Subtitle Entity / Attribute | Subtitle text, optionally from a separate entity |
 | State Labels | Custom state->label mapping (e.g. `on=Running, off=Stopped`) |
 | Completion Message | Text shown at end (default: "Complete") |
@@ -6039,9 +6548,62 @@ By default every value (remaining time, progress, subtitle, gauge value, current
 
 **Smart time parsing** - the remaining-time source accepts a `timestamp`/finish-time sensor (anchors the end date directly, no drift), a `duration` sensor with a unit (`s`/`min`/`h`/`d`), an `H:MM:SS`/`MM:SS` string, or a plain number of seconds.
 
+#### Multi-entity timeline series
+
+A **timeline** can plot up to **10 named series** on one chart, each its own line, color, and unit. There are two ways to supply them, and they combine:
+
+- **Series** maps attributes of the tracked entity to labels (`current_temperature=Indoor, target_temperature=Set`).
+- **Series Entities** binds *separate* entities as lines, so values from unrelated sensors share one chart (a PM2.5 sensor per room, solar arrays, etc.). Configure it as a comma-separated list:
+
+```
+[Label=]entity_id[:attribute]
+```
+
+- **entity_id** (required) reads that entity's state; append `:attribute` to read one of its attributes instead.
+- **Label** (optional, before `=`) names the line. Left off, it defaults to the entity's friendly name (with the attribute name appended for attribute sources so two attributes of one entity stay distinct). Labels are frozen when you save (the server merges series by label), truncated to 32 chars, and de-duplicated with a numeric suffix.
+
+Example: `sensor.bedroom_pm25, Office=sensor.office_pm25, sensor.living_room_pm25`. Each series entity is tracked as a companion, so a change to any one re-samples the chart while the anchor entity owns start/end. Units auto-default from each state-sourced entity's `unit_of_measurement`; the **Per-Series Units** field overrides them. Numeric attributes in the 0-255 range (e.g. `brightness`) are rescaled to 0-100. The 10-line cap covers Series and Series Entities combined; the server and iOS app already render multi-series timelines, so this is a Home Assistant configuration option only.
+
 #### Timeline sparkline backfill
 
-**Back-History Period** seeds the sparkline when the activity starts. Because Home Assistant 2024.8 [removed light/climate attributes from the recorder](https://github.com/home-assistant/core/issues/123028), attribute-based history (e.g. a light's `brightness`) can't be rebuilt from the recorder. The integration keeps its own in-memory ring buffer (<=300 samples per entity), populated from live state changes and persisted to `.storage/pushward.history.<entry_id>` so it survives restarts. Practical notes: the buffer is empty right after install and fills as the tracked attribute changes; backfill resolution matches state-change frequency (no polling); for **numeric-state sensors** the recorder is still used as a fallback, so those backfill immediately.
+**Back-History Period** seeds the sparkline when the activity starts. What can be seeded depends on where each series reads its value:
+
+- **State-sourced series** (a plain numeric sensor, a value entity, or a series entity read as a state) backfill from Home Assistant's recorder in one batched query, so they fill in immediately on start.
+- **Attribute-based series** (Series attribute maps, a value attribute, or a series entity read as an attribute) cannot use the recorder: Home Assistant 2024.8 [removed most attributes from the recorder](https://github.com/home-assistant/core/issues/123028). These fill only from samples the integration collects live while it runs.
+
+For attribute-based history the integration keeps its own in-memory ring buffer (max 300 samples per entity), populated from live state changes and persisted to `.storage/pushward.history.<entry_id>` so it survives restarts. That buffer is empty right after install and fills as the tracked attribute changes, at state-change resolution (no polling). Recorder points and buffered points are merged by timestamp into the same series, so a numeric sensor gets both its recorded past and any live samples. If your value lives in an attribute and you want recorder backfill, expose it as a template sensor's state.
+
+#### Board tiles (multi-entity)
+
+A **board** shows a compact grid of **1-4 tiles**, each reading a *separate* entity. The **anchor entity** (step 1) still owns the activity lifecycle through its start/end states; the tiles supply the displayed values, and a change to any tile entity refreshes the board while it is active. Configure tiles in the **Board Tiles** field as a comma-separated list:
+
+```
+Label=entity_id[:attribute[:unit[:icon]]]
+```
+
+- **Label** (required, <=32 chars) and **entity_id** (required) are the minimum.
+- **attribute** (optional) reads that attribute instead of the entity state; leave the segment empty (`Label=entity::degC`) to skip it.
+- **unit** (optional, <=8 chars) and **icon** (optional - an SF Symbol like `cpu.fill` or an MDI icon like `mdi:thermometer`) follow.
+
+Example: `Temp=sensor.living_room_temp:temperature:degC, Door=binary_sensor.front_door, CPU=sensor.cpu:::mdi:cpu-64`. Each tile **value** is rendered as text (so `Open`, `On`, and numbers all work) and capped at 16 chars. Tiles whose entity is unavailable are skipped.
+
+#### Log lines
+
+A **log** shows a newest-first list of up to **20 lines**. The integration appends one line on every state change of the tracked entity (the line **text** is the formatted state, honoring State Labels), accumulating a rolling buffer that is injected into each push and persisted across restarts in `.storage/pushward.history.<entry_id>`. Set the optional **Log Level Attribute** to an attribute holding `info`, `warn`, or `error` to tag each line's severity. (The server also keeps a longer scrollable backlog server-side; the integration never sends it.)
+
+Consecutive lines with identical text are collapsed, so attribute-only churn (a light's brightness settling while its state stays `on`) would otherwise show only a bare `On`. Use **Log Columns** to append extra values to each line so it carries *what* changed - attributes of the tracked entity and/or values from other entities. Configure it as a comma-separated list (max 6 columns):
+
+```
+[Label=]source[|unit]
+```
+
+- **source** is one of: a bare attribute of the tracked entity (`brightness`), another entity's state (`binary_sensor.door`), or another entity's attribute (`sensor.temp:temperature`).
+- **Label** (optional, before `=`) renders the column as `Label: value`.
+- **unit** (optional, after `|`) is appended to the value as a literal suffix (no conversion).
+
+Each line's text is the state label followed by ` · ` and each resolved column. Values are raw Home Assistant values (e.g. `brightness` is 0-255). Columns whose source is missing or unavailable are skipped; if every column resolves empty (e.g. the lamp is off so `brightness` is absent) the line falls back to just the state label. Other-entity columns are tracked as companions, so a change in any one appends a new composed line while the tracked entity still owns start/end.
+
+Example for a lamp - `color_temp_kelvin|K, brightness` renders lines like `On · 4000K · 153`, and a brightness change now produces a distinct line instead of collapsing into the previous `On`.
 
 ### Add a tracked widget
 
@@ -6072,6 +6634,8 @@ A two-step flow mirroring entities. **Step 1** picks the entity, a widget templa
 | Tap Action URL / Foreground | Deep link opened when the widget is tapped |
 | Trigger Mode | `event` (state-change) or `poll` |
 | Poll Interval | Seconds between re-evaluations in poll mode (10-3600, default 60) |
+
+How many `stat_list` rows are visible depends on the widget size. By default a medium or large Home Screen widget shows all 6 rows; the small widget shows 4 and the Lock Screen rectangular shows 3, packing in up to 6 when every value is very short (for example a single status glyph). You can change Row Density per widget in the PushWard iOS app: Compact packs two columns to show up to 6 rows on any size (labels may truncate on the small placements), and Comfortable keeps a single column with larger rows. To see all 6 rows with full labels, use a medium or large widget, or set Compact.
 
 ## Account sensors
 
@@ -6107,11 +6671,11 @@ Create a new activity.
 
 Push a content update to an existing activity. There is **one action per template** -
 `update_activity_generic`, `update_activity_countdown`, `update_activity_steps`,
-`update_activity_alert`, `update_activity_gauge`, `update_activity_timeline` - so the UI
-shows only the fields that template supports (Home Assistant cannot hide service fields based
-on another field's value, so a single action with collapsed sections would always surface
-every template's fields). The template is implied by the action name; you no longer pass a
-`template` field.
+`update_activity_alert`, `update_activity_gauge`, `update_activity_timeline`,
+`update_activity_board`, `update_activity_log` - so the UI shows only the fields that template
+supports (Home Assistant cannot hide service fields based on another field's value, so a single
+action with collapsed sections would always surface every template's fields). The template is
+implied by the action name; you no longer pass a `template` field.
 
 **Common fields** - accepted by every `update_activity_*` action:
 
@@ -6148,7 +6712,19 @@ every template's fields). The template is implied by the action name; you no lon
 | `update_activity_alert` | `severity`, `fired_at` |
 | `update_activity_gauge` | `value`, `min_value`, `max_value`, `unit` |
 | `update_activity_timeline` | `value`, `unit`, `units`, `scale`, `decimals`, `smoothing`, `thresholds`, `history` |
+| `update_activity_board` | `tiles` |
+| `update_activity_log` | `lines` |
 | `update_activity_generic` | _(common fields only)_ |
+
+> **`board` / `log` use a lean schema.** They render no progress bar and no whole-activity
+> button slots, so `update_activity_board` and `update_activity_log` accept only the labels
+> (`state_text`, `subtitle`, `icon`), appearance (`completion_message`, the colors, `sound`,
+> `priority`), the whole-activity `tap_action`, and their template field (`tiles` / `lines`) -
+> **not** `progress`, `remaining_time`, `url`, `secondary_url`, `url_action`, or
+> `secondary_url_action` (board tap targets are per-tile via each tile's `url_action`).
+> `tiles` is a list of 1-4 objects `{ label, value, unit?, icon?, color?, trend?, url_action? }`
+> (`value` is a string <=16 chars). `lines` is a list of 1-20 newest-first objects
+> `{ text, at?, level? }` where `level` is `info`/`warn`/`error`.
 
 > `duration` (integer seconds or a string like `"30m"` / `"1h30m"`) is the set-and-forget
 > alternative to `end_date`: the server re-anchors `start_date = now` and

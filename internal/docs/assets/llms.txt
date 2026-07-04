@@ -21,6 +21,8 @@ A fully-expanded Markdown bundle of every docs page lives at [/llms-full.txt](ht
 - [Alert Template](https://pushward.app/docs/live-activities/alert): A severity-based template for monitoring alerts. Displays firing alerts with deep-link buttons to dashboards and alert rules.
 - [Gauge Template](https://pushward.app/docs/live-activities/gauge): A range-based template for monitoring numeric values. Displays the current value with unit, and shows min/max labels on the progress bar endpoints. Progress is auto-calculated by the server.
 - [Timeline Template](https://pushward.app/docs/live-activities/timeline): A real-time sparkline chart for tracking values over time. Each push sends a data point; the server accumulates history and delivers the sparkline data to iOS via push notifications.
+- [Board Template](https://pushward.app/docs/live-activities/board): A compact dashboard that shows up to four labeled tiles side by side. Each tile carries a value, optional unit, icon, color, trend arrow, and its own tap target - ideal for surfacing several related metrics at a glance.
+- [Log Template](https://pushward.app/docs/live-activities/log): A streaming feed of up to 20 newest-first lines, each with optional timestamp and severity. The server keeps a scroll-back backlog you can fetch in-app, while the Live Activity always shows the most recent lines.
 
 ## Notifications
 
@@ -50,13 +52,14 @@ A fully-expanded Markdown bundle of every docs page lives at [/llms-full.txt](ht
 - [GitHub Actions](https://pushward.app/docs/integrations/github-actions): Track CI/CD workflow progress in real-time on your Lock Screen using the steps template.
 - [SABnzbd](https://pushward.app/docs/integrations/sabnzbd): Track download progress on your Lock Screen. See file names, speed, ETA, and post-processing phases in real-time.
 - [Bambu Lab](https://pushward.app/docs/integrations/bambulab): Track 3D print progress with layer counts, nozzle temperature, and ETA on your Lock Screen via local MQTT.
-- [Unraid](https://pushward.app/docs/integrations/unraid): Monitor parity checks, array state changes, disk alerts, and UPS events on your Lock Screen via Unraid's GraphQL WebSocket API.
+- [Unraid](https://pushward.app/docs/integrations/unraid): A native Unraid plugin that forwards every Unraid notification to your iPhone and shows parity checks, backups, mover, and UPS events as Live Activities on your Lock Screen.
 
 ## API Reference
 
 - [API Reference](https://pushward.app/docs/api): The PushWard API is a REST API for managing iOS Live Activities via Apple Push Notification service (APNs).
 - [Authentication](https://pushward.app/docs/api/authentication): PushWard uses Bearer token authentication. When you sign in with Apple ID, a default integration key (hlk_) is automatically created -- copy it from the app's settings to start using the API immediately. You can also create additional scoped integration keys for individual services.
 - [Activities](https://pushward.app/docs/api/activities): Activities are the core resource in PushWard. Each activity represents a trackable item that can be displayed as a Live Activity on subscribed devices.
+- [MCP Server](https://pushward.app/docs/api/mcp): Drive PushWard from Claude and other AI agents over the Model Context Protocol. The hosted MCP server lets an agent create Live Activities, send notifications, and manage widgets through your integration key.
 
 ## Examples & Limits
 
