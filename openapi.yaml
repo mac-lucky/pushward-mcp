@@ -83,13 +83,21 @@ components:
           format: date-time
           readOnly: true
           type: string
+        dismissal_ttl:
+          description: Seconds after ENDED before the Live Activity is removed from the iOS Lock Screen. 0 removes it immediately, up to 14400 (4h, the iOS maximum). When unset, removal follows ended_ttl (capped at 4h). Applies to client ends and server auto-ends (stale_ttl, countdown expiry); evicted (preempted) activities always keep the default lingering window.
+          examples:
+            - 0
+          format: int64
+          maximum: 14400
+          minimum: 0
+          type: integer
         ended_at:
           description: Set once when state first transitions to ENDED; preserved on later transitions.
           format: date-time
           readOnly: true
           type: string
         ended_ttl:
-          description: Seconds after ENDED before auto-delete and iOS lock-screen dismissal (1s to 30 days; iOS caps lock-screen dismissal at 4h)
+          description: Seconds after ENDED before auto-delete (1s to 30 days). Also drives the iOS lock-screen dismissal window unless dismissal_ttl is set (iOS caps lock-screen dismissal at 4h)
           examples:
             - 300
           format: int64
@@ -247,6 +255,9 @@ components:
           type: string
         min_supported_version:
           description: Clients with CFBundleShortVersionString below this are hard-blocked; "0.0.0" when no release rows exist (no client is below 0.0.0).
+          type: string
+        store_version:
+          description: Version the App Store currently serves (Apple lookup API, cached server-side). Omitted for the TestFlight channel or while the lookup is unavailable. Can trail a fresh release by up to a day (Apple CDN caching).
           type: string
         update_url:
           description: Channel-appropriate deep link (itms-beta:// for TestFlight, itms-apps:// for App Store).
@@ -650,9 +661,10 @@ components:
           maxLength: 512
           type: string
         duration:
-          description: Countdown template only. Integer seconds (60) or a duration string ("60s", "5m", "1h30m"). Sets start_date = now and end_date = now + duration. For mid-flight updates that should preserve the original timer, send end_date directly. If both duration and end_date are provided, end_date wins.
+          description: Integer seconds (60) or a duration string ("60s", "5m", "1h30m"). Sets start_date = now and end_date = now + duration. For mid-flight updates that should preserve the original timer, send end_date directly. If both duration and end_date are provided, end_date wins.
           oneOf:
-            - minimum: 1
+            - maximum: 157788000
+              minimum: 1
               type: integer
             - pattern: ^(\d+|(\d+[hms])+)$
               type: string
@@ -1377,13 +1389,27 @@ components:
           description: "Background color: named color or hex."
           type: string
         current_step:
-          description: Index of currently running job (0-based). Required when template is steps.
+          description: The step currently running, counting from 1 (0 = not started). Shown as current_step/total_steps. Required when template is steps.
           minimum: 0
+          type: integer
+        duration:
+          description: "How long the current step takes. Integer seconds (60) or a duration string (\"60s\", \"5m\", \"1h30m\"). Sets start_date = now and end_date = now + duration, so sending it alongside current_step re-anchors the live_progress animation to the new step. Send it only when current_step changes: restamping the window on every update makes each one a high-priority push that skips update coalescing, and snaps the bar back to empty. If both duration and end_date are provided, end_date wins."
+          oneOf:
+            - maximum: 157788000
+              minimum: 1
+              type: integer
+            - pattern: ^(\d+|(\d+[hms])+)$
+              type: string
+        end_date:
+          description: Unix timestamp when the current step is expected to finish (the ETA anchor for live_progress) - not the end of the whole run.
           type: integer
         icon:
           description: "Icon name. SF Symbol (e.g. washer, flame) or Material Design Icon with mdi: prefix (e.g. mdi:thermometer)."
           maxLength: 128
           type: string
+        live_progress:
+          description: "Opt-in client-side interpolation: iOS animates the current step's bar from start_date to end_date between pushes instead of rendering a static fill. Requires end_date. Re-send it (or duration) on each step change to re-anchor. Cleared with null."
+          type: boolean
         progress:
           description: Progress value [0.0 - 1.0]
           maximum: 1
@@ -1441,6 +1467,9 @@ components:
           description: Server-set unix timestamp marking the new end_date after the most recent snooze. Non-nil and >= now means the activity is currently snoozed.
           readOnly: true
           type: integer
+        start_date:
+          description: Unix timestamp when the current step began; must be before end_date. Sent automatically by duration; the animation runs across start_date..end_date. Omit it and iOS falls back to deriving the fill from progress.
+          type: integer
         state:
           description: Short status text (e.g. Washing, Build Container Image).
           maxLength: 256
@@ -1461,7 +1490,7 @@ components:
             type: integer
           type: array
         step_weights:
-          description: Relative step widths (one positive number per step). Switches the layout to a single row of proportional segments. Mutually exclusive with step_rows.
+          description: Relative step widths (one positive number per step). On its own draws a single row of proportional segments; combined with step_rows it sizes each column's width while step_rows drives its fan-out.
           items:
             exclusiveMinimum: 0
             type: number
@@ -1511,7 +1540,8 @@ components:
           description: "Text color: named color or hex."
           type: string
         total_steps:
-          description: Total number of jobs in the workflow. Required when template is steps.
+          description: Total number of jobs in the workflow (1-64). Required when template is steps.
+          maximum: 64
           minimum: 1
           type: integer
         url:
@@ -1777,6 +1807,12 @@ components:
     CreateActivityRequest:
       additionalProperties: false
       properties:
+        dismissal_ttl:
+          description: "Seconds after ENDED before the Live Activity leaves the iOS Lock Screen (0 = immediately, max 14400 = 4h). Unset: removal follows ended_ttl capped at 4h. Ignored for evicted (preempted) activities."
+          format: int64
+          maximum: 14400
+          minimum: 0
+          type: integer
         ended_ttl:
           description: Seconds after ENDED before auto-delete (1s to 30 days)
           format: int64
@@ -2846,6 +2882,17 @@ components:
           examples:
             - POST
           type: string
+        text_input:
+          description: "Show an inline text field when the action is tapped (reply-with-text). Requires a silent (non-foreground) http(s) action. The typed text replaces {{input}} in body; without the placeholder it is sent as {\"text\": ...} (merged into a JSON-object body, replacing other body shapes)."
+          type: boolean
+        text_input_button_title:
+          description: Label of the send button next to the reply field (defaults to the action title on-device). Requires text_input.
+          maxLength: 64
+          type: string
+        text_input_placeholder:
+          description: Placeholder shown in the reply text field. Requires text_input.
+          maxLength: 64
+          type: string
         title:
           description: Button label shown to the user
           examples:
@@ -3331,6 +3378,18 @@ components:
               title: Board
             - $ref: "#/components/schemas/ContentLog"
               title: Log
+        dismissal_ttl:
+          description: "Seconds after ENDED before Lock Screen removal (0 = immediate, max 4h). Tri-state: omit to keep, null to clear, number to set."
+          format: int64
+          maximum: 14400
+          minimum: 0
+          type: integer
+        ended_ttl:
+          description: "Seconds after ENDED before auto-delete. Tri-state: omit to keep, null to clear, number to set."
+          format: int64
+          maximum: 2592000
+          minimum: 1
+          type: integer
         priority:
           format: int64
           type: integer
@@ -3347,8 +3406,14 @@ components:
             - buzz
             - notification
           type: string
+        stale_ttl:
+          description: "Seconds of inactivity before auto-end. Tri-state: omit to keep, null to clear, number to set."
+          format: int64
+          maximum: 2592000
+          minimum: 1
+          type: integer
         state:
-          description: Target state. Accepts ongoing or ended (case-insensitive). Optional - if omitted, the current stored state is kept. Setting ended on an ongoing activity dismisses the Live Activity.
+          description: Target state. Accepts ongoing or ended (case-insensitive). Optional - if omitted, the current stored state is kept. Setting ended on an ongoing activity ends the Live Activity; the card then stays on the Lock Screen for dismissal_ttl seconds (or ended_ttl capped at 4h when dismissal_ttl is unset).
           type: string
       required:
         - content
@@ -3975,7 +4040,7 @@ paths:
       tags:
         - Activities
     patch:
-      description: Partial update using RFC 7396 JSON Merge Patch semantics. Fields present in the request body overwrite stored values; fields set to null clear them; absent fields are preserved. Top-level `state` is optional - if omitted, the current stored state is kept (unless the activity is PREEMPTED, in which case the caller must set ONGOING or ENDED explicitly). Once set, alarm and warning_threshold persist across updates until explicitly cleared with null. If both end_date and duration are provided, end_date wins. When state transitions to ENDED the server clears alarm, snoozed_until, and warning_pushed unconditionally.
+      description: "Partial update using RFC 7396 JSON Merge Patch semantics. Fields present in the request body overwrite stored values; fields set to null clear them; absent fields are preserved. Top-level `state` is optional - if omitted, the current stored state is kept (unless the activity is PREEMPTED, in which case the caller must set ONGOING or ENDED explicitly). Top-level `ended_ttl`, `stale_ttl`, and `dismissal_ttl` are patchable with the same tri-state semantics (omit = keep, null = clear, number = set); `dismissal_ttl: 0` sent together with `state: ended` removes the card from the Lock Screen immediately. Changing `ended_ttl` on an already-ENDED activity does not reschedule its pending auto-delete - it applies on the next end. Once set, alarm and warning_threshold persist across updates until explicitly cleared with null. If both end_date and duration are provided, end_date wins. When state transitions to ENDED the server clears alarm, snoozed_until, and warning_pushed unconditionally. With `?upsert=true` a missing slug is created first and the response is `201` with `X-Resource-Action: created` (`409` if the activity cap is reached)."
       operationId: updateActivity
       parameters:
         - in: path
@@ -3983,12 +4048,12 @@ paths:
           required: true
           schema:
             type: string
-        - description: When true and no activity with this slug exists, create it first (name defaults to the slug) and then apply the patch. Requires activity:manage scope or full access; activity:update keys still get 404. Without this flag a missing slug is always 404.
+        - description: When true and no activity with this slug exists, create it first (name defaults to the slug) and then apply the patch. Requires activity:manage scope or full access; activity:update keys get 403 activity.upsert_forbidden. Without this flag a missing slug is always 404.
           explode: false
           in: query
           name: upsert
           schema:
-            description: When true and no activity with this slug exists, create it first (name defaults to the slug) and then apply the patch. Requires activity:manage scope or full access; activity:update keys still get 404. Without this flag a missing slug is always 404.
+            description: When true and no activity with this slug exists, create it first (name defaults to the slug) and then apply the patch. Requires activity:manage scope or full access; activity:update keys get 403 activity.upsert_forbidden. Without this flag a missing slug is always 404.
             type: boolean
       requestBody:
         content:
@@ -4032,6 +4097,12 @@ paths:
               schema:
                 $ref: "#/components/schemas/Problem"
           description: Not Found
+        "409":
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Conflict
         "422":
           content:
             application/problem+json:

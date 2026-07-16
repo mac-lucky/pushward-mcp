@@ -63,6 +63,7 @@ func TestToPascalCase(t *testing.T) {
 		{"argocd", "Argocd"},
 		{"api", "API"},
 		{"stale_ttl", "StaleTTL"},
+		{"dismissal_ttl", "DismissalTTL"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.input, func(t *testing.T) {

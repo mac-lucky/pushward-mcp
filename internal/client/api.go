@@ -135,11 +135,12 @@ func (c *APIClient) ListAllActivities(ctx context.Context) (json.RawMessage, err
 
 // CreateActivityInput is the request body for POST /activities.
 type CreateActivityInput struct {
-	Slug     string   `json:"slug"`
-	Name     string   `json:"name"`
-	Priority *float64 `json:"priority,omitempty"`
-	EndedTTL *float64 `json:"ended_ttl,omitempty"`
-	StaleTTL *float64 `json:"stale_ttl,omitempty"`
+	Slug         string   `json:"slug"`
+	Name         string   `json:"name"`
+	Priority     *float64 `json:"priority,omitempty"`
+	EndedTTL     *float64 `json:"ended_ttl,omitempty"`
+	StaleTTL     *float64 `json:"stale_ttl,omitempty"`
+	DismissalTTL *float64 `json:"dismissal_ttl,omitempty"`
 }
 
 // CreateActivity creates a new activity.
@@ -175,12 +176,16 @@ func (c *APIClient) DeleteActivity(ctx context.Context, slug string) error {
 
 // UpdateActivityInput is the request body for PATCH /activities/{slug}.
 // State is optional under RFC 7396 merge-patch semantics - omit to inherit
-// the stored state (unless the activity is preempted).
+// the stored state (unless the activity is preempted). The TTLs are
+// merge-patchable too: send one to change it, omit to preserve.
 type UpdateActivityInput struct {
-	State    string          `json:"state,omitempty"`
-	Content  json.RawMessage `json:"content"`
-	Priority *float64        `json:"priority,omitempty"`
-	Sound    string          `json:"sound,omitempty"`
+	State        string          `json:"state,omitempty"`
+	Content      json.RawMessage `json:"content"`
+	Priority     *float64        `json:"priority,omitempty"`
+	Sound        string          `json:"sound,omitempty"`
+	EndedTTL     *float64        `json:"ended_ttl,omitempty"`
+	StaleTTL     *float64        `json:"stale_ttl,omitempty"`
+	DismissalTTL *float64        `json:"dismissal_ttl,omitempty"`
 }
 
 // UpdateActivity updates an activity's state and content.

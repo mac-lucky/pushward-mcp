@@ -491,6 +491,7 @@ func schemaToParams(spec *openAPISpec, schema schemaObj, bodyRequired bool) []pa
 			if p.Desc == "" {
 				p.Desc = name
 			}
+			p.Desc = dropNullClearClause(p.Desc)
 			// Add range info to description
 			if prop.Minimum != nil || prop.Maximum != nil {
 				rangeStr := ""
@@ -580,6 +581,16 @@ func refTypeName(ref string) string {
 // formatBound renders a numeric min/max bound without scientific notation, so a
 // max of 2592000 reads as "2592000" rather than "2.592e+06". Integral values lose
 // their trailing ".0"; fractional values keep their digits.
+// The REST API takes a tri-state on some fields (omit / null / number), but a number
+// param can't carry null: the JSON Schema type rejects it, and GetFloat can't tell a null
+// argument from an omitted one, so the field stays nil and the server keeps the old value.
+// Rewrite the clause rather than advertise a clear that this tool can't deliver.
+var nullClearClauseRe = regexp.MustCompile(`Tri-state: omit to keep, null to clear, number to set\.`)
+
+func dropNullClearClause(desc string) string {
+	return nullClearClauseRe.ReplaceAllString(desc, "Omit to keep the current value.")
+}
+
 func formatBound(v float64) string {
 	return strconv.FormatFloat(v, 'f', -1, 64)
 }

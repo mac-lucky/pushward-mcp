@@ -828,3 +828,86 @@ func TestRelayClient_PostWebhook_ServerError(t *testing.T) {
 		t.Errorf("error should contain status code: %v", err)
 	}
 }
+
+// captureWire runs one client call against a stub server and returns the raw request
+// body. Decoding into the Input struct instead would hide a dropped or misnamed field.
+func captureWire(t *testing.T, send func(c *APIClient)) map[string]any {
+	t.Helper()
+	var wire map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		if err := json.Unmarshal(body, &wire); err != nil {
+			t.Fatalf("unmarshal: %v", err)
+		}
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{}`))
+	}))
+	defer srv.Close()
+	send(NewAPIClient(srv.URL, "tok"))
+	return wire
+}
+
+// 0 means "remove from the Lock Screen the moment it ends". omitempty on a *float64
+// keeps a pointer-to-zero on the wire; a value-typed field would drop it and silently
+// mean "use the default" instead.
+func TestAPIClient_CreateActivity_SendsZeroDismissalTTL(t *testing.T) {
+	zero := 0.0
+	wire := captureWire(t, func(c *APIClient) {
+		if _, err := c.CreateActivity(context.Background(), CreateActivityInput{
+			Slug: "my-slug", Name: "My", DismissalTTL: &zero,
+		}); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	})
+	got, ok := wire["dismissal_ttl"]
+	if !ok {
+		t.Fatalf("dismissal_ttl missing from create body, got wire=%v", wire)
+	}
+	if got != float64(0) {
+		t.Errorf("dismissal_ttl = %v, want 0", got)
+	}
+}
+
+func TestAPIClient_CreateActivity_OmitsUnsetDismissalTTL(t *testing.T) {
+	wire := captureWire(t, func(c *APIClient) {
+		if _, err := c.CreateActivity(context.Background(), CreateActivityInput{
+			Slug: "my-slug", Name: "My",
+		}); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	})
+	if _, ok := wire["dismissal_ttl"]; ok {
+		t.Errorf("unset dismissal_ttl must stay off the wire so the server keeps its value, got wire=%v", wire)
+	}
+}
+
+func TestAPIClient_UpdateActivity_SendsZeroDismissalTTL(t *testing.T) {
+	zero := 0.0
+	wire := captureWire(t, func(c *APIClient) {
+		if _, err := c.UpdateActivity(context.Background(), "my-slug", UpdateActivityInput{
+			State: "ended", Content: json.RawMessage(`{}`), DismissalTTL: &zero,
+		}); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	})
+	got, ok := wire["dismissal_ttl"]
+	if !ok {
+		t.Fatalf("dismissal_ttl missing from patch body, got wire=%v", wire)
+	}
+	if got != float64(0) {
+		t.Errorf("dismissal_ttl = %v, want 0", got)
+	}
+}
+
+func TestAPIClient_UpdateActivity_OmitsUnsetDismissalTTL(t *testing.T) {
+	wire := captureWire(t, func(c *APIClient) {
+		if _, err := c.UpdateActivity(context.Background(), "my-slug", UpdateActivityInput{
+			Content: json.RawMessage(`{"progress":0.5}`),
+		}); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	})
+	if _, ok := wire["dismissal_ttl"]; ok {
+		t.Errorf("unset dismissal_ttl must stay off the wire so the server keeps its value, got wire=%v", wire)
+	}
+}

@@ -25,6 +25,9 @@ func registerAPITools(s *mcpserver.MCPServer, api *client.APIClient) {
 			// Every tool proxies an external REST API (api.pushward.app), so its
 			// results cross a trust boundary - keep the open-world hint explicit.
 			mcp.WithOpenWorldHintAnnotation(true),
+			mcp.WithNumber("dismissal_ttl",
+				mcp.Description("Seconds after ENDED before the Live Activity leaves the iOS Lock Screen (0 = immediately, max 14400 = 4h). Unset: removal follows ended_ttl capped at 4h. Ignored for evicted (preempted) activities. (min: 0, max: 14400)"),
+			),
 			mcp.WithNumber("ended_ttl",
 				mcp.Description("Seconds after ENDED before auto-delete (1s to 30 days) (min: 1, max: 2592000)"),
 			),
@@ -289,6 +292,12 @@ func registerAPITools(s *mcpserver.MCPServer, api *client.APIClient) {
 				mcp.Required(),
 				mcp.Description("slug path parameter"),
 			),
+			mcp.WithNumber("dismissal_ttl",
+				mcp.Description("Seconds after ENDED before Lock Screen removal (0 = immediate, max 4h). Omit to keep the current value. (min: 0, max: 14400)"),
+			),
+			mcp.WithNumber("ended_ttl",
+				mcp.Description("Seconds after ENDED before auto-delete. Omit to keep the current value. (min: 1, max: 2592000)"),
+			),
 			mcp.WithNumber("priority",
 				mcp.Description("priority"),
 			),
@@ -296,8 +305,11 @@ func registerAPITools(s *mcpserver.MCPServer, api *client.APIClient) {
 				mcp.Description("Optional Live Activity alert sound. 'default' uses the iOS system sound; other values must match a bundled sound."),
 				mcp.Enum("default", "chime", "alert", "success", "warning", "bell", "ding", "buzz", "notification"),
 			),
+			mcp.WithNumber("stale_ttl",
+				mcp.Description("Seconds of inactivity before auto-end. Omit to keep the current value. (min: 1, max: 2592000)"),
+			),
 			mcp.WithString("state",
-				mcp.Description("Target state. Accepts ongoing or ended (case-insensitive). Optional - if omitted, the current stored state is kept. Setting ended on an ongoing activity dismisses the Live Activity."),
+				mcp.Description("Target state. Accepts ongoing or ended (case-insensitive). Optional - if omitted, the current stored state is kept. Setting ended on an ongoing activity ends the Live Activity; the card then stays on the Lock Screen for dismissal_ttl seconds (or ended_ttl capped at 4h when dismissal_ttl is unset)."),
 			),
 			mcp.WithString("content_json",
 				mcp.Required(),
@@ -355,6 +367,9 @@ func handleCreateActivity(ctx context.Context, req mcp.CallToolRequest, api *cli
 	input := client.CreateActivityInput{
 		Name: paramName,
 		Slug: paramSlug,
+	}
+	if v := req.GetFloat("dismissal_ttl", math.NaN()); !math.IsNaN(v) {
+		input.DismissalTTL = &v
 	}
 	if v := req.GetFloat("ended_ttl", math.NaN()); !math.IsNaN(v) {
 		input.EndedTTL = &v
@@ -581,11 +596,20 @@ func handleUpdateActivity(ctx context.Context, req mcp.CallToolRequest, api *cli
 	input := client.UpdateActivityInput{
 		Content: json.RawMessage(contentStr),
 	}
+	if v := req.GetFloat("dismissal_ttl", math.NaN()); !math.IsNaN(v) {
+		input.DismissalTTL = &v
+	}
+	if v := req.GetFloat("ended_ttl", math.NaN()); !math.IsNaN(v) {
+		input.EndedTTL = &v
+	}
 	if v := req.GetFloat("priority", math.NaN()); !math.IsNaN(v) {
 		input.Priority = &v
 	}
 	if v := req.GetString("sound", ""); v != "" {
 		input.Sound = v
+	}
+	if v := req.GetFloat("stale_ttl", math.NaN()); !math.IsNaN(v) {
+		input.StaleTTL = &v
 	}
 	if v := req.GetString("state", ""); v != "" {
 		input.State = v
