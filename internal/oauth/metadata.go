@@ -16,7 +16,7 @@ func (p *Provider) prmHandler() http.Handler {
 		ScopesSupported:        []string{scopeMCP},
 		JWKSURI:                p.cfg.jwksURL(),
 		ResourceName:           "PushWard MCP",
-		ResourceDocumentation:  "https://pushward.app/docs/mcp",
+		ResourceDocumentation:  "https://pushward.app/docs/api/mcp",
 	})
 }
 
