@@ -1,4 +1,4 @@
-ARG GO_VERSION=1.26
+ARG GO_VERSION=1.26.5
 
 FROM golang:${GO_VERSION}-alpine AS builder
 
@@ -21,7 +21,7 @@ RUN CGO_ENABLED=0 go build -trimpath \
 # Ships the CA bundle needed for outbound HTTPS to api.pushward.app and to fetch
 # Client ID Metadata Documents during the OAuth flow. The MCP binary is a static
 # CGO_ENABLED=0 build and is configured entirely via environment variables.
-FROM gcr.io/distroless/static:nonroot
+FROM gcr.io/distroless/static-debian12:nonroot
 
 ARG VERSION=dev
 ARG COMMIT_SHA=unknown
