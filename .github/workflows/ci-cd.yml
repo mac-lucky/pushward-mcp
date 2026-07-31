@@ -3,7 +3,8 @@ name: CI/CD
 on:
   push:
     branches: [main]
-    tags: ['v*']
+    # v*-b* excluded: those are iOS app-build marker tags, not releases
+    tags: ['v*', '!v*-b*']
   pull_request:
     branches: [main]
   workflow_dispatch:
