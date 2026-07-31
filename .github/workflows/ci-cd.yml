@@ -14,19 +14,20 @@ concurrency:
 
 jobs:
   ci-cd:
-    # Pinned to a commit SHA (supply-chain hardening) rather than the mutable
-    # @master ref. Bump via Dependabot/Renovate or when the shared workflow changes.
-    uses: mac-lucky/actions-shared-workflows/.github/workflows/go-cicd-reusable.yml@d277280074cd275ef07d19fb316f0d43c11ac22e # master
+    # Rides @master like the rest of the fleet: a shared-workflow change lands
+    # everywhere at once, and the tag-gated model means main pushes only build
+    # and test while v* tags publish and cut the GitHub Release.
+    uses: mac-lucky/actions-shared-workflows/.github/workflows/go-cicd-reusable.yml@master
     permissions:
-      contents: read
+      contents: write
       packages: write
       security-events: write
+      actions: read
     with:
       app_name: "pushward-mcp"
       ghcr_image: "ghcr.io/mac-lucky/pushward-mcp"
       dockerhub_image: "maclucky/pushward-mcp"
       push_to_dockerhub: false
-      push_on_main: true
       main_branch: "main"
       runner_default: "ubuntu-latest"
       runner_amd64: "ubuntu-latest"
