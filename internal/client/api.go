@@ -281,6 +281,7 @@ type CreateWidgetInput struct {
 	Name         string          `json:"name"`
 	Content      json.RawMessage `json:"content"`
 	PushThrottle *float64        `json:"push_throttle,omitempty"`
+	StaleAfter   *float64        `json:"stale_after,omitempty"`
 }
 
 // CreateWidget creates a new widget.
@@ -311,6 +312,7 @@ type UpdateWidgetInput struct {
 	Name         string          `json:"name,omitempty"`
 	Content      json.RawMessage `json:"content"`
 	PushThrottle *float64        `json:"push_throttle,omitempty"`
+	StaleAfter   *float64        `json:"stale_after,omitempty"`
 }
 
 // UpdateWidget partially updates a widget's content.

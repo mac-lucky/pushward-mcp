@@ -544,6 +544,10 @@ func contentJSONDesc(isWidget bool, method string) string {
 		} else {
 			lead += "Send the full content object (template is required). "
 		}
+		// The template list is deliberately behind the spec, which already carries the
+		// 1.6 additions. A widget created with a template an installed build does not
+		// know blanks that build's entire widget list, so hold the five until iOS 1.6.0
+		// is out on the App Store.
 		return lead + "Fields: template (value|progress|status|gauge|stat_list - selects the visual style), value (number), label, unit, trend (up|down|flat), severity, min_value, max_value, stat_rows (array of stat rows, used by stat_list), icon, subtitle, accent_color, background_color, text_color, tap_action ({url}), url_action, secondary_url_action."
 	}
 	lead := "Activity content as JSON object. "
@@ -578,19 +582,25 @@ func refTypeName(ref string) string {
 	return parts[len(parts)-1]
 }
 
-// formatBound renders a numeric min/max bound without scientific notation, so a
-// max of 2592000 reads as "2592000" rather than "2.592e+06". Integral values lose
-// their trailing ".0"; fractional values keep their digits.
 // The REST API takes a tri-state on some fields (omit / null / number), but a number
 // param can't carry null: the JSON Schema type rejects it, and GetFloat can't tell a null
 // argument from an omitted one, so the field stays nil and the server keeps the old value.
-// Rewrite the clause rather than advertise a clear that this tool can't deliver.
-var nullClearClauseRe = regexp.MustCompile(`Tri-state: omit to keep, null to clear, number to set\.`)
+// Rewrite the clause rather than advertise a clear that this tool can't deliver. The spec
+// spells it two ways - the activity TTLs say "Tri-state", stale_after tacks it onto the
+// sentence - so both spellings get matched.
+var (
+	nullClearClauseRe = regexp.MustCompile(`Tri-state: omit to keep, null to clear, number to set\.`)
+	nullClearsItRe    = regexp.MustCompile(`;\s*null clears it\.`)
+)
 
 func dropNullClearClause(desc string) string {
-	return nullClearClauseRe.ReplaceAllString(desc, "Omit to keep the current value.")
+	desc = nullClearClauseRe.ReplaceAllString(desc, "Omit to keep the current value.")
+	return nullClearsItRe.ReplaceAllString(desc, ". Omit to keep the current value.")
 }
 
+// formatBound renders a numeric min/max bound without scientific notation, so a
+// max of 2592000 reads as "2592000" rather than "2.592e+06". Integral values lose
+// their trailing ".0"; fractional values keep their digits.
 func formatBound(v float64) string {
 	return strconv.FormatFloat(v, 'f', -1, 64)
 }

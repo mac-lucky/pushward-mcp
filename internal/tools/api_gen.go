@@ -137,6 +137,9 @@ func registerAPITools(s *mcpserver.MCPServer, api *client.APIClient) {
 				mcp.Required(),
 				mcp.Description("Unique widget identifier (alphanumeric, hyphens, underscores). Per-user namespace separate from activity slugs."),
 			),
+			mcp.WithNumber("stale_after",
+				mcp.Description("Seconds after updated_at before clients render the widget as stale. (min: 60, max: 604800)"),
+			),
 			mcp.WithString("content_json",
 				mcp.Required(),
 				mcp.Description("Widget content as a JSON object. Send the full content object (template is required). Fields: template (value|progress|status|gauge|stat_list - selects the visual style), value (number), label, unit, trend (up|down|flat), severity, min_value, max_value, stat_rows (array of stat rows, used by stat_list), icon, subtitle, accent_color, background_color, text_color, tap_action ({url}), url_action, secondary_url_action."),
@@ -344,6 +347,9 @@ func registerAPITools(s *mcpserver.MCPServer, api *client.APIClient) {
 			mcp.WithNumber("push_throttle",
 				mcp.Description("push_throttle"),
 			),
+			mcp.WithNumber("stale_after",
+				mcp.Description("Seconds after updated_at before clients render the widget as stale. Omit to keep the current value."),
+			),
 			mcp.WithString("content_json",
 				mcp.Required(),
 				mcp.Description("Widget content as a JSON object. PATCH applies RFC 7396 JSON Merge Patch semantics - only send the fields you want to change, null clears a field, absent preserves. Fields: template (value|progress|status|gauge|stat_list - selects the visual style), value (number), label, unit, trend (up|down|flat), severity, min_value, max_value, stat_rows (array of stat rows, used by stat_list), icon, subtitle, accent_color, background_color, text_color, tap_action ({url}), url_action, secondary_url_action."),
@@ -487,6 +493,9 @@ func handleCreateWidget(ctx context.Context, req mcp.CallToolRequest, api *clien
 	}
 	if v := req.GetFloat("push_throttle", math.NaN()); !math.IsNaN(v) {
 		input.PushThrottle = &v
+	}
+	if v := req.GetFloat("stale_after", math.NaN()); !math.IsNaN(v) {
+		input.StaleAfter = &v
 	}
 	raw, err := api.CreateWidget(ctx, input)
 	if err != nil {
@@ -641,6 +650,9 @@ func handleUpdateWidget(ctx context.Context, req mcp.CallToolRequest, api *clien
 	}
 	if v := req.GetFloat("push_throttle", math.NaN()); !math.IsNaN(v) {
 		input.PushThrottle = &v
+	}
+	if v := req.GetFloat("stale_after", math.NaN()); !math.IsNaN(v) {
+		input.StaleAfter = &v
 	}
 	raw, err := api.UpdateWidget(ctx, paramSlug, input)
 	if err != nil {
