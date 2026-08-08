@@ -544,11 +544,12 @@ func contentJSONDesc(isWidget bool, method string) string {
 		} else {
 			lead += "Send the full content object (template is required). "
 		}
-		// The template list is deliberately behind the spec, which already carries the
-		// 1.6 additions. A widget created with a template an installed build does not
-		// know blanks that build's entire widget list, so hold the five until iOS 1.6.0
-		// is out on the App Store.
-		return lead + "Fields: template (value|progress|status|gauge|stat_list - selects the visual style), value (number), label, unit, trend (up|down|flat), severity, min_value, max_value, stat_rows (array of stat rows, used by stat_list), icon, subtitle, accent_color, background_color, text_color, tap_action ({url}), url_action, secondary_url_action."
+		// Keep the template list in step with the spec's WidgetContent enum -
+		// TestWidgetTemplateEnumParity fails when the spec gains one this string
+		// does not. A widget created with a template the installed build cannot
+		// decode blanks that build's entire widget list, so the five 1.6 additions
+		// were held back until iOS 1.6.0 shipped.
+		return lead + "Fields: template (value|progress|status|gauge|stat_list|trend|countdown|battery|schedule|flow - selects the visual style), value (number), label, unit, trend (up|down|flat arrow, annotates value and gauge), severity, min_value, max_value, icon, subtitle, subtitle_timer ({date [RFC 3339], style: timer|relative} - renders the subtitle slot as a self-updating timer, on any template), accent_color, background_color, text_color, tap_action ({url}), url_action, secondary_url_action. Template-specific: progress (value 0.0-1.0, or start_date + end_date to advance the bar on device between pushes; send both when you have them, older builds render value), gauge (value, min_value and max_value all required), stat_list (stat_rows: 1-6 {label, value, unit, timer {date, style}}), trend (value plus points: 2-48 numbers oldest first; min_value/max_value fix the chart bounds, otherwise it auto-scales), countdown (end_date required, start_date fills a progress bar alongside it, expired_text replaces the counter once end_date passes), battery (devices: 1-8 {name, level 0-100, charging, icon, color}), schedule (periods: 1-48 {start [RFC 3339], value, level: low|medium|high}, strictly increasing by start), flow (flow: {inputs [up to 3], storage, output, exchange}, each a node of {rate, total, level, name, icon, color}; at least one node required)."
 	}
 	lead := "Activity content as JSON object. "
 	if patch {

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"text/template"
@@ -321,12 +322,60 @@ func TestBuildAPITools_ExpectedSet(t *testing.T) {
 		t.Error("create_widget should use content_json")
 	}
 	// The widget content description must not leak activity-only templates, and
-	// must mention the widget template set.
-	if d := byName["create_widget"].ContentDesc; strings.Contains(d, "countdown") {
-		t.Errorf("create_widget content desc leaks activity templates: %s", d)
+	// must mention the widget template set. countdown and gauge are no longer a
+	// tell - both schemas carry them - so test the ones only activities have.
+	for _, activityOnly := range []string{"generic", "steps", "timeline"} {
+		if d := byName["create_widget"].ContentDesc; strings.Contains(d, activityOnly) {
+			t.Errorf("create_widget content desc leaks activity template %q: %s", activityOnly, d)
+		}
 	}
 	if d := byName["create_widget"].ContentDesc; !strings.Contains(d, "stat_list") {
 		t.Errorf("create_widget content desc missing widget templates: %s", d)
+	}
+}
+
+// The widget content description is hand-written while the enum it documents
+// lives in the spec, so the two drift silently: the 1.6 templates sat in the
+// spec for a release while the description still advertised five. Every enum
+// value must appear in the description a coding agent reads.
+func TestWidgetTemplateEnumParity(t *testing.T) {
+	root := repoRoot(t)
+	data, err := os.ReadFile(filepath.Join(root, "openapi.yaml"))
+	if err != nil {
+		t.Skipf("openapi.yaml not found: %v", err)
+	}
+	spec := parseSpecJSON(data, "api")
+	widget, ok := spec.Components.Schemas[widgetContentSchema]
+	if !ok {
+		t.Fatalf("%s schema missing from openapi.yaml", widgetContentSchema)
+	}
+	tmpl, ok := widget.Properties["template"]
+	if !ok || len(tmpl.Enum) == 0 {
+		t.Fatalf("%s.template carries no enum", widgetContentSchema)
+	}
+	// Match the pipe-delimited clause, not the whole string: half the template
+	// names (value, status, progress, trend, flow) are also ordinary words in the
+	// surrounding prose, so a plain Contains would pass on a description that
+	// never lists them.
+	desc := contentJSONDesc(true, "POST")
+	const open, close = "template (", " - selects the visual style)"
+	i, j := strings.Index(desc, open), strings.Index(desc, close)
+	if i < 0 || j < i {
+		t.Fatalf("could not find the template enum clause in the widget description: %s", desc)
+	}
+	listed := make(map[string]bool)
+	for _, name := range strings.Split(desc[i+len(open):j], "|") {
+		listed[name] = true
+	}
+	for _, name := range tmpl.Enum {
+		if !listed[name] {
+			t.Errorf("widget template %q is in the spec enum but absent from the content_json description", name)
+		}
+	}
+	for name := range listed {
+		if !slices.Contains(tmpl.Enum, name) {
+			t.Errorf("widget template %q is advertised but the spec enum does not carry it", name)
+		}
 	}
 }
 
@@ -382,8 +431,16 @@ func TestContentJSONDesc(t *testing.T) {
 	if strings.Contains(wPost, "Merge Patch") {
 		t.Errorf("widget POST desc should not mention merge-patch: %s", wPost)
 	}
-	if strings.Contains(wPost, "countdown") {
-		t.Errorf("widget desc should not mention activity templates: %s", wPost)
+	for _, activityOnly := range []string{"generic", "steps", "timeline"} {
+		if strings.Contains(wPost, activityOnly) {
+			t.Errorf("widget desc should not mention activity template %q: %s", activityOnly, wPost)
+		}
+	}
+	// The 1.6 additions rode the spec for a release before this string caught up.
+	for _, added := range []string{"trend", "countdown", "battery", "schedule", "flow"} {
+		if !strings.Contains(wPost, added) {
+			t.Errorf("widget desc missing template %q: %s", added, wPost)
+		}
 	}
 	// Activity-only board/log fields must not leak into the widget description.
 	if strings.Contains(wPost, "tiles") || strings.Contains(wPost, "log_backlog") {
