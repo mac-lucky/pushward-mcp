@@ -2,7 +2,7 @@
 
 > Full Markdown bundle of every PushWard docs page, auto-generated from the prerendered HTML at build time. Source: https://pushward.app
 
-> Generated: 2026-08-08T20:28:31.828Z
+> Generated: 2026-08-10T00:16:46.423Z
 
 ---
 <!-- source: https://pushward.app/docs/getting-started -->
@@ -245,6 +245,9 @@ A flexible progress-based template suitable for builds, downloads, deployments, 
 | `text_color` | string | Text color override |
 | `end_date` | integer | Unix timestamp (seconds) for the estimated completion. Acts as the ETA anchor for `live_progress`. See [Live progress](#live-progress). |
 | `live_progress` | boolean | When `true`, iOS animates the progress bar and counts the ETA down natively between pushes instead of jumping only when you send an update. **Requires `end_date`.** See [Live progress](#live-progress). |
+| `image_url` | string | https URL of an image shown in place of the icon -- cover art, a poster, an album sleeve. Max 2048 characters, no username or password in the URL. The _device_ downloads it, not the server. See [Artwork](#artwork). |
+| `image_shape` | string | How the image is framed: `poster` (2:3), `square`, or `circle`. Defaults to `square`. |
+| `image_thumbhash` | string | A [ThumbHash](https://evanw.github.io/thumbhash/) of the image, as padded standard-alphabet base64 (about 28 characters). Renders as a blurred stand-in until the download lands, and is the only thing that shows for an image the phone cannot reach. |
 
 ## Example Payload
 
@@ -297,6 +300,58 @@ Download with native live progress
   }
 }
 ```
+
+_Requires PushWard iOS app 1.7.0 or later._
+
+## Artwork
+
+Send `image_url` and the icon slot becomes an image slot: cover art for the episode that is playing, the poster of the film being downloaded, the album sleeve for the track. Only the generic and [steps](https://pushward.app/docs/live-activities/steps) templates have an image slot. Sending any of the three image fields on another template is rejected with `422` rather than ignored, so you never end up waiting for artwork that was never going to render.
+
+### The server never fetches the image
+
+The URL travels on the push and the _phone_ downloads it, which has two consequences worth planning around. The host has to be reachable from the open internet over https, and the file has to be small -- the device stops at 2 MB. A poster at 400x600 is well inside that; a 4K still is not. Format is whatever the system image decoder reads, which is wider than it sounds -- JPEG, PNG, HEIC, GIF, WebP and more -- provided the response is served with an `image/*` content type. (That is a separate question from what the Relay's ThumbHash encoder can read; see [Poster artwork](https://pushward.app/docs/integrations/relay#artwork).)
+
+⚠ Warning
+
+A private _address_ never loads: iOS refuses to open a connection to a `192.168.x.x` host, or anything on Tailscale (`100.64/10`), because activities can be shared view-only and a URL on one is otherwise a way to point somebody else's phone at your LAN. A private _name_ like `https://jellyfin.local/...` resolves normally, so it loads wherever it resolves and the certificate is valid -- which in practice means on your own network, and nowhere else. Either way, send `image_thumbhash`: it is what viewers outside the network see, and it is the only tier that always renders.
+
+### ThumbHash, the fallback that always works
+
+A [ThumbHash](https://evanw.github.io/thumbhash/) is roughly 25 bytes describing a blurred version of an image: its aspect ratio, average color, and a handful of DCT coefficients. Base64-encoded it is about 28 characters, small enough to ride inside the push payload itself. iOS draws it the instant the activity updates, then swaps in the full image once the download finishes.
+
+It is worth sending even when the URL is public. The widget process that draws a Live Activity has no network access at all, so on a cold cache -- a fresh activity, or the first render after a reboot -- the ThumbHash is the only thing on screen until the app gets a chance to warm the cache. Most languages have a ThumbHash library; compute it once where the source image already is.
+
+### Shapes
+
+`image_shape` picks the frame: `poster` for 2:3 cover art, `square` (the default), or `circle`. A poster is the only shape that changes the layout -- on the Lock Screen card it widens the leading column and grows downward, which is the point of asking for one. It also renders a neutral accent-tinted card when there is no image and no hash yet, so a poster row never looks like a missing element. In the Dynamic Island a poster grows downward instead of sideways when expanded, and is cropped square in the compact pill, whose geometry is fixed.
+
+Now playing, with cover art and its ThumbHash 
+
+```
+{
+  "state": "ongoing",
+  "content": {
+    "template": "generic",
+    "progress": 0.35,
+    "state": "Playing",
+    "subtitle": "S02E04 - The Constant",
+    "icon": "play.fill",
+    "image_url": "https://images.example.com/lost/s02e04.jpg",
+    "image_shape": "poster",
+    "image_thumbhash": "GYpSpSh4eHt4eHh4eHh4eHh4iIeH",
+    "accent_color": "indigo"
+  }
+}
+```
+
+### Updating the artwork
+
+-   Changing any of the three fields sends a high-priority push instead of a coalesced one. Swapping the poster mid-activity (next episode, next track) is the most visible change this template can make, and holding it behind the update cooldown would leave the old artwork on screen.
+-   Updates are merge-patches, so the artwork carries forward until you change it. Clear it with `"image_url": null`.
+-   If a `PATCH` switches the activity to a template with no image slot, the server drops the image fields you _inherited_ from the stored content rather than failing the update -- you cannot be held responsible for keys you never sent. Fields sent in that same patch are still a `422`: switching to `alert` while also sending `image_url` is a contradiction only you can resolve.
+-   Widgets and push notifications have no equivalent. The closest thing a notification has is `icon_url`, which replaces the source avatar rather than filling an artwork slot. See [Notifications](https://pushward.app/docs/notifications/basics).
+
+Several [Relay](https://pushward.app/docs/integrations/relay) providers do all of this for you: Jellyfin, Radarr, Sonarr and Overseerr attach the poster and its ThumbHash to the activities they create. A media server on your own network needs one setting on a self-hosted relay -- see [Poster artwork](https://pushward.app/docs/integrations/relay#artwork).
 
 ## Typical Flow
 
@@ -436,6 +491,9 @@ A step-based template designed for CI/CD pipelines and multi-stage workflows. Vi
 | `duration` | integer | string | How long the **current step** takes: seconds (`5400`) or a duration string (`"90m"`, `"1h30m"`). Sets `start_date` to now and `end_date` to now + duration, which is how you re-anchor the animation on each step change. |
 | `end_date` | integer | Unix timestamp when the **current step** is expected to finish -- not the end of the whole run. Wins over `duration` when both are sent. |
 | `start_date` | integer | Unix timestamp when the current step began. Set for you by `duration`; the bar fills across `start_date` to `end_date`. |
+| `image_url` | string | https URL of an image shown in place of the icon. Max 2048 characters, no username or password in the URL. The _device_ downloads it, not the server, so the host has to be public. See [Artwork](#artwork). |
+| `image_shape` | string | How the image is framed: `poster` (2:3), `square`, or `circle`. Defaults to `square`. |
+| `image_thumbhash` | string | A ThumbHash of the image, as padded standard-alphabet base64 (about 28 characters). Rides on the push itself and renders as a blurred stand-in until the download lands. |
 
 ### Changing `total_steps` on an existing activity
 
@@ -587,6 +645,40 @@ Dishwasher: a 90-minute wash step that fills itself
   }
 }
 ```
+
+_Requires PushWard iOS app 1.7.0 or later._
+
+## Artwork
+
+Steps has the same image slot as the [generic](https://pushward.app/docs/live-activities/generic) template: send `image_url` and the leading icon becomes artwork. On a step sequence that usually means the thing being processed rather than the tool doing the processing -- the film poster for a download that is grabbing, importing and renaming, the album sleeve for an import pipeline. The full rules live on the [generic page](https://pushward.app/docs/live-activities/generic#artwork); the short version:
+
+-   The phone downloads the image, not the server, so the URL has to be https and the file under 2 MB. A LAN or Tailscale _address_ never loads at all; a private _name_ loads only where it resolves with a valid certificate, which is your own network.
+-   `image_thumbhash` is about 28 characters and travels inside the push, so it renders immediately and is the only thing that shows for an image the phone cannot reach. Send it even when the URL is public.
+-   `image_shape` is `poster`, `square` or `circle`; on the Lock Screen card a poster widens the leading column and grows downward.
+-   Only generic and steps accept these fields. On any other template they are a `422`.
+
+Movie import pipeline with the film's poster 
+
+```
+{
+  "state": "ongoing",
+  "content": {
+    "template": "steps",
+    "state": "Importing",
+    "subtitle": "Radarr",
+    "current_step": 3,
+    "total_steps": 4,
+    "step_labels": ["Grab", "Download", "Import", "Rename"],
+    "progress": 0.6,
+    "image_url": "https://image.example.com/posters/arrival.jpg",
+    "image_shape": "poster",
+    "image_thumbhash": "GYpSpSh4eHt4eHh4eHh4eHh4iIeH",
+    "accent_color": "purple"
+  }
+}
+```
+
+Radarr, Sonarr, Jellyfin and Overseerr do this automatically when you drive them through the [Relay](https://pushward.app/docs/integrations/relay).
 
 ## Typical Flow
 
@@ -3177,6 +3269,41 @@ Each provider delivers events as either a **push notification** (banner alert) o
 
 Relay requires PostgreSQL for persistent state (sync tracking, download lifecycle, playback progress across restarts and tenants). Stateless providers (Bazarr, Changedetection, Unmanic) still require a database connection to start.
 
+_Requires PushWard iOS app 1.7.0 or later._
+
+## Poster artwork
+
+Four providers carry artwork through to the Live Activity with no configuration on your side. **Jellyfin**, **Radarr**, **Sonarr** and **Overseerr** all know which film or episode an event is about, so the relay resolves its poster and attaches both the image URL and a [ThumbHash](https://pushward.app/docs/live-activities/generic#artwork) to the activity it creates. The Lock Screen shows cover art instead of a generic download glyph.
+
+The ThumbHash matters more than it sounds. Jellyfin in particular is usually reachable only on your own network, and the phone refuses to download an image from a private host -- so the ~25-byte blurred version travelling on the push is the only thing that renders. The relay fetches the artwork once to build that hash, which is the whole reason this works for a self-hosted media server at all.
+
+The webhook waits at most 600ms for a hash it does not already have, then answers without one. The fetch is not cancelled: it carries on under its own ~3s budget and fills the relay-wide cache, so the very first event for a film you have never seen before arrives bare and the next update picks the artwork up. If a poster cannot be resolved at all -- an untagged file, an unreachable image endpoint -- the activity falls back to its icon exactly as before.
+
+### Artwork from a media server on your LAN
+
+The relay will not fetch from a private address unless you tell it to. `poster.allow_private_hosts` is `false` by default, so on a stock relay a `http://192.168.1.10:8096/...` or `jellyfin.local` poster produces no ThumbHash -- and since the phone independently refuses that host too, nothing renders. Self-hosting the relay alongside the media server is the case this setting exists for:
+
+Relay config: let poster fetches reach the LAN 
+
+```
+poster:
+  enabled: true
+  allow_private_hosts: true
+```
+
+| Environment Variable | Description | Default |
+| --- | --- | --- |
+| `PUSHWARD_POSTER_ALLOW_PRIVATE_HOSTS` | Let poster fetches reach loopback, RFC 1918, CGNAT/Tailscale and link-local addresses. It is also what permits a plain http fetch; with it off the relay fetches over https only (YAML: poster.allow\_private\_hosts) | `false` |
+| `PUSHWARD_POSTER_ENABLED` | Attach poster artwork at all. Turning it off drops both the image URL and the ThumbHash (YAML: poster.enabled) | `true` |
+
+⚠ Warning
+
+Leave this off on any relay that accepts webhooks you do not control, including the public `relay.pushward.app`, which runs with the default. The webhook payload is what carries the image URL, so a relay that will fetch private addresses on request is an SSRF probe of everything it can reach. When it is on, the check runs against the _resolved_ address rather than the hostname, so a DNS name pointing at `127.0.0.1` does not slip past it.
+
+ℹ Info
+
+The ThumbHash encoder decodes JPEG, PNG and GIF. Artwork served as WebP or AVIF gets an `image_url` but no hash, so it renders only when the phone can reach the URL.
+
 ## Per-request overrides
 
 Append query parameters to any provider webhook URL to override that provider's delivery behavior for a single request. This is handy when one source should behave differently from the provider default - for example forcing a noisy alert to a plain notification, or bumping a deploy's priority. An explicit parameter always wins over the provider-computed value and your static config; omitting a parameter leaves today's behavior unchanged.
@@ -5668,8 +5795,10 @@ The relay has **no** `pushward.api_key` (it extracts a `hlk_` key per request). 
 | `PUSHWARD_SERVER_METRICS_ADDRESS` | `server.metrics_address` | Internal Prometheus metrics listener; must differ from `server.address` | No (`:9090`) |
 | `PUSHWARD_TRUSTED_PROXY_CIDRS` | `trusted_proxy_cidrs` | CIDRs of trusted reverse proxies so `CF-Connecting-IP`/`X-Forwarded-For` is honored for per-IP rate limiting | No |
 | `PUSHWARD_STARR_MODE` | `providers.starr.mode` | Radarr/Sonarr routing: `activity` (default), `notify`, or `smart` | No |
+| `PUSHWARD_POSTER_ENABLED` | `poster.enabled` | Poster images on Radarr/Sonarr, Jellyfin and Overseerr cards | No (`true`) |
+| `PUSHWARD_POSTER_ALLOW_PRIVATE_HOSTS` | `poster.allow_private_hosts` | Let poster fetches reach LAN addresses. **Keep this off on any relay that accepts webhooks from someone else** - the payload carries the URL, so an unguarded fetcher becomes an SSRF probe. Turn it on only when self-hosting and pulling artwork off a LAN media server | No (`false`) |
 
-Per-provider knobs (`providers.<name>.enabled`, `priority`, `cleanup_delay`, `stale_timeout`, `end_delay`, `end_display_time`) plus the circuit-breaker and OpenTelemetry blocks are documented in the [relay README](./relay/) and [`relay/config.example.yml`](./relay/config.example.yml). All providers default to `enabled: true`.
+Per-provider knobs (`providers.<name>.enabled`, `priority`, `cleanup_delay`, `stale_timeout`, `end_delay`, `end_display_time`) plus the circuit-breaker, poster and OpenTelemetry blocks are documented in the [relay README](./relay/) and [`relay/config.example.yml`](./relay/config.example.yml). All providers default to `enabled: true`.
 
 ## Endpoints
 
@@ -7834,11 +7963,13 @@ The two surfaces are independent (separate config, managers, and caches) and sha
 - **Companion source entities**: read remaining time, progress, value, etc. from a *separate* entity
 - **Two-phase end** shows a completion state (green checkmark) before dismissing
 - **Live-progress ETA** fills the progress bar smoothly and counts down to a finish time (generic + steps)
+- **Activity artwork** beside the icon (generic + steps), with an inline ThumbHash computed here so a
+  picture that only Home Assistant can reach still renders on the phone
 - **Throttled updates** with content deduplication
 - **6-level icon fallback**: attribute -> config -> entity -> registry -> device class -> domain default
 - **Color support**: RGB, HSV, XY, Kelvin, named colors
 - **TTL controls**: auto-delete after end, auto-end on stale activity, auto-dismiss from the Lock Screen
-- **Services** for the whole surface: create/update/end/delete activities (with a per-template update action), send notifications, send email, refresh/delete widgets
+- **Services** for the whole surface: create/update/end/delete activities (with a per-template update action), send notifications, send email, refresh/delete widgets, generate a ThumbHash
 
 ## Prerequisites
 
@@ -7915,6 +8046,7 @@ A two-step flow. **Step 1** picks the entity and a template (a better template i
 | Update Interval | Min seconds between updates (default: 5) |
 | Progress Entity / Attribute | 0-100 progress, optionally from a separate entity |
 | Live Progress ETA | Fill the progress bar smoothly and count down an ETA to the finish time, using the remaining-time source (generic/steps templates; on steps it fills the current step) |
+| Image URL / Shape / ThumbHash | Artwork beside the icon (generic/steps templates) - see [Activity images](#activity-images) |
 | Remaining Time Entity / Attribute | Seconds remaining (countdown), with smart time parsing |
 | Total Steps / Current Step Entity / Attribute | Steps tracking, optionally from a separate entity |
 | Step Details | One row per step: label, row height (1-10), relative width, and color (steps template) |
@@ -8150,7 +8282,7 @@ On premium, uncapped resources report `limit: unlimited`, and the notifications 
 
 ## Services
 
-All services live in the `pushward` domain. There are 16 in total: the eight below plus a per-template `update_activity_<template>` for each of the 8 activity templates (and the deprecated `update_activity` alias).
+All services live in the `pushward` domain. There are 17 in total: the nine below plus a per-template `update_activity_<template>` for each of the 8 activity templates (and the deprecated `update_activity` alias).
 
 ### `pushward.create_activity`
 
@@ -8208,9 +8340,9 @@ implied by the action name; you no longer pass a `template` field.
 
 | Action | Extra fields |
 |--------|--------------|
-| `update_activity_generic` | `live_progress` |
+| `update_activity_generic` | `live_progress`, `image_url`, `image_shape`, `image_thumbhash` |
 | `update_activity_countdown` | `end_date`, `duration`, `start_date`, `warning_threshold`, `alarm`, `snooze_seconds` |
-| `update_activity_steps` | `total_steps` (max 64), `current_step`, `step_labels`, `step_rows`, `step_weights`, `step_colors`, `duration`, `live_progress` |
+| `update_activity_steps` | `total_steps` (max 64), `current_step`, `step_labels`, `step_rows`, `step_weights`, `step_colors`, `duration`, `live_progress`, `image_url`, `image_shape`, `image_thumbhash` |
 | `update_activity_alert` | `severity`, `fired_at` |
 | `update_activity_gauge` | `value`, `min_value`, `max_value`, `unit` |
 | `update_activity_timeline` | `value`, `unit`, `units`, `scale`, `decimals`, `smoothing`, `thresholds`, `history` |
@@ -8240,6 +8372,43 @@ implied by the action name; you no longer pass a `template` field.
 > the finish time using the remaining-time source; on steps it fills the current step rather
 > than the whole run. It needs a remaining-time entity or attribute to anchor the ETA.
 
+#### Activity images
+
+`generic` and `steps` can show a picture beside the icon. The server rejects the image fields
+on every other template, so the per-template actions only expose them on those two.
+
+| Field | Description |
+|-------|-------------|
+| `image_url` | `https` URL, max 2048 chars, no embedded credentials |
+| `image_shape` | `poster`, `square` (default) or `circle` |
+| `image_thumbhash` | Padded standard-alphabet base64, max 64 chars |
+
+**The phone fetches `image_url` itself, and Home Assistant does not proxy it.** iOS refuses
+private ranges, so a LAN or Tailscale address loads nothing on the device even though it works
+fine from your Home Assistant box. That is what `image_thumbhash` is for: a ~25 byte
+[ThumbHash](https://evanw.github.io/thumbhash/) travelling inside the activity payload, drawn
+as a blurred placeholder with no network access at all. For a local image it is the only tier
+that ever appears on the phone.
+
+You rarely have to compute it. Whenever an activity carries `image_url` and no
+`image_thumbhash`, the integration downloads the image (5 s timeout, 2 MB cap), hashes it, and
+attaches the result, caching it per URL so repeated updates cost nothing. If the download
+fails, the activity goes out without a hash rather than failing, and the failure is remembered
+for ten minutes so a broken URL costs one request instead of one per push while an image host
+that comes back still recovers on its own.
+
+A cached hash is kept for 30 minutes. If the picture behind a URL changes -- a camera snapshot
+rewritten in place, say -- the blurred placeholder can therefore lag the real image by up to
+that long before the integration reads it again. Reloading the integration clears the cache
+immediately, and `pushward.generate_thumbhash` always fetches afresh.
+
+That automatic path follows `image_url`, which the server pins to `https`. For an image the
+server never sees at all -- a plain-http LAN camera, or a file on disk -- use the
+`pushward.generate_thumbhash` action below and paste the result into `image_thumbhash`.
+
+Switching an activity to another template clears any inherited image fields server-side, so
+no explicit cleanup is needed.
+
 `step_labels`, `step_rows`, `step_weights`, and `step_colors` are **ordered lists** (one entry
 per step, length must equal `total_steps`), e.g. `step_labels: ["Build", "Test", "Deploy"]`,
 `step_rows: [1, 1, 2]`.
@@ -8248,6 +8417,36 @@ per step, length must equal `total_steps`), e.g. `step_labels: ["Build", "Test",
 > field and collapsed sections) still works for backward compatibility but logs a deprecation
 > warning and will be removed in a future release. Switch automations to the template-specific
 > action above.
+
+### `pushward.generate_thumbhash`
+
+Compute the blurred inline preview for an image and return it. Pass exactly one source. This
+is a [response action](https://www.home-assistant.io/docs/scripts/service-calls/#use-templates-to-handle-response-data),
+so call it with `response_variable`.
+
+| Field | Required | Description |
+|-------|:--------:|-------------|
+| `image_url` | One of | `http` or `https` URL. Anything Home Assistant can reach, including a LAN camera the phone cannot see |
+| `image_path` | One of | Local file path instead of a URL. Its directory must be in `allowlist_external_dirs` |
+
+Returns `{"thumbhash": "..."}`.
+
+```yaml
+actions:
+  - action: pushward.generate_thumbhash
+    data:
+      image_url: "http://192.168.1.50/snapshot.jpg"
+    response_variable: preview
+  - action: pushward.update_activity_generic
+    data:
+      slug: front-door
+      state: ongoing
+      state_text: Motion detected
+      image_thumbhash: "{{ preview.thumbhash }}"
+```
+
+Unlike the automatic path, this reports why it failed instead of staying quiet -- you asked
+for a hash, so an unreachable image is an error.
 
 ### `pushward.end_activity`
 

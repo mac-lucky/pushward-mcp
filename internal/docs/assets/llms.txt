@@ -9,6 +9,7 @@ A fully-expanded Markdown bundle of every docs page lives at [/llms-full.txt](ht
 ## Getting Started
 
 - [Getting Started](https://pushward.app/docs/getting-started): Start sending push notifications to your iPhone in under 5 minutes.
+- [iOS Live Activity API](https://pushward.app/live-activities): Send iOS Live Activities to the Lock Screen and Dynamic Island over a simple HTTP API
 - [API Reference](https://pushward.app/api): Interactive OpenAPI explorer for every endpoint
 - [Playground](https://pushward.app/playground): Interactive iPhone simulator for previewing PushWard widgets
 
@@ -34,29 +35,48 @@ A fully-expanded Markdown bundle of every docs page lives at [/llms-full.txt](ht
 - [Activity Link](https://pushward.app/docs/notifications/activity-link): Tie a notification to an existing Live Activity by setting activity_slug. Tapping the notification deep-links into that activity in the PushWard iOS app.
 - [Notifications API](https://pushward.app/docs/notifications/api): Send a notification to a user's inbox, with optional APNs push delivery to their devices.
 
+## Siri & Shortcuts
+
+- [Siri & Shortcuts](https://pushward.app/docs/shortcuts): PushWard ships App Intents, so you can drive it from Siri, the Shortcuts app, and personal automations right on your device - no integration key or API call required.
+
 ## Widgets
 
 - [Widgets](https://pushward.app/docs/widgets): Push-driven iOS Home Screen, Lock Screen, and StandBy widgets. Declare a widget once, update its content with a PATCH, and the user's WidgetKit instances refresh automatically.
 - [Widgets API](https://pushward.app/docs/widgets/api): Register, update, list, and delete widgets via REST. Widgets are push-driven - each PATCH triggers a thin APNs payload that reloads the iOS extension's timeline.
+- [Value widget](https://pushward.app/docs/widgets/templates/value): One big number with an optional unit, label, and trend arrow. Best for sensor readings, counters, and anything that fits on a single line.
+- [Progress widget](https://pushward.app/docs/widgets/templates/progress): How far along something is, drawn as a bar. Best for rollouts, backups, quotas, and any task with a known finish line.
+- [Status widget](https://pushward.app/docs/widgets/templates/status): A single state - healthy, degraded, down - carried by an icon and a severity color instead of a number.
+- [Gauge widget](https://pushward.app/docs/widgets/templates/gauge): A value on a dial between a fixed minimum and maximum. Best for SLOs, error budgets, temperatures, and capacity.
+- [Stat list widget](https://pushward.app/docs/widgets/templates/stat-list): Up to six label and value rows in one card. Best for compact dashboards - MRR, subscribers, trials - where a chart would say less.
+- [Trend widget](https://pushward.app/docs/widgets/templates/trend): A current reading with its recent history drawn as a sparkline. Best for latency, throughput, price, or any number worth seeing in context.
+- [Countdown widget](https://pushward.app/docs/widgets/templates/countdown): A countdown to a date that keeps ticking on device between pushes. Add a start date and it fills a progress bar on its own.
+- [Battery widget](https://pushward.app/docs/widgets/templates/battery): Charge levels for up to eight devices, drawn as rings. Best for smart-home batteries, sensors, and anything else you would rather not find flat.
+- [Schedule widget](https://pushward.app/docs/widgets/templates/schedule): A timeline of upcoming periods - tariff prices, delivery windows, shifts - with the period happening now highlighted.
+- [Flow widget](https://pushward.app/docs/widgets/templates/flow): Energy, water, or data moving between sources, storage, and consumers, with a live rate on every leg.
 
 ## Email
 
 - [Email](https://pushward.app/docs/email): Send transactional email to addresses your account has verified, using the same integration key that drives your push notifications. Recipients confirm with a double opt-in link before they can receive mail.
 
+## Sharing
+
+- [Sharing](https://pushward.app/docs/sharing): Share a Live Activity with other PushWard users through time-limited codes. Recipients see the same Dynamic Island and Lock Screen surfaces, updated in real time - and joining as a viewer is free.
+
 ## Integrations
 
-- [Integrations](https://pushward.app/docs/integrations): Connect PushWard to your existing tools and services. Each integration uses a dedicated integration key for scoped access.
+- [Integrations](https://pushward.app/docs/integrations): Connect PushWard to your existing tools and services. Each integration authenticates with your integration key.
 - [Relay](https://pushward.app/docs/integrations/relay): The easiest way to connect your services to PushWard. Point webhooks at relay.pushward.app - no Docker containers, no self-hosting, no per-user configuration needed.
-- [Grafana](https://pushward.app/docs/integrations/grafana): Turn Grafana alerts into timeline sparklines on your Lock Screen. See metric history at a glance with real-time updates while alerts are firing.
+- [Grafana](https://pushward.app/docs/integrations/grafana): Turn Grafana alerts into a timeline Live Activity on your iPhone Lock Screen. See metric history at a glance with real-time updates while alerts are firing.
 - [Home Assistant](https://pushward.app/docs/integrations/home-assistant): A native HACS integration that bridges Home Assistant entity state changes to PushWard Live Activities on your iPhone.
 - [GitHub Actions](https://pushward.app/docs/integrations/github-actions): Track CI/CD workflow progress in real-time on your Lock Screen using the steps template.
-- [SABnzbd](https://pushward.app/docs/integrations/sabnzbd): Track download progress on your Lock Screen. See file names, speed, ETA, and post-processing phases in real-time.
-- [Bambu Lab](https://pushward.app/docs/integrations/bambulab): Track 3D print progress with layer counts, nozzle temperature, and ETA on your Lock Screen via local MQTT.
+- [SABnzbd](https://pushward.app/docs/integrations/sabnzbd): Track SABnzbd download progress as a Live Activity on your iPhone Lock Screen. See file names, speed, ETA, and post-processing phases in real-time.
+- [Bambu Lab](https://pushward.app/docs/integrations/bambulab): Track Bambu Lab 3D print progress as a Live Activity on your iPhone Lock Screen - layer counts, nozzle temperature, and ETA via local MQTT.
 - [Unraid](https://pushward.app/docs/integrations/unraid): A native Unraid plugin that forwards every Unraid notification to your iPhone and shows parity checks, backups, mover, and UPS events as Live Activities on your Lock Screen.
+- [ArgoCD](https://pushward.app/docs/integrations/argocd): Watch ArgoCD application syncs as a Live Activity on your iPhone Lock Screen - a three-step pipeline from Syncing through Rolling out to Deployed, with sync failures and health regressions flagged in real time.
 
 ## API Reference
 
-- [API Reference](https://pushward.app/docs/api): The PushWard API is a REST API for managing iOS Live Activities via Apple Push Notification service (APNs).
+- [REST API Reference for iOS Live Activities](https://pushward.app/docs/api): The PushWard API is a REST API for managing iOS Live Activities via Apple Push Notification service (APNs).
 - [Authentication](https://pushward.app/docs/api/authentication): PushWard uses Bearer token authentication. When you sign in with Apple ID, a default integration key (hlk_) is automatically created -- copy it from the app's settings to start using the API immediately. You can also create additional scoped integration keys for individual services.
 - [Activities](https://pushward.app/docs/api/activities): Activities are the core resource in PushWard. Each activity represents a trackable item that can be displayed as a Live Activity on subscribed devices.
 - [MCP Server](https://pushward.app/docs/api/mcp): Drive PushWard from Claude and other AI agents over the Model Context Protocol. The hosted MCP server lets an agent create Live Activities, send notifications, and manage widgets through your integration key.

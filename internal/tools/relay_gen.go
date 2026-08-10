@@ -40,33 +40,10 @@ func registerRelayTools(s *mcpserver.MCPServer, relay *client.RelayClient) {
 	// relay_backrest
 	s.AddTool(
 		mcp.NewTool("relay_backrest",
-			mcp.WithDescription("Receive Backrest backup webhook"),
-			mcp.WithNumber("data_added",
-				mcp.Description("data_added"),
-			),
-			mcp.WithNumber("duration_ms",
-				mcp.Description("duration_ms"),
-			),
-			mcp.WithString("error",
-				mcp.Description("error"),
-			),
-			mcp.WithString("event",
-				mcp.Description("event"),
-			),
-			mcp.WithNumber("files_changed",
-				mcp.Description("files_changed"),
-			),
-			mcp.WithNumber("files_new",
-				mcp.Description("files_new"),
-			),
-			mcp.WithString("plan",
-				mcp.Description("plan"),
-			),
-			mcp.WithString("repo",
-				mcp.Description("repo"),
-			),
-			mcp.WithString("snapshot_id",
-				mcp.Description("snapshot_id"),
+			mcp.WithDescription("Receive Backrest backup webhook. Pass the full JSON payload."),
+			mcp.WithString("payload_json",
+				mcp.Required(),
+				mcp.Description("Full webhook JSON payload for backrest"),
 			),
 		),
 		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -399,35 +376,14 @@ func handleRelayArgocd(ctx context.Context, req mcp.CallToolRequest, relay *clie
 }
 
 func handleRelayBackrest(ctx context.Context, req mcp.CallToolRequest, relay *client.RelayClient) (*mcp.CallToolResult, error) {
-	body := map[string]any{}
-	if v := req.GetFloat("data_added", math.NaN()); !math.IsNaN(v) {
-		body["data_added"] = v
+	payloadStr, err := req.RequireString("payload_json")
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
 	}
-	if v := req.GetFloat("duration_ms", math.NaN()); !math.IsNaN(v) {
-		body["duration_ms"] = v
+	if !isJSONObject(payloadStr) {
+		return mcp.NewToolResultError("payload_json must be a JSON object"), nil
 	}
-	if v := req.GetString("error", ""); v != "" {
-		body["error"] = v
-	}
-	if v := req.GetString("event", ""); v != "" {
-		body["event"] = v
-	}
-	if v := req.GetFloat("files_changed", math.NaN()); !math.IsNaN(v) {
-		body["files_changed"] = v
-	}
-	if v := req.GetFloat("files_new", math.NaN()); !math.IsNaN(v) {
-		body["files_new"] = v
-	}
-	if v := req.GetString("plan", ""); v != "" {
-		body["plan"] = v
-	}
-	if v := req.GetString("repo", ""); v != "" {
-		body["repo"] = v
-	}
-	if v := req.GetString("snapshot_id", ""); v != "" {
-		body["snapshot_id"] = v
-	}
-	raw, err := relay.PostWebhook(ctx, "backrest", body)
+	raw, err := relay.PostWebhook(ctx, "backrest", json.RawMessage(payloadStr))
 	if err != nil {
 		return mcp.NewToolResultError(err.Error()), nil
 	}
