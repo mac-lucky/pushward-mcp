@@ -56,6 +56,14 @@ Screen.
   of 1-20 newest-first `lines`, replaced wholesale per update; the server also
   keeps a rolling backlog readable via `GET /activities/{slug}?include=log_backlog`).
   Always set `content.template`.
+- **Images are fetched by the device, not the server.** `content.image_url` is
+  accepted on `generic` and `steps` only (anything else is a `422`), and the
+  phone downloads it itself - a LAN or Tailscale host renders nothing at all.
+  Send `image_thumbhash` alongside it: the blurred ThumbHash is what shows until
+  the download lands, and the only thing that shows when it never does.
+  `image_shape` picks the frame (`poster`, `square`, `circle`). Every viewer's
+  device requests the URL itself and activities can be shared, so host the image
+  somewhere you are happy to expose to whoever holds the link.
 - **Two-phase end.** To end an activity with a clean final frame: first `PATCH`
   to `state="ongoing"` with the *final* content (so the last visible frame is
   correct), pause briefly so the user sees it, then `PATCH` to `state="ended"` to

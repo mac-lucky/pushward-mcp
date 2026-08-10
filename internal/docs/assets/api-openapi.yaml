@@ -952,6 +952,21 @@ components:
           description: "Icon name. SF Symbol (e.g. washer, flame) or Material Design Icon with mdi: prefix (e.g. mdi:thermometer)."
           maxLength: 128
           type: string
+        image_shape:
+          description: "How the image is framed: poster (2:3 cover art), square, or circle. Defaults to square when omitted."
+          enum:
+            - poster
+            - square
+            - circle
+          type: string
+        image_thumbhash:
+          description: ThumbHash of the image as padded standard-alphabet base64 (about 28 characters). Renders as a blurred stand-in until the download lands, and is the only tier that shows anything for an image the device cannot reach.
+          maxLength: 64
+          type: string
+        image_url:
+          description: "https URL of an image shown beside the icon. The server never fetches it: the device downloads and caches it, so the host must be publicly reachable over https (a LAN or Tailscale address will not load). Send image_thumbhash alongside it as the fallback."
+          maxLength: 2048
+          type: string
         live_progress:
           description: "Opt-in client-side interpolation: iOS animates the progress bar and ETA natively from progress + end_date between pushes instead of rendering a static bar. Requires end_date. Cleared with null."
           type: boolean
@@ -1320,6 +1335,21 @@ components:
         icon:
           description: "Icon name. SF Symbol (e.g. washer, flame) or Material Design Icon with mdi: prefix (e.g. mdi:thermometer)."
           maxLength: 128
+          type: string
+        image_shape:
+          description: "How the image is framed: poster (2:3 cover art), square, or circle. Defaults to square when omitted."
+          enum:
+            - poster
+            - square
+            - circle
+          type: string
+        image_thumbhash:
+          description: ThumbHash of the image as padded standard-alphabet base64 (about 28 characters). Renders as a blurred stand-in until the download lands, and is the only tier that shows anything for an image the device cannot reach.
+          maxLength: 64
+          type: string
+        image_url:
+          description: "https URL of an image shown beside the icon. The server never fetches it: the device downloads and caches it, so the host must be publicly reachable over https (a LAN or Tailscale address will not load). Send image_thumbhash alongside it as the fallback."
+          maxLength: 2048
           type: string
         live_progress:
           description: "Opt-in client-side interpolation: iOS animates the current step's bar from start_date to end_date between pushes instead of rendering a static fill. Requires end_date. Re-send it (or duration) on each step change to re-anchor. Cleared with null."
@@ -4255,7 +4285,7 @@ paths:
                     detail: validation failed
                     errors:
                       - location: body.template
-                        message: expected value to be one of "value", "progress", "status", "gauge", "stat_list"
+                        message: expected value to be one of "value", "progress", "status", "gauge", "stat_list", "trend", "countdown", "battery", "schedule", "flow"
                     instance: /requests/9f86d081884c7d65
                     status: 422
                     title: Unprocessable Entity

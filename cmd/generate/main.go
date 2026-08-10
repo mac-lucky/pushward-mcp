@@ -69,6 +69,16 @@ type schemaObj struct {
 	Desc                 string               `json:"description" yaml:"description"`
 	Examples             []any                `json:"examples" yaml:"examples"`
 	AdditionalProperties any                  `json:"additionalProperties" yaml:"additionalProperties"`
+	Discriminator        *discriminator       `json:"discriminator" yaml:"discriminator"`
+}
+
+// discriminator carries the template -> content-schema mapping the activity
+// `content` field declares. Tool generation forwards content as opaque JSON and
+// never branches on it, but the mapping is the only machine-readable statement
+// of which template accepts which fields, so the parity tests read it.
+type discriminator struct {
+	PropertyName string            `json:"propertyName" yaml:"propertyName"`
+	Mapping      map[string]string `json:"mapping" yaml:"mapping"`
 }
 
 // ---------- code generation models ----------
@@ -531,10 +541,13 @@ const widgetContentSchema = "WidgetContent"
 const mergePatchNote = "PATCH applies RFC 7396 JSON Merge Patch semantics - only send the fields you want to change, null clears a field, absent preserves. "
 
 // contentJSONDesc returns the description for a tool's content_json parameter.
-// The activity and widget content schemas are disjoint (different template enums,
-// both additionalProperties:false), so a single shared string misleads agents into
-// sending the wrong shape - which the server then rejects. POST create endpoints
-// require the full content object; PATCH endpoints apply RFC 7396 merge-patch.
+// The activity and widget content schemas are disjoint (different template enums),
+// so a single shared string misleads agents into sending the wrong shape - which
+// the server then rejects. Only WidgetContent is additionalProperties:false; the
+// activity Content* schemas take anything and lean on server-side validation
+// instead, which is why a field on the wrong activity template comes back as a
+// 422 rather than a schema error. POST create endpoints require the full content
+// object; PATCH endpoints apply RFC 7396 merge-patch.
 func contentJSONDesc(isWidget bool, method string) string {
 	patch := method == http.MethodPatch
 	if isWidget {
@@ -555,7 +568,14 @@ func contentJSONDesc(isWidget bool, method string) string {
 	if patch {
 		lead += mergePatchNote
 	}
-	return lead + "Fields: template (generic|countdown|steps|alert|gauge|timeline|board|log), progress (0.0-1.0), state, icon, subtitle, accent_color, background_color, text_color. Template-specific: countdown (duration as integer seconds (60) or duration string (\"60s\", \"1h30m\"), end_date [unix timestamp], warning_threshold, completion_message, alarm, snooze_seconds (60-3600, default 300; how far the /snooze action and iOS AlarmKit snooze extend the timer, only with alarm); if both duration and end_date are sent, end_date wins), steps (current_step, total_steps, step_labels), alert (severity: critical|warning|info, fired_at, severity_label), gauge (value, min_value, max_value, unit), timeline (value as {key:number}, history as {key:[{timestamp,value}]}, scale, thresholds), board (tiles: 1-4 labeled tiles, each {label, value [string], unit, icon, color, trend [up|down|flat], url_action {url}}, replaced wholesale per update), log (lines: 1-20 newest-first entries, each {text, at [unix seconds], level [info|warn|error]}, replaced wholesale per update; the server also keeps a read-only rolling log_backlog, fetch it via get_activity include_log_backlog)."
+	// The image trio is the one group of fields the server rejects outright on
+	// the wrong template (422, not a silent drop), so the restriction leads the
+	// clause. TestActivityImageFieldParity reads the field names, the template
+	// list, the shape enum and both length caps off the spec and matches them
+	// here through the literal delimiters "Images (" ... " only" and
+	// "image_shape (" ... ", default square)" - rewording either means moving
+	// the test's delimiters in the same change.
+	return lead + "Fields: template (generic|countdown|steps|alert|gauge|timeline|board|log), progress (0.0-1.0), state, icon, subtitle, accent_color, background_color, text_color. Template-specific: countdown (duration as integer seconds (60) or duration string (\"60s\", \"1h30m\"), end_date [unix timestamp], warning_threshold, completion_message, alarm, snooze_seconds (60-3600, default 300; how far the /snooze action and iOS AlarmKit snooze extend the timer, only with alarm); if both duration and end_date are sent, end_date wins), steps (current_step, total_steps, step_labels), alert (severity: critical|warning|info, fired_at, severity_label), gauge (value, min_value, max_value, unit), timeline (value as {key:number}, history as {key:[{timestamp,value}]}, scale, thresholds), board (tiles: 1-4 labeled tiles, each {label, value [string], unit, icon, color, trend [up|down|flat], url_action {url}}, replaced wholesale per update), log (lines: 1-20 newest-first entries, each {text, at [unix seconds], level [info|warn|error]}, replaced wholesale per update; the server also keeps a read-only rolling log_backlog, fetch it via get_activity include_log_backlog). Images (generic|steps only, 422 elsewhere; each works alone): image_url (https, max 2048, host required, no user:pass@; fetched by the device, not the server, so it must be publicly reachable), image_shape (poster|square|circle, default square), image_thumbhash (padded standard-alphabet base64 ThumbHash, ~28 chars, max 64; the blur until the image loads)."
 }
 
 func resolveRef(spec *openAPISpec, s schemaObj) schemaObj {

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"os"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strings"
 	"testing"
@@ -28,6 +29,42 @@ func repoRoot(t *testing.T) string {
 		}
 		dir = parent
 	}
+}
+
+// apiSpec parses the committed root API spec, skipping rather than failing where
+// the file is absent (a stripped sandbox), which is what every spec-backed test
+// wants.
+func apiSpec(t *testing.T) *openAPISpec {
+	t.Helper()
+	data, err := os.ReadFile(filepath.Join(repoRoot(t), "openapi.yaml"))
+	if err != nil {
+		t.Skipf("openapi.yaml not found: %v", err)
+	}
+	return parseSpecJSON(data, "api")
+}
+
+// clauseValues pulls the pipe-delimited list out of one clause of a hand-written
+// description - the templates between "Images (" and " only", the shapes between
+// "image_shape (" and ", default square)". Matching the delimited clause rather
+// than the whole string is the point: half these names are ordinary words in the
+// surrounding prose, so a plain Contains passes on a description that never lists
+// them. Both delimiters are literal and the closing one is searched after the
+// opening, so a reworded description fails as a wording problem here rather than
+// as a phantom spec mismatch further down.
+func clauseValues(t *testing.T, desc, open, closing string) []string {
+	t.Helper()
+	i := strings.Index(desc, open)
+	if i < 0 {
+		t.Fatalf("description carries no %q clause; that delimiter is literal and has to move with the wording: %s", open, desc)
+	}
+	rest := desc[i+len(open):]
+	j := strings.Index(rest, closing)
+	if j < 0 {
+		t.Fatalf("the %q clause is not closed by the literal %q: %s", open, closing, rest)
+	}
+	values := strings.Split(rest[:j], "|")
+	slices.Sort(values)
+	return values
 }
 
 func TestToSnakeCase(t *testing.T) {
@@ -287,12 +324,7 @@ func renderTemplate(tmpl *template.Template, data any) []byte {
 }
 
 func TestBuildAPITools_ExpectedSet(t *testing.T) {
-	root := repoRoot(t)
-	data, err := os.ReadFile(filepath.Join(root, "openapi.yaml"))
-	if err != nil {
-		t.Skipf("openapi.yaml not found: %v", err)
-	}
-	tools := buildAPITools(parseSpecJSON(data, "api"))
+	tools := buildAPITools(apiSpec(t))
 	if len(tools) == 0 {
 		t.Fatal("buildAPITools produced zero tools")
 	}
@@ -339,12 +371,7 @@ func TestBuildAPITools_ExpectedSet(t *testing.T) {
 // spec for a release while the description still advertised five. Every enum
 // value must appear in the description a coding agent reads.
 func TestWidgetTemplateEnumParity(t *testing.T) {
-	root := repoRoot(t)
-	data, err := os.ReadFile(filepath.Join(root, "openapi.yaml"))
-	if err != nil {
-		t.Skipf("openapi.yaml not found: %v", err)
-	}
-	spec := parseSpecJSON(data, "api")
+	spec := apiSpec(t)
 	widget, ok := spec.Components.Schemas[widgetContentSchema]
 	if !ok {
 		t.Fatalf("%s schema missing from openapi.yaml", widgetContentSchema)
@@ -353,28 +380,145 @@ func TestWidgetTemplateEnumParity(t *testing.T) {
 	if !ok || len(tmpl.Enum) == 0 {
 		t.Fatalf("%s.template carries no enum", widgetContentSchema)
 	}
-	// Match the pipe-delimited clause, not the whole string: half the template
-	// names (value, status, progress, trend, flow) are also ordinary words in the
-	// surrounding prose, so a plain Contains would pass on a description that
-	// never lists them.
-	desc := contentJSONDesc(true, "POST")
-	const open, close = "template (", " - selects the visual style)"
-	i, j := strings.Index(desc, open), strings.Index(desc, close)
-	if i < 0 || j < i {
-		t.Fatalf("could not find the template enum clause in the widget description: %s", desc)
-	}
-	listed := make(map[string]bool)
-	for _, name := range strings.Split(desc[i+len(open):j], "|") {
-		listed[name] = true
-	}
+	listed := clauseValues(t, contentJSONDesc(true, "POST"), "template (", " - selects the visual style)")
 	for _, name := range tmpl.Enum {
-		if !listed[name] {
+		if !slices.Contains(listed, name) {
 			t.Errorf("widget template %q is in the spec enum but absent from the content_json description", name)
 		}
 	}
-	for name := range listed {
+	for _, name := range listed {
 		if !slices.Contains(tmpl.Enum, name) {
 			t.Errorf("widget template %q is advertised but the spec enum does not carry it", name)
+		}
+	}
+}
+
+// The image trio is accepted on the generic and steps templates only - the
+// server 422s it anywhere else - so a description that names the fields without
+// the restriction sends agents into a rejected request. Field names, template
+// list, shape enum and length caps are all hand-written against a spec that
+// moves, the same drift the widget enum hit.
+func TestActivityImageFieldParity(t *testing.T) {
+	spec := apiSpec(t)
+	activity, ok := spec.Components.Schemas["Activity"]
+	if !ok {
+		t.Fatal("Activity schema missing from openapi.yaml")
+	}
+	content, ok := activity.Properties["content"]
+	if !ok || content.Discriminator == nil || len(content.Discriminator.Mapping) == 0 {
+		t.Fatal("Activity.content carries no discriminator mapping")
+	}
+	// The mapping is only a statement about templates while it is keyed on the
+	// template field; repointed at anything else it still parses, and everything
+	// below would then be walking the wrong axis.
+	if got := content.Discriminator.PropertyName; got != "template" {
+		t.Fatalf("Activity.content discriminates on %q, not template - the image restriction is stated per template", got)
+	}
+
+	// Which templates accept an image, which fields they take, and the bounds on
+	// those fields, all read off the spec rather than restated here - restating is
+	// what drifts.
+	fields := make(map[string]bool)
+	maxLengths := make(map[string]int)
+	var shapes []string
+	var templates []string
+	for template, ref := range content.Discriminator.Mapping {
+		schema, ok := spec.Components.Schemas[refTypeName(ref)]
+		if !ok {
+			t.Errorf("template %q maps to %q, which is not a component schema", template, ref)
+			continue
+		}
+		carries := false
+		for name, prop := range schema.Properties {
+			if !strings.HasPrefix(name, "image_") {
+				continue
+			}
+			fields[name] = true
+			carries = true
+			if prop.MaxLength != nil {
+				if prior, seen := maxLengths[name]; seen && prior != *prop.MaxLength {
+					t.Errorf("%s caps at %d on template %q but %d on another - the description can only state one", name, *prop.MaxLength, template, prior)
+				}
+				maxLengths[name] = *prop.MaxLength
+			}
+			if name == "image_shape" && len(prop.Enum) > 0 {
+				sorted := slices.Clone(prop.Enum)
+				slices.Sort(sorted)
+				if shapes != nil && !slices.Equal(shapes, sorted) {
+					t.Errorf("image_shape offers %v on template %q but %v on another", sorted, template, shapes)
+				}
+				shapes = sorted
+			}
+		}
+		if carries {
+			templates = append(templates, template)
+		}
+	}
+	if len(fields) == 0 {
+		t.Fatal("no image_ fields on any activity content schema - the committed openapi.yaml is behind the server")
+	}
+	slices.Sort(templates)
+
+	// PATCH is the variant that ships: CreateActivityRequest has no content
+	// property, so content_json reaches an agent only on update_activity.
+	desc := contentJSONDesc(false, "PATCH")
+	for name := range fields {
+		if !strings.Contains(desc, name) {
+			t.Errorf("activity content field %q is in the spec but absent from the content_json description", name)
+		}
+	}
+	for _, name := range regexp.MustCompile(`image_[a-z_]+`).FindAllString(desc, -1) {
+		if !fields[name] {
+			t.Errorf("the content_json description advertises %q, which no activity content schema carries", name)
+		}
+	}
+
+	if listed := clauseValues(t, desc, "Images (", " only"); !slices.Equal(listed, templates) {
+		t.Errorf("the image clause lists templates %v, the spec carries image fields on %v", listed, templates)
+	}
+	if len(shapes) == 0 {
+		t.Error("image_shape carries no enum in the spec, so the shapes the description offers are unpinned")
+	} else if listed := clauseValues(t, desc, "image_shape (", ", default square)"); !slices.Equal(listed, shapes) {
+		t.Errorf("the description offers shapes %v, the spec enum is %v", listed, shapes)
+	}
+
+	// A cap the description overstates is a request the agent builds and the
+	// server rejects, so both numbers come from the spec too.
+	maxRe := regexp.MustCompile(`max (\d+)`)
+	for _, field := range []string{"image_url", "image_thumbhash"} {
+		want, ok := maxLengths[field]
+		if !ok {
+			t.Errorf("%s carries no maxLength in the spec, so the cap the description states is unpinned", field)
+			continue
+		}
+		i := strings.Index(desc, field+" (")
+		if i < 0 {
+			t.Errorf("the description does not open a %q clause", field+" (")
+			continue
+		}
+		clause := desc[i:]
+		if end := strings.Index(clause, ")"); end >= 0 {
+			clause = clause[:end]
+		}
+		m := maxRe.FindStringSubmatch(clause)
+		if m == nil {
+			t.Errorf("the %s clause states no \"max <n>\": %s", field, clause)
+			continue
+		}
+		if m[1] != formatBound(float64(want)) {
+			t.Errorf("the %s clause caps at %s, the spec maxLength is %d", field, m[1], want)
+		}
+	}
+
+	// Widgets have no image support at all. If the server grows it, the widget
+	// description needs its own clause before this assertion is relaxed.
+	widget, ok := spec.Components.Schemas[widgetContentSchema]
+	if !ok {
+		t.Fatalf("%s schema missing from openapi.yaml", widgetContentSchema)
+	}
+	for name := range widget.Properties {
+		if strings.HasPrefix(name, "image_") {
+			t.Errorf("%s gained %q but the widget content_json description documents no images", widgetContentSchema, name)
 		}
 	}
 }
@@ -441,6 +585,11 @@ func TestContentJSONDesc(t *testing.T) {
 		if !strings.Contains(wPost, added) {
 			t.Errorf("widget desc missing template %q: %s", added, wPost)
 		}
+	}
+	// Widgets have no image support - advertising the activity trio there is a
+	// guaranteed rejected request.
+	if strings.Contains(wPost, "image_") {
+		t.Errorf("widget desc should not mention activity image fields: %s", wPost)
 	}
 	// Activity-only board/log fields must not leak into the widget description.
 	if strings.Contains(wPost, "tiles") || strings.Contains(wPost, "log_backlog") {
