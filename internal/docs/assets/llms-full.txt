@@ -2,7 +2,7 @@
 
 > Full Markdown bundle of every PushWard docs page, auto-generated from the prerendered HTML at build time. Source: https://pushward.app
 
-> Generated: 2026-08-10T00:16:46.423Z
+> Generated: 2026-08-11T15:39:01.531Z
 
 ---
 <!-- source: https://pushward.app/docs/getting-started -->
@@ -2154,6 +2154,7 @@ The `content` object is shared across all templates. Per-template required field
 | `text_color` | string | Optional override for primary text colour. |
 | `stat_rows` | array | **Required for `stat_list`.** 1 - 6 rows. Each row is `{ label (<=32), value (<=32), unit? (<=16) }`. `value` and `progress` render the first 3 as supporting rows on the large family; the remaining templates ignore them. |
 | `trend` | string | Optional `up` / `down` / `flat` annotation. Renders as an inline arrow on the rectangular (medium) `value` family. The server also accepts it on `gauge`, but the current iOS widget doesn't render the arrow there; `progress`, `status`, and `stat_list` ignore it. |
+| `device_sort` | object\[\] | Up to 2 `{ field, direction }` keys applied to `devices` before they are stored, so the prefix each family renders holds the devices that matter. `field` is `level` or `name`, `direction` is `asc` (the default) or `desc`. Omit to keep the order you sent. Applies to `battery`; the other templates ignore it. |
 | `tap_action` | object | Whole-widget tap target. When set, overrides the default "open the PushWard app to the widget detail" behaviour. See [Tap actions](#tap-actions). |
 | `url_action` | object | Primary inline button rendered on system widget families (small/medium/large). Same shape as `tap_action`; the optional `title` and `icon` become the button label. |
 | `secondary_url_action` | object | Secondary button shown next to `url_action` on medium and large families. Ignored on small. |
@@ -2763,6 +2764,9 @@ The `battery` template renders one ring per device, in the same idiom as Apple's
 | `devices[].charging` | boolean | Overlays a charging bolt on the ring |
 | `devices[].icon` | string | SF Symbol shown inside the ring, or an MDI icon prefixed with `mdi:`. Max 128 characters |
 | `devices[].color` | string | Ring color - named color or hex (see [Colors](https://pushward.app/docs/colors)). Default is green, switching to red at or below 20% |
+| `device_sort` | object\[\] | Up to 2 sort keys applied to `devices` before they are stored, so the smaller families show the devices you care about. Omit to keep the order you send |
+| `device_sort[].field` | string | **Required.** `level` or `name`. Names compare case-insensitively |
+| `device_sort[].direction` | string | `asc` (default) or `desc` |
 | `label`, `subtitle`, `icon`, `accent_color`, `background_color`, `text_color` | string | Shared content fields - see the [API reference](https://pushward.app/docs/widgets/api#content) |
 
 ## Example: household devices
@@ -2789,6 +2793,32 @@ PATCH /widgets/devices
 ## Behavior
 
 Each ring fills to its `level` and is tinted by its own `color`, falling back to green - and to red at or below 20%, so a device that needs attention stands out without you computing the color. `charging: true` adds the bolt overlay. Large Home Screen widgets list all eight devices; smaller families render as many as fit, taking them from the front of the array, so put the devices you care most about first.
+
+Once you track more than two devices that ordering matters, because the small family shows only the first two and the medium family the first four. Send `"device_sort": [{ "field": "level" }]` and the server reorders `devices` for you on every update, so the emptiest devices are the ones that stay visible as levels drift. Add `"direction": "desc"` to put the fullest first instead. Leave `device_sort` off when your order is deliberate - grouped by room, say - and nothing is reordered.
+
+Keys apply in order and the first one that separates two devices wins, so a second key is a tie-break. With one key, devices sharing a level keep the order you sent them in; add `{ "field": "name" }` after the level key and those ties resolve alphabetically instead, which keeps the widget stable when several devices sit at the same charge. You may send at most two keys and may not repeat a field.
+
+Lowest battery first, then alphabetical 
+
+```
+{
+  "content": {
+    "template": "battery",
+    "device_sort": [
+      { "field": "level", "direction": "asc" },
+      { "field": "name",  "direction": "asc" }
+    ],
+    "devices": [
+      { "name": "Vacuum",     "level": 68 },
+      { "name": "Front lock", "level": 45 },
+      { "name": "Doorbell",   "level": 45 },
+      { "name": "Sensor hub", "level": 92 }
+    ]
+  }
+}
+```
+
+The server stores the sorted array, so the response to that request - and every later `GET` - lists `Doorbell`, `Front lock`, `Vacuum`, `Sensor hub`, in that order. Because the reordering happens on write rather than on the device, it works on every version of the app already installed.
 
 ℹ Info
 
@@ -7802,6 +7832,8 @@ polling:
 ## Live Activity mapping
 
 Each `gcode_state` maps to one frame of the `generic` Live Activity template. The subtitle combines the print filename and nozzle temperature (`NN/NNdegC`) joined by ` · `.
+
+The activity title is the sliced file's base name, taken from `gcode_file` with the directory and the `.gcode`/`.3mf`/`.gcode.3mf` extension stripped. `subtask_name` is the fallback, because printers frequently report the slicer process preset there ("0.2mm layer, 6 walls, 20% infill") rather than the model name. Plates sent straight from Bambu Studio arrive as `/data/Metadata/plate_1.gcode` and fall back too, since a plate number says no more than the preset does.
 
 | Printer state | Activity state | State text | Icon | Color |
 |---|---|---|---|---|

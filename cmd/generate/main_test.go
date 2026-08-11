@@ -370,6 +370,35 @@ func TestBuildAPITools_ExpectedSet(t *testing.T) {
 // lives in the spec, so the two drift silently: the 1.6 templates sat in the
 // spec for a release while the description still advertised five. Every enum
 // value must appear in the description a coding agent reads.
+// TestWidgetContentFieldParity keeps the hand-written widget content_json prose
+// in step with the spec. The description is prose, not text generated from the
+// schema, so refreshing openapi.yaml on its own leaves a newly added server
+// field undocumented and agents never learn it exists - which is exactly how
+// device_sort shipped invisible. The activity side has the same guard in
+// TestActivityImageFieldParity.
+//
+// Forward direction only. Pulling field names back out of prose would need a
+// word-shaped regex that matches half the sentence, so an advertised-but-absent
+// field is left to review; the drift that actually happens is the server growing
+// a field this string never hears about.
+func TestWidgetContentFieldParity(t *testing.T) {
+	spec := apiSpec(t)
+	widget, ok := spec.Components.Schemas[widgetContentSchema]
+	if !ok {
+		t.Fatalf("%s schema missing from openapi.yaml", widgetContentSchema)
+	}
+	if len(widget.Properties) == 0 {
+		t.Fatalf("%s carries no properties - the committed openapi.yaml is behind the server", widgetContentSchema)
+	}
+	// POST and PATCH share the field list; only the lead sentence differs.
+	desc := contentJSONDesc(true, "POST")
+	for name := range widget.Properties {
+		if !strings.Contains(desc, name) {
+			t.Errorf("widget content field %q is in the spec but absent from the content_json description", name)
+		}
+	}
+}
+
 func TestWidgetTemplateEnumParity(t *testing.T) {
 	spec := apiSpec(t)
 	widget, ok := spec.Components.Schemas[widgetContentSchema]

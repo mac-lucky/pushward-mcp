@@ -1903,6 +1903,29 @@ components:
         - name
         - content
       type: object
+    DeviceSortKey:
+      additionalProperties: false
+      properties:
+        direction:
+          default: asc
+          description: Ordering direction. Defaults to ascending, so a 'level' key puts the emptiest device first.
+          enum:
+            - asc
+            - desc
+          examples:
+            - asc
+          type: string
+        field:
+          description: "What to order by: 'level' is the charge percentage, 'name' the device label (compared case-insensitively)."
+          enum:
+            - level
+            - name
+          examples:
+            - level
+          type: string
+      required:
+        - field
+      type: object
     EmailLog:
       additionalProperties: false
       properties:
@@ -2657,6 +2680,14 @@ components:
           type: string
         background_color:
           type: string
+        device_sort:
+          description: Reorders devices on write for the battery template, so the prefix each widget family renders (2 on small, 4 on medium, 8 on large) holds the devices that matter. Keys apply in order; the first that separates two devices wins, so a second key is a tie-break. The stored order changes, so this response and later GETs return the sorted array; devices no key separates keep the order you sent. Omit to keep the order as sent. Ignored for other templates.
+          items:
+            $ref: "#/components/schemas/DeviceSortKey"
+          maxItems: 2
+          type:
+            - array
+            - "null"
         devices:
           items:
             $ref: "#/components/schemas/BatteryDevice"
