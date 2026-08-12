@@ -2,7 +2,7 @@
 
 > Full Markdown bundle of every PushWard docs page, auto-generated from the prerendered HTML at build time. Source: https://pushward.app
 
-> Generated: 2026-08-11T15:39:01.531Z
+> Generated: 2026-08-12T08:02:45.616Z
 
 ---
 <!-- source: https://pushward.app/docs/getting-started -->
@@ -2987,7 +2987,7 @@ Sending email needs the dedicated **emails** capability. Your auto-created **def
 
 ℹ Info
 
-Email is metered: **500** messages/month on the free tier and **2,500** messages/month on paid. The quota resets on the 1st (UTC). See [Limits](https://pushward.app/docs/limits) for how email compares to the other quotas.
+Email is metered: **50** messages/month on the free tier and **200** messages/month on paid. The quota resets on the 1st (UTC). See [Limits](https://pushward.app/docs/limits) for how email compares to the other quotas.
 
 ## Send an Email
 
@@ -4290,7 +4290,7 @@ All API endpoints are rate-limited per IP address:
 HTTP `429 Too Many Requests` is returned in two cases - distinguish them via the `code` field on the `application/problem+json` body:
 
 -   `code: "rate_limit.exceeded"` - per-IP request rate limit (the table above). Transient; back off using `Retry-After` (typically a few seconds) and retry.
--   `code: "quota.exceeded"` - authenticated user's free-tier monthly allowance is exhausted (500 notifications, 250 Live Activity updates, 50 widget updates, and 500 emails per month, calendar-month UTC reset - see [Limits](https://pushward.app/docs/limits)). The body includes `kind`, `used`, `limit`, and `reset_at`; `Retry-After` is the seconds until the quota resets. Retrying before `reset_at` on the free tier will keep failing - surface an upgrade prompt instead.
+-   `code: "quota.exceeded"` - authenticated user's free-tier monthly allowance is exhausted (500 notifications, 250 Live Activity updates, 50 widget updates, and 50 emails per month, calendar-month UTC reset - see [Limits](https://pushward.app/docs/limits)). The body includes `kind`, `used`, `limit`, and `reset_at`; `Retry-After` is the seconds until the quota resets. Retrying before `reset_at` on the free tier will keep failing - surface an upgrade prompt instead.
 
 See [Errors](https://pushward.app/docs/api/activities#errors) for the full Problem Details shape and a `quota.exceeded` example response.
 
@@ -4374,7 +4374,7 @@ Get the current user's profile, activity count, and current quota usage.
   "widget_updates_used": 12,
   "widget_updates_limit": 50,
   "emails_used": 3,
-  "emails_limit": 500,
+  "emails_limit": 50,
   "quota_resets_at": "2026-07-01T00:00:00Z"
 }
 ```
@@ -4395,7 +4395,7 @@ Integration keys read their own live usage here - the iOS app polls `/auth/me` f
 | `notifications_used` / `notifications_limit` | integer | Notifications sent this period and your tier's cap. `*_limit` is omitted when uncapped. |
 | `live_activity_updates_used` / `live_activity_updates_limit` | integer | Live Activity updates this month and your tier's cap |
 | `widget_updates_used` / `widget_updates_limit` | integer | Widget updates this month and your tier's cap |
-| `emails_used` / `emails_limit` | integer | Emails sent this month and your tier's cap (free 500, paid 2,500) |
+| `emails_used` / `emails_limit` | integer | Emails sent this month and your tier's cap (free 50, paid 200) |
 | `quota_resets_at` | string | ISO 8601 instant the active counters reset |
 
 ## Access Control
@@ -5513,11 +5513,11 @@ The Free tier includes a generous monthly allowance that resets on the 1st of ea
 | Push notifications | **500** / month | Effectively unlimited (**5,000** / UTC day safety cap) |
 | Live Activity updates | **250** / month | Unlimited |
 | [Widget](https://pushward.app/docs/widgets) updates | **50** / month | Unlimited |
-| Emails | **500** / month | **2,500** / month |
+| Emails | **50** / month | **200** / month |
 
 ℹ Info
 
-Email is the only resource with a **monthly** cap on paid plans - **2,500** messages per month - because every email carries a real per-message delivery cost, so paid plans bundle a generous fixed allowance rather than an open-ended one. It resets on the 1st of the month alongside every other quota. Live Activity and widget updates are completely uncapped. Push notifications have no monthly cap either; they carry only a **5,000** per-UTC-day circuit breaker (≈150,000/month) that exists purely to contain a runaway automation loop - normal use never reaches it.
+Email is the only resource with a **monthly** cap on paid plans - **200** messages per month - because every email carries a real per-message delivery cost, so paid plans bundle a fixed monthly allowance rather than an open-ended one. It resets on the 1st of the month alongside every other quota. Live Activity and widget updates are completely uncapped. Push notifications have no monthly cap either; they carry only a **5,000** per-UTC-day circuit breaker (≈150,000/month) that exists purely to contain a runaway automation loop - normal use never reaches it.
 
 Once a quota is exhausted, further requests return `429 Too Many Requests` with `code: "quota.exceeded"` and a `reset_at` timestamp indicating when the quota resets. See [API errors](https://pushward.app/docs/api/activities#errors) for the full response shape.
 

@@ -3888,12 +3888,12 @@ paths:
                     detail: quota exceeded for emails
                     instance: /requests/9f86d081884c7d65
                     kind: emails
-                    limit: 500
+                    limit: 50
                     reset_at: "2026-08-01T00:00:00Z"
                     status: 429
                     title: Too Many Requests
                     type: https://pushward.app/errors/too-many-requests
-                    used: 500
+                    used: 50
                 rate_limit:
                   summary: Per-client rate limit exceeded
                   value:
