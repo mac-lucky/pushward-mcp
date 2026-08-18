@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
+	"slices"
 	"strings"
 	"time"
 
@@ -35,18 +37,21 @@ const (
 	tmplTimeline  = "timeline"
 	tmplBoard     = "board"
 	tmplLog       = "log"
+	tmplMedia     = "media"
 
 	defaultTemplate = tmplGeneric
 )
 
+// placeholderToggleURL is the play_pause target the media lifecycle falls back to
+// when the caller gave no tap_action_url. An http(s) control URL is a silent
+// webhook, so the button needs somewhere to point even in a test.
+const placeholderToggleURL = "https://example.com/pw/toggle"
+
 // lifecycleTemplates is the set of content templates the test_activity_lifecycle
-// tool advertises and that buildTestContent knows how to populate. Single source
-// so the enum, the switch, and the parity test can't drift - mirrors the
-// relayTestProviders pattern.
-var lifecycleTemplates = []string{
-	tmplGeneric, tmplCountdown, tmplSteps, tmplAlert, tmplGauge, tmplTimeline,
-	tmplBoard, tmplLog,
-}
+// tool advertises. It is the builder keys rather than a second list, so the enum
+// cannot offer a template buildTestContent has no fields for. Sorted, so the
+// order an agent sees does not move between builds.
+var lifecycleTemplates = slices.Sorted(maps.Keys(testContentBuilders))
 
 // relayTestProviders is the set of providers accepted by the test_relay_provider
 // tool's enum. Every entry must have a fixture in testPayloads - enforced by
@@ -122,7 +127,7 @@ func registerCompositeTools(s *mcpserver.MCPServer, api *client.APIClient, relay
 				mcp.Description("Human-readable activity name"),
 			),
 			mcp.WithString("template",
-				mcp.Description("Content template (default: generic)"),
+				mcp.Description("Content template (default: generic). media runs the player card through the same lifecycle: playing at the halfway mark, then stopped, with a play_pause control pointing at tap_action_url or a placeholder https URL."),
 				mcp.Enum(lifecycleTemplates...),
 			),
 			mcp.WithBoolean("cleanup",
@@ -439,6 +444,82 @@ func verifyActivityState(ctx context.Context, api *client.APIClient, slug, want 
 	return fmt.Sprintf("%d. Verify %s: expected %s, got %s", step, want, want, got), false
 }
 
+// testContentBuilder fills in the template-specific half of a lifecycle test
+// content object. The shared fields are already set when it runs.
+type testContentBuilder func(content map[string]any, progress float64, state, tapURL string)
+
+// testContentBuilders is the one place a lifecycle template is defined: what it
+// sends, and (through lifecycleTemplates) that the tool offers it at all.
+var testContentBuilders = map[string]testContentBuilder{
+	// generic needs nothing past the shared fields; the entry is what puts it
+	// in the enum.
+	tmplGeneric: func(map[string]any, float64, string, string) {},
+	tmplSteps: func(content map[string]any, _ float64, _, _ string) {
+		content["current_step"] = 1
+		content["total_steps"] = 2
+	},
+	tmplAlert: func(content map[string]any, _ float64, _, _ string) {
+		content["severity"] = "info"
+	},
+	tmplGauge: func(content map[string]any, progress float64, _, _ string) {
+		content["value"] = progress * 100
+		content["min_value"] = 0
+		content["max_value"] = 100
+		content["unit"] = "%"
+	},
+	// countdown requires an end_date; the server resolves a duration string
+	// into start/end dates, so this satisfies validation on both PATCHes.
+	tmplCountdown: func(content map[string]any, _ float64, _, _ string) {
+		content["duration"] = "5m"
+	},
+	// timeline value must be a labeled map ({key: number}), not a scalar -
+	// the server rejects a bare number for this template.
+	tmplTimeline: func(content map[string]any, progress float64, _, _ string) {
+		content["value"] = map[string]any{"Value": progress * 100}
+	},
+	// board requires 1-4 tiles; tile values are strings (not numeric),
+	// replaced wholesale on every update.
+	tmplBoard: func(content map[string]any, progress float64, state, _ string) {
+		content["tiles"] = []map[string]any{
+			{"label": "Progress", "value": fmt.Sprintf("%d%%", int(progress*100)), "trend": "up"},
+			{"label": "Status", "value": state, "icon": "checkmark.circle"},
+		}
+	},
+	// log requires 1-20 lines, newest-first; each line needs text, replaced
+	// wholesale on every update.
+	tmplLog: func(content map[string]any, _ float64, state, _ string) {
+		content["lines"] = []map[string]any{
+			{"text": state, "level": "info"},
+			{"text": "Lifecycle test started", "level": "info"},
+		}
+	},
+	// media ticks on device only while playing; the ended frame is stopped
+	// so the card freezes at the end of the track. The playhead follows the
+	// lifecycle progress against a fixed duration, and the one control is
+	// the play_pause toggle: http(s) control URLs are silent webhooks with
+	// no foreground option, so the tap URL doubles as the toggle target
+	// when the caller gave one.
+	tmplMedia: func(content map[string]any, progress float64, _, tapURL string) {
+		const duration = 240
+		playback := "playing"
+		if progress >= 1 {
+			playback = "stopped"
+		}
+		toggle := tapURL
+		if toggle == "" {
+			toggle = placeholderToggleURL
+		}
+		content["media_title"] = "Lifecycle test track"
+		content["subtitle"] = "pushward-mcp"
+		content["playback_state"] = playback
+		content["position_seconds"] = progress * duration
+		content["duration_seconds"] = duration
+		content["controls"] = map[string]any{
+			"play_pause": map[string]any{"url": toggle},
+		}
+	},
+}
+
 func buildTestContent(tmpl string, progress float64, state, tapURL string) json.RawMessage {
 	content := map[string]any{
 		"template":     tmpl,
@@ -448,39 +529,10 @@ func buildTestContent(tmpl string, progress float64, state, tapURL string) json.
 		"accent_color": "blue",
 	}
 
-	switch tmpl {
-	case tmplSteps:
-		content["current_step"] = 1
-		content["total_steps"] = 2
-	case tmplAlert:
-		content["severity"] = "info"
-	case tmplGauge:
-		content["value"] = progress * 100
-		content["min_value"] = 0
-		content["max_value"] = 100
-		content["unit"] = "%"
-	case tmplCountdown:
-		// countdown requires an end_date; the server resolves a duration string
-		// into start/end dates, so this satisfies validation on both PATCHes.
-		content["duration"] = "5m"
-	case tmplTimeline:
-		// timeline value must be a labeled map ({key: number}), not a scalar -
-		// the server rejects a bare number for this template.
-		content["value"] = map[string]any{"Value": progress * 100}
-	case tmplBoard:
-		// board requires 1-4 tiles; tile values are strings (not numeric),
-		// replaced wholesale on every update.
-		content["tiles"] = []map[string]any{
-			{"label": "Progress", "value": fmt.Sprintf("%d%%", int(progress*100)), "trend": "up"},
-			{"label": "Status", "value": state, "icon": "checkmark.circle"},
-		}
-	case tmplLog:
-		// log requires 1-20 lines, newest-first; each line needs text, replaced
-		// wholesale on every update.
-		content["lines"] = []map[string]any{
-			{"text": state, "level": "info"},
-			{"text": "Lifecycle test started", "level": "info"},
-		}
+	// An unknown template still produces the shared fields and lets the server
+	// reject it, which is what the switch this replaced did.
+	if build, ok := testContentBuilders[tmpl]; ok {
+		build(content, progress, state, tapURL)
 	}
 
 	if tapURL != "" {

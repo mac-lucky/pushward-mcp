@@ -228,6 +228,90 @@ func TestBuildTestContent_Log(t *testing.T) {
 	}
 }
 
+func TestBuildTestContent_Media(t *testing.T) {
+	raw := buildTestContent("media", 0.5, "Testing...", "")
+	var m map[string]any
+	if err := json.Unmarshal(raw, &m); err != nil {
+		t.Fatalf("invalid JSON: %v", err)
+	}
+	if m["media_title"] == "" || m["media_title"] == nil {
+		t.Error("media_title must be set")
+	}
+	// The ongoing frame plays so the device scrubber ticks; the playhead sits
+	// at the lifecycle progress against the fixed duration.
+	if m["playback_state"] != "playing" {
+		t.Errorf("playback_state = %v, want playing", m["playback_state"])
+	}
+	duration, ok := m["duration_seconds"].(float64)
+	if !ok || duration <= 0 {
+		t.Fatalf("duration_seconds missing or not positive: %v", m["duration_seconds"])
+	}
+	if pos, _ := m["position_seconds"].(float64); pos != duration/2 {
+		t.Errorf("position_seconds = %v, want %v (progress 0.5)", pos, duration/2)
+	}
+	controls, ok := m["controls"].(map[string]any)
+	if !ok {
+		t.Fatalf("controls missing or wrong type: %v", m["controls"])
+	}
+	toggle, ok := controls["play_pause"].(map[string]any)
+	if !ok {
+		t.Fatalf("controls.play_pause missing or wrong type: %v", controls["play_pause"])
+	}
+	// http(s) control URLs must be present without foreground: the server
+	// rejects foreground on media controls and fills the method itself.
+	if u, _ := toggle["url"].(string); !strings.HasPrefix(u, "https://") {
+		t.Errorf("controls.play_pause.url = %v, want a placeholder https URL", toggle["url"])
+	}
+	if _, present := toggle["foreground"]; present {
+		t.Error("controls.play_pause must not carry foreground")
+	}
+
+	// A caller-supplied tap URL becomes the toggle target so the lifecycle
+	// exercises the button against something real.
+	const url = "myapp://toggle"
+	raw = buildTestContent("media", 1.0, "Done", url)
+	if err := json.Unmarshal(raw, &m); err != nil {
+		t.Fatalf("invalid JSON: %v", err)
+	}
+	if m["playback_state"] != "stopped" {
+		t.Errorf("ended frame playback_state = %v, want stopped", m["playback_state"])
+	}
+	toggle = m["controls"].(map[string]any)["play_pause"].(map[string]any)
+	if toggle["url"] != url {
+		t.Errorf("controls.play_pause.url = %v, want %s", toggle["url"], url)
+	}
+
+	// The card stops on the frame that reaches 1, not on the one that is nearly
+	// there: a 0.99 push is still playing, and a threshold that rounded it down
+	// would freeze the scrubber a beat before the track ends.
+	raw = buildTestContent("media", 0.99, "Almost", "")
+	if err := json.Unmarshal(raw, &m); err != nil {
+		t.Fatalf("invalid JSON: %v", err)
+	}
+	if m["playback_state"] != "playing" {
+		t.Errorf("playback_state at progress 0.99 = %v, want playing", m["playback_state"])
+	}
+
+	// A tap URL has to produce the controls block and the shared tap_action
+	// together. The combination is what the device reads: a media card carrying
+	// controls renders them as buttons rather than wrapping the whole card in one
+	// tap target, so tap_action is then the only route back into the app.
+	raw = buildTestContent("media", 0.5, "Testing...", url)
+	if err := json.Unmarshal(raw, &m); err != nil {
+		t.Fatalf("invalid JSON: %v", err)
+	}
+	if _, ok := m["controls"].(map[string]any); !ok {
+		t.Errorf("controls missing or wrong type with a tap URL: %v", m["controls"])
+	}
+	tap, ok := m["tap_action"].(map[string]any)
+	if !ok {
+		t.Fatalf("tap_action missing or wrong type with a tap URL: %v", m["tap_action"])
+	}
+	if tap["url"] != url {
+		t.Errorf("tap_action.url = %v, want %s", tap["url"], url)
+	}
+}
+
 func TestBuildTestContent_AllLifecycleTemplatesValidJSON(t *testing.T) {
 	// Every template the lifecycle tool advertises must produce parseable JSON
 	// carrying its required template-specific fields.
@@ -240,6 +324,7 @@ func TestBuildTestContent_AllLifecycleTemplatesValidJSON(t *testing.T) {
 		"timeline":  {"template", "value"},
 		"board":     {"template", "tiles"},
 		"log":       {"template", "lines"},
+		"media":     {"template", "media_title", "playback_state", "position_seconds", "controls"},
 	}
 	// Parity: the assertions below must cover exactly the templates the tool
 	// advertises in lifecycleTemplates - adding one to the enum without a fixture

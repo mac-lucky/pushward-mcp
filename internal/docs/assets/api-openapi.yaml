@@ -19,6 +19,7 @@ components:
               gauge: "#/components/schemas/ContentGauge"
               generic: "#/components/schemas/ContentGeneric"
               log: "#/components/schemas/ContentLog"
+              media: "#/components/schemas/ContentMedia"
               steps: "#/components/schemas/ContentSteps"
               timeline: "#/components/schemas/ContentTimeline"
             propertyName: template
@@ -39,6 +40,8 @@ components:
               title: Board
             - $ref: "#/components/schemas/ContentLog"
               title: Log
+            - $ref: "#/components/schemas/ContentMedia"
+              title: Media
         created_at:
           description: Timestamp when the activity was created.
           format: date-time
@@ -1307,6 +1310,630 @@ components:
         - template
       title: Log
       type: object
+    ContentMedia:
+      additionalProperties: true
+      description: "A remote media player card: cover art (image trio), media_title over subtitle (artist/show), a scrubber that ticks on device from position_seconds/position_at while playback_state is playing, and transport buttons (controls) that fire your own webhooks. The activity name is the source device (e.g. Living Room). Needs the iOS app 1.9.0 or later; older builds render it as the generic card with a static progress bar."
+      properties:
+        accent_color:
+          description: "Accent color: named color or hex (#RRGGBB / #RRGGBBAA)."
+          type: string
+        background_color:
+          description: "Background color: named color or hex."
+          type: string
+        controls:
+          description: "Transport buttons. Each slot is a tap action the device fires on tap; omit a slot to hide its button. play_pause is a single toggle endpoint; play and pause are the split alternative (the device picks by playback_state and falls back to play_pause). On PATCH the object deep-merges: {\"controls\":{\"stop\":null}} removes one slot; extra replaces wholesale."
+          properties:
+            extra:
+              description: Up to 3 custom buttons rendered in a row under the transport controls. Replaced wholesale on each update.
+              items:
+                description: Custom button. icon (SF Symbol) is required; title is the accessibility label.
+                properties:
+                  body:
+                    description: HTTP request body for silent webhook. <=1KB. Ignored for custom-scheme URLs.
+                    maxLength: 1024
+                    type: string
+                  foreground:
+                    description: "For http(s) URLs only: true opens the URL in Safari / in-app browser; false fires the request silently without launching the app (silent webhook). Ignored for custom-scheme URLs."
+                    type: boolean
+                  headers:
+                    additionalProperties:
+                      type: string
+                    description: HTTP headers for silent webhook. Total <=1KB. Ignored for custom-scheme URLs.
+                    type: object
+                  icon:
+                    description: SF Symbol name (e.g. checkmark.circle).
+                    maxLength: 64
+                    type: string
+                  method:
+                    description: HTTP method for silent webhook (foreground=false). Defaults to GET. Ignored for custom-scheme URLs.
+                    enum:
+                      - GET
+                      - POST
+                      - PUT
+                      - PATCH
+                      - DELETE
+                      - HEAD
+                    type: string
+                  title:
+                    description: Button label shown to the user.
+                    maxLength: 64
+                    type: string
+                  url:
+                    description: Target URL. Any scheme except javascript/data/file/vbscript. http(s) URLs require a host; custom schemes (e.g. youtube://, homeassistant://) open the matching app.
+                    maxLength: 2048
+                    type: string
+                required:
+                  - url
+                  - icon
+                type: object
+              maxItems: 3
+              type: array
+            favorite:
+              description: Webhook fired when this button is tapped. http(s) URLs are always silent webhooks (method defaults to POST; foreground is rejected); custom schemes open that app. title is ignored on the fixed slots - the glyph is the label.
+              properties:
+                body:
+                  description: HTTP request body for silent webhook. <=1KB. Ignored for custom-scheme URLs.
+                  maxLength: 1024
+                  type: string
+                foreground:
+                  description: "For http(s) URLs only: true opens the URL in Safari / in-app browser; false fires the request silently without launching the app (silent webhook). Ignored for custom-scheme URLs."
+                  type: boolean
+                headers:
+                  additionalProperties:
+                    type: string
+                  description: HTTP headers for silent webhook. Total <=1KB. Ignored for custom-scheme URLs.
+                  type: object
+                icon:
+                  description: SF Symbol name (e.g. checkmark.circle).
+                  maxLength: 64
+                  type: string
+                method:
+                  description: HTTP method for silent webhook (foreground=false). Defaults to GET. Ignored for custom-scheme URLs.
+                  enum:
+                    - GET
+                    - POST
+                    - PUT
+                    - PATCH
+                    - DELETE
+                    - HEAD
+                  type: string
+                title:
+                  description: Button label shown to the user.
+                  maxLength: 64
+                  type: string
+                url:
+                  description: Target URL. Any scheme except javascript/data/file/vbscript. http(s) URLs require a host; custom schemes (e.g. youtube://, homeassistant://) open the matching app.
+                  maxLength: 2048
+                  type: string
+              required:
+                - url
+              type: object
+            next:
+              description: Webhook fired when this button is tapped. http(s) URLs are always silent webhooks (method defaults to POST; foreground is rejected); custom schemes open that app. title is ignored on the fixed slots - the glyph is the label.
+              properties:
+                body:
+                  description: HTTP request body for silent webhook. <=1KB. Ignored for custom-scheme URLs.
+                  maxLength: 1024
+                  type: string
+                foreground:
+                  description: "For http(s) URLs only: true opens the URL in Safari / in-app browser; false fires the request silently without launching the app (silent webhook). Ignored for custom-scheme URLs."
+                  type: boolean
+                headers:
+                  additionalProperties:
+                    type: string
+                  description: HTTP headers for silent webhook. Total <=1KB. Ignored for custom-scheme URLs.
+                  type: object
+                icon:
+                  description: SF Symbol name (e.g. checkmark.circle).
+                  maxLength: 64
+                  type: string
+                method:
+                  description: HTTP method for silent webhook (foreground=false). Defaults to GET. Ignored for custom-scheme URLs.
+                  enum:
+                    - GET
+                    - POST
+                    - PUT
+                    - PATCH
+                    - DELETE
+                    - HEAD
+                  type: string
+                title:
+                  description: Button label shown to the user.
+                  maxLength: 64
+                  type: string
+                url:
+                  description: Target URL. Any scheme except javascript/data/file/vbscript. http(s) URLs require a host; custom schemes (e.g. youtube://, homeassistant://) open the matching app.
+                  maxLength: 2048
+                  type: string
+              required:
+                - url
+              type: object
+            pause:
+              description: Webhook fired when this button is tapped. http(s) URLs are always silent webhooks (method defaults to POST; foreground is rejected); custom schemes open that app. title is ignored on the fixed slots - the glyph is the label.
+              properties:
+                body:
+                  description: HTTP request body for silent webhook. <=1KB. Ignored for custom-scheme URLs.
+                  maxLength: 1024
+                  type: string
+                foreground:
+                  description: "For http(s) URLs only: true opens the URL in Safari / in-app browser; false fires the request silently without launching the app (silent webhook). Ignored for custom-scheme URLs."
+                  type: boolean
+                headers:
+                  additionalProperties:
+                    type: string
+                  description: HTTP headers for silent webhook. Total <=1KB. Ignored for custom-scheme URLs.
+                  type: object
+                icon:
+                  description: SF Symbol name (e.g. checkmark.circle).
+                  maxLength: 64
+                  type: string
+                method:
+                  description: HTTP method for silent webhook (foreground=false). Defaults to GET. Ignored for custom-scheme URLs.
+                  enum:
+                    - GET
+                    - POST
+                    - PUT
+                    - PATCH
+                    - DELETE
+                    - HEAD
+                  type: string
+                title:
+                  description: Button label shown to the user.
+                  maxLength: 64
+                  type: string
+                url:
+                  description: Target URL. Any scheme except javascript/data/file/vbscript. http(s) URLs require a host; custom schemes (e.g. youtube://, homeassistant://) open the matching app.
+                  maxLength: 2048
+                  type: string
+              required:
+                - url
+              type: object
+            play:
+              description: Webhook fired when this button is tapped. http(s) URLs are always silent webhooks (method defaults to POST; foreground is rejected); custom schemes open that app. title is ignored on the fixed slots - the glyph is the label.
+              properties:
+                body:
+                  description: HTTP request body for silent webhook. <=1KB. Ignored for custom-scheme URLs.
+                  maxLength: 1024
+                  type: string
+                foreground:
+                  description: "For http(s) URLs only: true opens the URL in Safari / in-app browser; false fires the request silently without launching the app (silent webhook). Ignored for custom-scheme URLs."
+                  type: boolean
+                headers:
+                  additionalProperties:
+                    type: string
+                  description: HTTP headers for silent webhook. Total <=1KB. Ignored for custom-scheme URLs.
+                  type: object
+                icon:
+                  description: SF Symbol name (e.g. checkmark.circle).
+                  maxLength: 64
+                  type: string
+                method:
+                  description: HTTP method for silent webhook (foreground=false). Defaults to GET. Ignored for custom-scheme URLs.
+                  enum:
+                    - GET
+                    - POST
+                    - PUT
+                    - PATCH
+                    - DELETE
+                    - HEAD
+                  type: string
+                title:
+                  description: Button label shown to the user.
+                  maxLength: 64
+                  type: string
+                url:
+                  description: Target URL. Any scheme except javascript/data/file/vbscript. http(s) URLs require a host; custom schemes (e.g. youtube://, homeassistant://) open the matching app.
+                  maxLength: 2048
+                  type: string
+              required:
+                - url
+              type: object
+            play_pause:
+              description: Webhook fired when this button is tapped. http(s) URLs are always silent webhooks (method defaults to POST; foreground is rejected); custom schemes open that app. title is ignored on the fixed slots - the glyph is the label.
+              properties:
+                body:
+                  description: HTTP request body for silent webhook. <=1KB. Ignored for custom-scheme URLs.
+                  maxLength: 1024
+                  type: string
+                foreground:
+                  description: "For http(s) URLs only: true opens the URL in Safari / in-app browser; false fires the request silently without launching the app (silent webhook). Ignored for custom-scheme URLs."
+                  type: boolean
+                headers:
+                  additionalProperties:
+                    type: string
+                  description: HTTP headers for silent webhook. Total <=1KB. Ignored for custom-scheme URLs.
+                  type: object
+                icon:
+                  description: SF Symbol name (e.g. checkmark.circle).
+                  maxLength: 64
+                  type: string
+                method:
+                  description: HTTP method for silent webhook (foreground=false). Defaults to GET. Ignored for custom-scheme URLs.
+                  enum:
+                    - GET
+                    - POST
+                    - PUT
+                    - PATCH
+                    - DELETE
+                    - HEAD
+                  type: string
+                title:
+                  description: Button label shown to the user.
+                  maxLength: 64
+                  type: string
+                url:
+                  description: Target URL. Any scheme except javascript/data/file/vbscript. http(s) URLs require a host; custom schemes (e.g. youtube://, homeassistant://) open the matching app.
+                  maxLength: 2048
+                  type: string
+              required:
+                - url
+              type: object
+            previous:
+              description: Webhook fired when this button is tapped. http(s) URLs are always silent webhooks (method defaults to POST; foreground is rejected); custom schemes open that app. title is ignored on the fixed slots - the glyph is the label.
+              properties:
+                body:
+                  description: HTTP request body for silent webhook. <=1KB. Ignored for custom-scheme URLs.
+                  maxLength: 1024
+                  type: string
+                foreground:
+                  description: "For http(s) URLs only: true opens the URL in Safari / in-app browser; false fires the request silently without launching the app (silent webhook). Ignored for custom-scheme URLs."
+                  type: boolean
+                headers:
+                  additionalProperties:
+                    type: string
+                  description: HTTP headers for silent webhook. Total <=1KB. Ignored for custom-scheme URLs.
+                  type: object
+                icon:
+                  description: SF Symbol name (e.g. checkmark.circle).
+                  maxLength: 64
+                  type: string
+                method:
+                  description: HTTP method for silent webhook (foreground=false). Defaults to GET. Ignored for custom-scheme URLs.
+                  enum:
+                    - GET
+                    - POST
+                    - PUT
+                    - PATCH
+                    - DELETE
+                    - HEAD
+                  type: string
+                title:
+                  description: Button label shown to the user.
+                  maxLength: 64
+                  type: string
+                url:
+                  description: Target URL. Any scheme except javascript/data/file/vbscript. http(s) URLs require a host; custom schemes (e.g. youtube://, homeassistant://) open the matching app.
+                  maxLength: 2048
+                  type: string
+              required:
+                - url
+              type: object
+            stop:
+              description: Webhook fired when this button is tapped. http(s) URLs are always silent webhooks (method defaults to POST; foreground is rejected); custom schemes open that app. title is ignored on the fixed slots - the glyph is the label.
+              properties:
+                body:
+                  description: HTTP request body for silent webhook. <=1KB. Ignored for custom-scheme URLs.
+                  maxLength: 1024
+                  type: string
+                foreground:
+                  description: "For http(s) URLs only: true opens the URL in Safari / in-app browser; false fires the request silently without launching the app (silent webhook). Ignored for custom-scheme URLs."
+                  type: boolean
+                headers:
+                  additionalProperties:
+                    type: string
+                  description: HTTP headers for silent webhook. Total <=1KB. Ignored for custom-scheme URLs.
+                  type: object
+                icon:
+                  description: SF Symbol name (e.g. checkmark.circle).
+                  maxLength: 64
+                  type: string
+                method:
+                  description: HTTP method for silent webhook (foreground=false). Defaults to GET. Ignored for custom-scheme URLs.
+                  enum:
+                    - GET
+                    - POST
+                    - PUT
+                    - PATCH
+                    - DELETE
+                    - HEAD
+                  type: string
+                title:
+                  description: Button label shown to the user.
+                  maxLength: 64
+                  type: string
+                url:
+                  description: Target URL. Any scheme except javascript/data/file/vbscript. http(s) URLs require a host; custom schemes (e.g. youtube://, homeassistant://) open the matching app.
+                  maxLength: 2048
+                  type: string
+              required:
+                - url
+              type: object
+            volume_down:
+              description: Webhook fired when this button is tapped. http(s) URLs are always silent webhooks (method defaults to POST; foreground is rejected); custom schemes open that app. title is ignored on the fixed slots - the glyph is the label.
+              properties:
+                body:
+                  description: HTTP request body for silent webhook. <=1KB. Ignored for custom-scheme URLs.
+                  maxLength: 1024
+                  type: string
+                foreground:
+                  description: "For http(s) URLs only: true opens the URL in Safari / in-app browser; false fires the request silently without launching the app (silent webhook). Ignored for custom-scheme URLs."
+                  type: boolean
+                headers:
+                  additionalProperties:
+                    type: string
+                  description: HTTP headers for silent webhook. Total <=1KB. Ignored for custom-scheme URLs.
+                  type: object
+                icon:
+                  description: SF Symbol name (e.g. checkmark.circle).
+                  maxLength: 64
+                  type: string
+                method:
+                  description: HTTP method for silent webhook (foreground=false). Defaults to GET. Ignored for custom-scheme URLs.
+                  enum:
+                    - GET
+                    - POST
+                    - PUT
+                    - PATCH
+                    - DELETE
+                    - HEAD
+                  type: string
+                title:
+                  description: Button label shown to the user.
+                  maxLength: 64
+                  type: string
+                url:
+                  description: Target URL. Any scheme except javascript/data/file/vbscript. http(s) URLs require a host; custom schemes (e.g. youtube://, homeassistant://) open the matching app.
+                  maxLength: 2048
+                  type: string
+              required:
+                - url
+              type: object
+            volume_up:
+              description: Webhook fired when this button is tapped. http(s) URLs are always silent webhooks (method defaults to POST; foreground is rejected); custom schemes open that app. title is ignored on the fixed slots - the glyph is the label.
+              properties:
+                body:
+                  description: HTTP request body for silent webhook. <=1KB. Ignored for custom-scheme URLs.
+                  maxLength: 1024
+                  type: string
+                foreground:
+                  description: "For http(s) URLs only: true opens the URL in Safari / in-app browser; false fires the request silently without launching the app (silent webhook). Ignored for custom-scheme URLs."
+                  type: boolean
+                headers:
+                  additionalProperties:
+                    type: string
+                  description: HTTP headers for silent webhook. Total <=1KB. Ignored for custom-scheme URLs.
+                  type: object
+                icon:
+                  description: SF Symbol name (e.g. checkmark.circle).
+                  maxLength: 64
+                  type: string
+                method:
+                  description: HTTP method for silent webhook (foreground=false). Defaults to GET. Ignored for custom-scheme URLs.
+                  enum:
+                    - GET
+                    - POST
+                    - PUT
+                    - PATCH
+                    - DELETE
+                    - HEAD
+                  type: string
+                title:
+                  description: Button label shown to the user.
+                  maxLength: 64
+                  type: string
+                url:
+                  description: Target URL. Any scheme except javascript/data/file/vbscript. http(s) URLs require a host; custom schemes (e.g. youtube://, homeassistant://) open the matching app.
+                  maxLength: 2048
+                  type: string
+              required:
+                - url
+              type: object
+          type: object
+        duration_seconds:
+          description: "Total length in seconds (up to 7 days). Omit for live streams and radio: the bar becomes indeterminate and the elapsed clock still runs."
+          exclusiveMinimum: 0
+          maximum: 604800
+          type: number
+        favorite:
+          description: Whether the current item is favorited (filled heart). Omit to leave the heart hollow.
+          type: boolean
+        icon:
+          description: "Icon name. SF Symbol (e.g. washer, flame) or Material Design Icon with mdi: prefix (e.g. mdi:thermometer)."
+          maxLength: 128
+          type: string
+        image_shape:
+          description: "How the image is framed: poster (2:3 cover art), square, or circle. Defaults to square when omitted."
+          enum:
+            - poster
+            - square
+            - circle
+          type: string
+        image_thumbhash:
+          description: ThumbHash of the image as padded standard-alphabet base64 (about 28 characters). Renders as a blurred stand-in until the download lands, and is the only tier that shows anything for an image the device cannot reach.
+          maxLength: 64
+          type: string
+        image_url:
+          description: "https URL of an image shown beside the icon. The server never fetches it: the device downloads and caches it, so the host must be publicly reachable over https (a LAN or Tailscale address will not load). Send image_thumbhash alongside it as the fallback."
+          maxLength: 2048
+          type: string
+        media_title:
+          description: Track, episode or channel name - the big line of the player card. Use subtitle for the artist/show and the activity name for the source device (e.g. Living Room).
+          maxLength: 128
+          type: string
+        playback_state:
+          description: Transport state. Only playing ticks the scrubber on device; paused, stopped and buffering freeze it at position_seconds. Omitted renders as paused.
+          enum:
+            - playing
+            - paused
+            - stopped
+            - buffering
+          type: string
+        position_at:
+          description: Unix timestamp (seconds) when position_seconds was sampled; at most 5 minutes in the future and at most 12 hours in the past. Defaults to the server's receive time whenever position_seconds is sent without it, so most producers never set it.
+          type: integer
+        position_seconds:
+          description: Playhead position in seconds (up to 7 days, the duration_seconds ceiling) as sampled at position_at. Re-send it on a timer while playing to keep the device anchored; on its own it is a low-priority (coalescable) update.
+          maximum: 604800
+          minimum: 0
+          type: number
+        progress:
+          description: Progress value [0.0 - 1.0]
+          maximum: 1
+          minimum: 0
+          type: number
+        remaining_time:
+          description: Remaining time in seconds.
+          minimum: 0
+          type: integer
+        secondary_url:
+          description: Secondary button URL (legacy). Use secondary_url_action for richer routing.
+          maxLength: 2048
+          type: string
+        secondary_url_action:
+          description: Secondary button. See url_action for semantics.
+          properties:
+            body:
+              description: HTTP request body for silent webhook. <=1KB. Ignored for custom-scheme URLs.
+              maxLength: 1024
+              type: string
+            foreground:
+              description: "For http(s) URLs only: true opens the URL in Safari / in-app browser; false fires the request silently without launching the app (silent webhook). Ignored for custom-scheme URLs."
+              type: boolean
+            headers:
+              additionalProperties:
+                type: string
+              description: HTTP headers for silent webhook. Total <=1KB. Ignored for custom-scheme URLs.
+              type: object
+            icon:
+              description: SF Symbol name (e.g. checkmark.circle).
+              maxLength: 64
+              type: string
+            method:
+              description: HTTP method for silent webhook (foreground=false). Defaults to GET. Ignored for custom-scheme URLs.
+              enum:
+                - GET
+                - POST
+                - PUT
+                - PATCH
+                - DELETE
+                - HEAD
+              type: string
+            title:
+              description: Button label shown to the user.
+              maxLength: 64
+              type: string
+            url:
+              description: Target URL. Any scheme except javascript/data/file/vbscript. http(s) URLs require a host; custom schemes (e.g. youtube://, homeassistant://) open the matching app.
+              maxLength: 2048
+              type: string
+          required:
+            - url
+          type: object
+        snoozed_until:
+          description: Server-set unix timestamp marking the new end_date after the most recent snooze. Non-nil and >= now means the activity is currently snoozed.
+          readOnly: true
+          type: integer
+        state:
+          description: Short status text (e.g. Washing, Build Container Image).
+          maxLength: 256
+          type: string
+        subtitle:
+          description: Secondary descriptive text (e.g. Layer 150/200, repo / CI/CD).
+          maxLength: 256
+          type: string
+        tap_action:
+          description: Widget-wide tap action. When set, overrides the default behavior (opening the PushWard app to the activity detail page). The whole Live Activity becomes tappable as a single target.
+          properties:
+            body:
+              description: HTTP request body for silent webhook. <=1KB. Ignored for custom-scheme URLs.
+              maxLength: 1024
+              type: string
+            foreground:
+              description: "For http(s) URLs only: true opens the URL in Safari / in-app browser; false fires the request silently without launching the app (silent webhook). Ignored for custom-scheme URLs."
+              type: boolean
+            headers:
+              additionalProperties:
+                type: string
+              description: HTTP headers for silent webhook. Total <=1KB. Ignored for custom-scheme URLs.
+              type: object
+            method:
+              description: HTTP method for silent webhook (foreground=false). Defaults to GET. Ignored for custom-scheme URLs.
+              enum:
+                - GET
+                - POST
+                - PUT
+                - PATCH
+                - DELETE
+                - HEAD
+              type: string
+            url:
+              description: Target URL. Any scheme except javascript/data/file/vbscript. http(s) URLs require a host; custom schemes (e.g. youtube://, homeassistant://) open the matching app.
+              maxLength: 2048
+              type: string
+          required:
+            - url
+          type: object
+        template:
+          description: Template type that determines the Live Activity layout.
+          enum:
+            - media
+          type: string
+        text_color:
+          description: "Text color: named color or hex."
+          type: string
+        url:
+          description: Primary button URL (legacy). Use url_action for richer routing (silent webhook, custom HTTP method/headers/body).
+          maxLength: 2048
+          type: string
+        url_action:
+          description: Primary button. Replaces the legacy url string when richer routing semantics (silent webhook, custom HTTP) are needed. When both url and url_action are set, url_action wins on iOS clients that understand it.
+          properties:
+            body:
+              description: HTTP request body for silent webhook. <=1KB. Ignored for custom-scheme URLs.
+              maxLength: 1024
+              type: string
+            foreground:
+              description: "For http(s) URLs only: true opens the URL in Safari / in-app browser; false fires the request silently without launching the app (silent webhook). Ignored for custom-scheme URLs."
+              type: boolean
+            headers:
+              additionalProperties:
+                type: string
+              description: HTTP headers for silent webhook. Total <=1KB. Ignored for custom-scheme URLs.
+              type: object
+            icon:
+              description: SF Symbol name (e.g. checkmark.circle).
+              maxLength: 64
+              type: string
+            method:
+              description: HTTP method for silent webhook (foreground=false). Defaults to GET. Ignored for custom-scheme URLs.
+              enum:
+                - GET
+                - POST
+                - PUT
+                - PATCH
+                - DELETE
+                - HEAD
+              type: string
+            title:
+              description: Button label shown to the user.
+              maxLength: 64
+              type: string
+            url:
+              description: Target URL. Any scheme except javascript/data/file/vbscript. http(s) URLs require a host; custom schemes (e.g. youtube://, homeassistant://) open the matching app.
+              maxLength: 2048
+              type: string
+          required:
+            - url
+          type: object
+        volume:
+          description: Volume level 0..1, drawn as a thin bar between the volume buttons. Omit to hide it.
+          maximum: 1
+          minimum: 0
+          type: number
+      required:
+        - template
+      title: Media
+      type: object
     ContentSteps:
       additionalProperties: true
       description: Multi-step workflow showing the current step out of a total (e.g. CI pipeline jobs).
@@ -2474,6 +3101,7 @@ components:
               gauge: "#/components/schemas/ContentGauge"
               generic: "#/components/schemas/ContentGeneric"
               log: "#/components/schemas/ContentLog"
+              media: "#/components/schemas/ContentMedia"
               steps: "#/components/schemas/ContentSteps"
               timeline: "#/components/schemas/ContentTimeline"
             propertyName: template
@@ -2494,6 +3122,8 @@ components:
               title: Board
             - $ref: "#/components/schemas/ContentLog"
               title: Log
+            - $ref: "#/components/schemas/ContentMedia"
+              title: Media
         dismissal_ttl:
           description: "Seconds after ENDED before Lock Screen removal (0 = immediate, max 4h). Tri-state: omit to keep, null to clear, number to set."
           format: int64

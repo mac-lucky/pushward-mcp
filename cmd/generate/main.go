@@ -540,6 +540,81 @@ const widgetContentSchema = "WidgetContent"
 // the activity and widget descriptions can't drift apart.
 const mergePatchNote = "PATCH applies RFC 7396 JSON Merge Patch semantics - only send the fields you want to change, null clears a field, absent preserves. "
 
+// Template names, enum values and the image length caps are joined into the
+// clauses below rather than spelled out inside them, so a parity test compares
+// the list against the spec instead of parsing it back out of the finished
+// sentence. Order is the order an agent reads.
+var (
+	// A widget created with a template the installed build cannot decode blanks
+	// that build's entire widget list, so the five 1.6 additions were held back
+	// until iOS 1.6.0 shipped.
+	widgetTemplateNames = []string{
+		"value", "progress", "status", "gauge", "stat_list",
+		"trend", "countdown", "battery", "schedule", "flow",
+	}
+	activityTemplateNames = []string{
+		"generic", "countdown", "steps", "alert", "gauge",
+		"timeline", "board", "log", "media",
+	}
+	// The image trio is rejected outright on the wrong template (422, not a
+	// silent drop), so the restriction leads the clause that carries it.
+	imageTemplates      = []string{"generic", "media", "steps"}
+	imageShapes         = []string{"poster", "square", "circle"}
+	mediaPlaybackStates = []string{"playing", "paused", "stopped", "buffering"}
+)
+
+// A cap stated higher than the server enforces is a request the agent builds and
+// the server rejects, so these are pinned to the spec by
+// TestActivityImageFieldParity and TestActivityMediaFieldParity.
+const (
+	imageURLMaxLength       = 2048
+	imageThumbhashMaxLength = 64
+
+	// The 7-day ceiling ContentMedia puts on both position_seconds and
+	// duration_seconds.
+	mediaSecondsMax = 604800
+)
+
+// The widget clauses. Every WidgetContent property has to appear in one of them,
+// which TestWidgetContentFieldParity enforces: this is prose rather than text
+// generated from the schema, so refreshing openapi.yaml alone leaves a new server
+// field undocumented - that is how device_sort reached agents invisible.
+var (
+	widgetTemplateEnumClause = "Fields: template (" + strings.Join(widgetTemplateNames, "|") + " - selects the visual style), "
+	widgetSharedFieldsClause = "value (number), label, unit, trend (up|down|flat arrow, annotates value and gauge), severity, min_value, max_value, icon, subtitle, subtitle_timer ({date [RFC 3339], style: timer|relative} - renders the subtitle slot as a self-updating timer, on any template), accent_color, background_color, text_color, tap_action ({url}), url_action, secondary_url_action. Template-specific: "
+
+	widgetProgressClause  = "progress (value 0.0-1.0, or start_date + end_date to advance the bar on device between pushes; send both when you have them, older builds render value), "
+	widgetGaugeClause     = "gauge (value, min_value and max_value all required), "
+	widgetStatListClause  = "stat_list (stat_rows: 1-6 {label, value, unit, timer {date, style}}), "
+	widgetTrendClause     = "trend (value plus points: 2-48 numbers oldest first; min_value/max_value fix the chart bounds, otherwise it auto-scales), "
+	widgetCountdownClause = "countdown (end_date required, start_date fills a progress bar alongside it, expired_text replaces the counter once end_date passes), "
+	widgetBatteryClause   = "battery (devices: 1-8 {name, level 0-100, charging, icon, color}; device_sort: up to 2 keys of {field: level|name, direction: asc|desc}, applied in order and reordering devices on write so the ones that matter land in the 2 a small widget shows), "
+	widgetScheduleClause  = "schedule (periods: 1-48 {start [RFC 3339], value, level: low|medium|high}, strictly increasing by start), "
+	widgetFlowClause      = "flow (flow: {inputs [up to 3], storage, output, exchange}, each a node of {rate, total, level, name, icon, color}; at least one node required)."
+)
+
+// The activity clauses. The media fields are template-gated the same way the
+// image trio is (422 elsewhere), which the media clause says in prose;
+// TestActivityMediaFieldParity checks every ContentMedia-only property is named
+// in activityMediaClause, and every control slot in activityMediaControlsClause.
+// The two are separate because favorite and volume appear on both sides, so one
+// combined clause let the top-level documentation be deleted and still match.
+var (
+	activityTemplateEnumClause = "Fields: template (" + strings.Join(activityTemplateNames, "|") + "), "
+	activitySharedFieldsClause = "progress (0.0-1.0), state, icon, subtitle, accent_color, background_color, text_color. Template-specific: "
+
+	activityCountdownClause     = "countdown (duration as integer seconds (60) or duration string (\"60s\", \"1h30m\"), end_date [unix timestamp], warning_threshold, completion_message, alarm, snooze_seconds (60-3600, default 300; how far the /snooze action and iOS AlarmKit snooze extend the timer, only with alarm); if both duration and end_date are sent, end_date wins), "
+	activityStepsClause         = "steps (current_step, total_steps, step_labels), "
+	activityAlertClause         = "alert (severity: critical|warning|info, fired_at, severity_label), "
+	activityGaugeClause         = "gauge (value, min_value, max_value, unit), "
+	activityTimelineClause      = "timeline (value as {key:number}, history as {key:[{timestamp,value}]}, scale, thresholds), "
+	activityBoardClause         = "board (tiles: 1-4 labeled tiles, each {label, value [string], unit, icon, color, trend [up|down|flat], url_action {url}}, replaced wholesale per update), "
+	activityLogClause           = "log (lines: 1-20 newest-first entries, each {text, at [unix seconds], level [info|warn|error]}, replaced wholesale per update; the server also keeps a read-only rolling log_backlog, fetch it via get_activity include_log_backlog), "
+	activityMediaClause         = "media (remote player card, needs iOS 1.9.0, older builds show the generic card; these fields are 422 on any other template: media_title [track/episode, the big line; subtitle is the artist/show, the activity name the source device], playback_state [" + strings.Join(mediaPlaybackStates, "|") + ", default paused; only playing ticks the scrubber on device], position_seconds [0-" + strconv.Itoa(mediaSecondsMax) + " (7 days), playhead at position_at, which defaults to the receive time and has to fall within the last 12h and at most 5min ahead; a patch carrying only position is a low-priority coalescable update], duration_seconds [0-" + strconv.Itoa(mediaSecondsMax) + ", omit for live streams and radio: indeterminate bar, elapsed still ticks], volume [0-1, thin bar between the volume buttons], favorite [bool, filled heart], "
+	activityMediaControlsClause = "controls [{previous, play_pause, play, pause, next, stop, favorite, volume_down, volume_up: each {url, method, headers, body}, plus extra: up to 3 {url, icon (required), title}}; http(s) control URLs are always silent webhooks (method defaults to POST, foreground is rejected), custom schemes open that app; on PATCH controls deep-merges, a null slot removes that button, extra is replaced wholesale]). "
+	activityImageClause         = "Images (" + strings.Join(imageTemplates, "|") + " only, 422 elsewhere; each works alone): image_url (https, " + "max " + strconv.Itoa(imageURLMaxLength) + ", host required, no user:pass@; fetched by the device, not the server, so it must be publicly reachable), image_shape (" + strings.Join(imageShapes, "|") + ", default square), image_thumbhash (padded standard-alphabet base64 ThumbHash, ~28 chars, " + "max " + strconv.Itoa(imageThumbhashMaxLength) + "; the blur until the image loads)."
+)
+
 // contentJSONDesc returns the description for a tool's content_json parameter.
 // The activity and widget content schemas are disjoint (different template enums),
 // so a single shared string misleads agents into sending the wrong shape - which
@@ -557,30 +632,20 @@ func contentJSONDesc(isWidget bool, method string) string {
 		} else {
 			lead += "Send the full content object (template is required). "
 		}
-		// Keep the template list in step with the spec's WidgetContent enum -
-		// TestWidgetTemplateEnumParity fails when the spec gains one this string
-		// does not. A widget created with a template the installed build cannot
-		// decode blanks that build's entire widget list, so the five 1.6 additions
-		// were held back until iOS 1.6.0 shipped.
-		//
-		// Every WidgetContent property has to appear somewhere below, which
-		// TestWidgetContentFieldParity enforces. This is prose rather than
-		// generated text, so refreshing the spec alone leaves a new server field
-		// undocumented - that is how device_sort reached agents invisible.
-		return lead + "Fields: template (value|progress|status|gauge|stat_list|trend|countdown|battery|schedule|flow - selects the visual style), value (number), label, unit, trend (up|down|flat arrow, annotates value and gauge), severity, min_value, max_value, icon, subtitle, subtitle_timer ({date [RFC 3339], style: timer|relative} - renders the subtitle slot as a self-updating timer, on any template), accent_color, background_color, text_color, tap_action ({url}), url_action, secondary_url_action. Template-specific: progress (value 0.0-1.0, or start_date + end_date to advance the bar on device between pushes; send both when you have them, older builds render value), gauge (value, min_value and max_value all required), stat_list (stat_rows: 1-6 {label, value, unit, timer {date, style}}), trend (value plus points: 2-48 numbers oldest first; min_value/max_value fix the chart bounds, otherwise it auto-scales), countdown (end_date required, start_date fills a progress bar alongside it, expired_text replaces the counter once end_date passes), battery (devices: 1-8 {name, level 0-100, charging, icon, color}; device_sort: up to 2 keys of {field: level|name, direction: asc|desc}, applied in order and reordering devices on write so the ones that matter land in the 2 a small widget shows), schedule (periods: 1-48 {start [RFC 3339], value, level: low|medium|high}, strictly increasing by start), flow (flow: {inputs [up to 3], storage, output, exchange}, each a node of {rate, total, level, name, icon, color}; at least one node required)."
+		return lead + widgetTemplateEnumClause + widgetSharedFieldsClause +
+			widgetProgressClause + widgetGaugeClause + widgetStatListClause +
+			widgetTrendClause + widgetCountdownClause + widgetBatteryClause +
+			widgetScheduleClause + widgetFlowClause
 	}
 	lead := "Activity content as JSON object. "
 	if patch {
 		lead += mergePatchNote
 	}
-	// The image trio is the one group of fields the server rejects outright on
-	// the wrong template (422, not a silent drop), so the restriction leads the
-	// clause. TestActivityImageFieldParity reads the field names, the template
-	// list, the shape enum and both length caps off the spec and matches them
-	// here through the literal delimiters "Images (" ... " only" and
-	// "image_shape (" ... ", default square)" - rewording either means moving
-	// the test's delimiters in the same change.
-	return lead + "Fields: template (generic|countdown|steps|alert|gauge|timeline|board|log), progress (0.0-1.0), state, icon, subtitle, accent_color, background_color, text_color. Template-specific: countdown (duration as integer seconds (60) or duration string (\"60s\", \"1h30m\"), end_date [unix timestamp], warning_threshold, completion_message, alarm, snooze_seconds (60-3600, default 300; how far the /snooze action and iOS AlarmKit snooze extend the timer, only with alarm); if both duration and end_date are sent, end_date wins), steps (current_step, total_steps, step_labels), alert (severity: critical|warning|info, fired_at, severity_label), gauge (value, min_value, max_value, unit), timeline (value as {key:number}, history as {key:[{timestamp,value}]}, scale, thresholds), board (tiles: 1-4 labeled tiles, each {label, value [string], unit, icon, color, trend [up|down|flat], url_action {url}}, replaced wholesale per update), log (lines: 1-20 newest-first entries, each {text, at [unix seconds], level [info|warn|error]}, replaced wholesale per update; the server also keeps a read-only rolling log_backlog, fetch it via get_activity include_log_backlog). Images (generic|steps only, 422 elsewhere; each works alone): image_url (https, max 2048, host required, no user:pass@; fetched by the device, not the server, so it must be publicly reachable), image_shape (poster|square|circle, default square), image_thumbhash (padded standard-alphabet base64 ThumbHash, ~28 chars, max 64; the blur until the image loads)."
+	return lead + activityTemplateEnumClause + activitySharedFieldsClause +
+		activityCountdownClause + activityStepsClause + activityAlertClause +
+		activityGaugeClause + activityTimelineClause + activityBoardClause +
+		activityLogClause + activityMediaClause + activityMediaControlsClause +
+		activityImageClause
 }
 
 func resolveRef(spec *openAPISpec, s schemaObj) schemaObj {

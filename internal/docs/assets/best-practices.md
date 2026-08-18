@@ -45,7 +45,7 @@ General rules for any code that talks to the PushWard REST API
 Writing Live Activity content that renders well on the Dynamic Island and Lock
 Screen.
 
-- **Pick the right template.** Eight templates, each with a distinct layout:
+- **Pick the right template.** Nine templates, each with a distinct layout:
   `generic` (progress for builds/downloads/deploys), `countdown` (server-managed
   timer with automatic warning/completion pushes), `steps` (CI/CD multi-stage
   matrix), `alert` (severity-based monitoring with deep links), `gauge`
@@ -54,10 +54,12 @@ Screen.
   history), `board` (a grid of 1-4 labeled status tiles such as room sensors or
   service health, `tiles` replaced wholesale per update), `log` (a scrolling feed
   of 1-20 newest-first `lines`, replaced wholesale per update; the server also
-  keeps a rolling backlog readable via `GET /activities/{slug}?include=log_backlog`).
-  Always set `content.template`.
+  keeps a rolling backlog readable via `GET /activities/{slug}?include=log_backlog`),
+  `media` (a remote player card: cover art, `media_title` over `subtitle`, a
+  scrubber that ticks on device while playing, and transport buttons that fire
+  your webhooks). Always set `content.template`.
 - **Images are fetched by the device, not the server.** `content.image_url` is
-  accepted on `generic` and `steps` only (anything else is a `422`), and the
+  accepted on `generic`, `steps` and `media` only (anything else is a `422`), and the
   phone downloads it itself - a LAN or Tailscale host renders nothing at all.
   Send `image_thumbhash` alongside it: the blurred ThumbHash is what shows until
   the download lands, and the only thing that shows when it never does.
@@ -79,6 +81,18 @@ Screen.
 - **Countdown specifics.** For `countdown`, set it and forget it: the server
   drives the warning and completion pushes from the target time. Use
   `snooze_seconds` to extend rather than recreating the activity.
+- **Media specifics.** The device ticks the scrubber itself from
+  `position_seconds` and `position_at`, so re-send `position_seconds` on every
+  play/pause/seek transition (leave `position_at` out; it defaults to the
+  server's receive time) and on a slow timer while playing - a position-only
+  patch is a low-priority, coalescable push. `controls` are silent webhooks:
+  an http(s) URL is `POST` by default and `foreground` is rejected, a custom
+  scheme opens that app. Prefer the `play_pause` toggle unless the player has
+  separate play and pause endpoints. Keep control headers and bodies small:
+  when the payload runs over the APNs budget the server drops whole optional
+  buttons, never their headers, in the order `extra` -> volume -> `favorite`
+  -> `stop` -> image -> `previous`/`next`. iOS builds older than 1.9.0 render
+  the card as `generic` with a static progress bar and no buttons.
 
 ## relay-provider
 

@@ -43,30 +43,6 @@ func apiSpec(t *testing.T) *openAPISpec {
 	return parseSpecJSON(data, "api")
 }
 
-// clauseValues pulls the pipe-delimited list out of one clause of a hand-written
-// description - the templates between "Images (" and " only", the shapes between
-// "image_shape (" and ", default square)". Matching the delimited clause rather
-// than the whole string is the point: half these names are ordinary words in the
-// surrounding prose, so a plain Contains passes on a description that never lists
-// them. Both delimiters are literal and the closing one is searched after the
-// opening, so a reworded description fails as a wording problem here rather than
-// as a phantom spec mismatch further down.
-func clauseValues(t *testing.T, desc, open, closing string) []string {
-	t.Helper()
-	i := strings.Index(desc, open)
-	if i < 0 {
-		t.Fatalf("description carries no %q clause; that delimiter is literal and has to move with the wording: %s", open, desc)
-	}
-	rest := desc[i+len(open):]
-	j := strings.Index(rest, closing)
-	if j < 0 {
-		t.Fatalf("the %q clause is not closed by the literal %q: %s", open, closing, rest)
-	}
-	values := strings.Split(rest[:j], "|")
-	slices.Sort(values)
-	return values
-}
-
 func TestToSnakeCase(t *testing.T) {
 	tests := []struct {
 		input string
@@ -409,26 +385,23 @@ func TestWidgetTemplateEnumParity(t *testing.T) {
 	if !ok || len(tmpl.Enum) == 0 {
 		t.Fatalf("%s.template carries no enum", widgetContentSchema)
 	}
-	listed := clauseValues(t, contentJSONDesc(true, "POST"), "template (", " - selects the visual style)")
 	for _, name := range tmpl.Enum {
-		if !slices.Contains(listed, name) {
+		if !slices.Contains(widgetTemplateNames, name) {
 			t.Errorf("widget template %q is in the spec enum but absent from the content_json description", name)
 		}
 	}
-	for _, name := range listed {
+	for _, name := range widgetTemplateNames {
 		if !slices.Contains(tmpl.Enum, name) {
 			t.Errorf("widget template %q is advertised but the spec enum does not carry it", name)
 		}
 	}
 }
 
-// The image trio is accepted on the generic and steps templates only - the
-// server 422s it anywhere else - so a description that names the fields without
-// the restriction sends agents into a rejected request. Field names, template
-// list, shape enum and length caps are all hand-written against a spec that
-// moves, the same drift the widget enum hit.
-func TestActivityImageFieldParity(t *testing.T) {
-	spec := apiSpec(t)
+// activityContentMapping returns the Activity.content discriminator mapping
+// (template name -> content schema), failing the test when the spec no longer
+// states it per template.
+func activityContentMapping(t *testing.T, spec *openAPISpec) map[string]string {
+	t.Helper()
 	activity, ok := spec.Components.Schemas["Activity"]
 	if !ok {
 		t.Fatal("Activity schema missing from openapi.yaml")
@@ -439,10 +412,151 @@ func TestActivityImageFieldParity(t *testing.T) {
 	}
 	// The mapping is only a statement about templates while it is keyed on the
 	// template field; repointed at anything else it still parses, and everything
-	// below would then be walking the wrong axis.
+	// reading it would then be walking the wrong axis.
 	if got := content.Discriminator.PropertyName; got != "template" {
-		t.Fatalf("Activity.content discriminates on %q, not template - the image restriction is stated per template", got)
+		t.Fatalf("Activity.content discriminates on %q, not template", got)
 	}
+	return content.Discriminator.Mapping
+}
+
+// The activity template list is prose, like the widget one, and it drifted the
+// same way: board and log rode the spec before the description named them. The
+// discriminator mapping is the spec's statement of which templates exist.
+func TestActivityTemplateEnumParity(t *testing.T) {
+	spec := apiSpec(t)
+	mapping := activityContentMapping(t, spec)
+	for name := range mapping {
+		if !slices.Contains(activityTemplateNames, name) {
+			t.Errorf("activity template %q is in the spec mapping but absent from the content_json description", name)
+		}
+	}
+	for _, name := range activityTemplateNames {
+		if _, ok := mapping[name]; !ok {
+			t.Errorf("activity template %q is advertised but the spec mapping does not carry it", name)
+		}
+	}
+}
+
+// Every property only the media schema carries (the player fields and their
+// controls) has to be named in the media clauses: like the image trio, the
+// server 422s them on any other template, so an agent that learns them from
+// the spec but not from the description sends a request the wrong way round.
+// The player fields and the control slots are checked against their own clause,
+// because favorite is both and volume is a prefix of two slots - one combined
+// clause matched them whichever half was deleted.
+func TestActivityMediaFieldParity(t *testing.T) {
+	spec := apiSpec(t)
+	mapping := activityContentMapping(t, spec)
+	mediaRef, ok := mapping["media"]
+	if !ok {
+		t.Fatal("the spec mapping carries no media template - the committed openapi.yaml is behind the server")
+	}
+	media, ok := spec.Components.Schemas[refTypeName(mediaRef)]
+	if !ok {
+		t.Fatalf("media maps to %q, which is not a component schema", mediaRef)
+	}
+	shared := make(map[string]bool)
+	for template, ref := range mapping {
+		if template == "media" {
+			continue
+		}
+		schema, ok := spec.Components.Schemas[refTypeName(ref)]
+		if !ok {
+			continue
+		}
+		for name := range schema.Properties {
+			shared[name] = true
+		}
+	}
+	var mediaOnly []string
+	for name := range media.Properties {
+		if !shared[name] {
+			mediaOnly = append(mediaOnly, name)
+		}
+	}
+	slices.Sort(mediaOnly)
+	if len(mediaOnly) == 0 {
+		t.Fatal("ContentMedia carries no media-only properties - the committed openapi.yaml is behind the server")
+	}
+
+	t.Run("media-only fields", func(t *testing.T) {
+		// Matched against the player clause alone, not the controls one: favorite
+		// is a player field and a control slot, and volume is a prefix of the
+		// volume_up/volume_down slots, so both still matched a combined clause
+		// after their own documentation was deleted.
+		for _, name := range mediaOnly {
+			clause := activityMediaClause
+			if name == "controls" {
+				// controls opens its own clause rather than sitting in the field list.
+				clause = activityMediaControlsClause
+			}
+			if !strings.Contains(clause, name) {
+				t.Errorf("media-only field %q is in the spec but absent from the media clause: %s", name, clause)
+			}
+		}
+	})
+
+	t.Run("playback_state enum", func(t *testing.T) {
+		state, ok := media.Properties["playback_state"]
+		if !ok || len(state.Enum) == 0 {
+			t.Fatal("ContentMedia.playback_state carries no enum")
+		}
+		if listed, want := sortedClone(mediaPlaybackStates), sortedClone(state.Enum); !slices.Equal(listed, want) {
+			t.Errorf("the description offers playback states %v, the spec enum is %v", listed, want)
+		}
+	})
+
+	t.Run("seconds caps", func(t *testing.T) {
+		// position_seconds and duration_seconds share the 7-day ceiling, and the
+		// clause states it as a number. The spec carried the position_seconds cap
+		// for a release while the description said nothing, which is the drift
+		// this pins.
+		for _, field := range []string{"position_seconds", "duration_seconds"} {
+			prop, ok := media.Properties[field]
+			if !ok {
+				t.Errorf("ContentMedia carries no %s - the committed openapi.yaml is behind the server", field)
+				continue
+			}
+			if prop.Maximum == nil {
+				t.Errorf("%s carries no maximum in the spec, so the cap the description states is unpinned", field)
+				continue
+			}
+			if *prop.Maximum != float64(mediaSecondsMax) {
+				t.Errorf("the description caps %s at %d, the spec maximum is %s", field, mediaSecondsMax, formatBound(*prop.Maximum))
+			}
+		}
+	})
+
+	t.Run("control slots", func(t *testing.T) {
+		controls, ok := media.Properties["controls"]
+		if !ok || len(controls.Properties) == 0 {
+			t.Fatal("ContentMedia.controls carries no properties")
+		}
+		// Every slot except the extra array has to be named; extra is documented
+		// as a shape rather than a slot.
+		for name := range controls.Properties {
+			if !strings.Contains(activityMediaControlsClause, name) {
+				t.Errorf("control slot %q is in the spec but absent from the controls clause: %s", name, activityMediaControlsClause)
+			}
+		}
+	})
+}
+
+func sortedClone(values []string) []string {
+	sorted := slices.Clone(values)
+	slices.Sort(sorted)
+	return sorted
+}
+
+// The image trio is accepted on the generic, media and steps templates only -
+// the server 422s it anywhere else - so a description that names the fields without
+// the restriction sends agents into a rejected request. The field names are
+// prose; the template list, the shape enum and both caps are the named lists the
+// clause is built from, checked here against a spec that moves - the same drift
+// the widget enum hit.
+func TestActivityImageFieldParity(t *testing.T) {
+	spec := apiSpec(t)
+	mapping := activityContentMapping(t, spec)
 
 	// Which templates accept an image, which fields they take, and the bounds on
 	// those fields, all read off the spec rather than restated here - restating is
@@ -451,7 +565,7 @@ func TestActivityImageFieldParity(t *testing.T) {
 	maxLengths := make(map[string]int)
 	var shapes []string
 	var templates []string
-	for template, ref := range content.Discriminator.Mapping {
+	for template, ref := range mapping {
 		schema, ok := spec.Components.Schemas[refTypeName(ref)]
 		if !ok {
 			t.Errorf("template %q maps to %q, which is not a component schema", template, ref)
@@ -492,50 +606,43 @@ func TestActivityImageFieldParity(t *testing.T) {
 	// property, so content_json reaches an agent only on update_activity.
 	desc := contentJSONDesc(false, "PATCH")
 	for name := range fields {
-		if !strings.Contains(desc, name) {
-			t.Errorf("activity content field %q is in the spec but absent from the content_json description", name)
+		if !strings.Contains(activityImageClause, name) {
+			t.Errorf("activity content field %q is in the spec but absent from the image clause", name)
 		}
 	}
+	// Scanned over the whole description, not just the image clause: an image
+	// field named anywhere else is advertised just as loudly.
 	for _, name := range regexp.MustCompile(`image_[a-z_]+`).FindAllString(desc, -1) {
 		if !fields[name] {
 			t.Errorf("the content_json description advertises %q, which no activity content schema carries", name)
 		}
 	}
 
-	if listed := clauseValues(t, desc, "Images (", " only"); !slices.Equal(listed, templates) {
+	if listed := sortedClone(imageTemplates); !slices.Equal(listed, templates) {
 		t.Errorf("the image clause lists templates %v, the spec carries image fields on %v", listed, templates)
 	}
 	if len(shapes) == 0 {
 		t.Error("image_shape carries no enum in the spec, so the shapes the description offers are unpinned")
-	} else if listed := clauseValues(t, desc, "image_shape (", ", default square)"); !slices.Equal(listed, shapes) {
+	} else if listed := sortedClone(imageShapes); !slices.Equal(listed, shapes) {
 		t.Errorf("the description offers shapes %v, the spec enum is %v", listed, shapes)
 	}
 
 	// A cap the description overstates is a request the agent builds and the
 	// server rejects, so both numbers come from the spec too.
-	maxRe := regexp.MustCompile(`max (\d+)`)
-	for _, field := range []string{"image_url", "image_thumbhash"} {
-		want, ok := maxLengths[field]
+	for _, stated := range []struct {
+		field string
+		limit int
+	}{
+		{"image_url", imageURLMaxLength},
+		{"image_thumbhash", imageThumbhashMaxLength},
+	} {
+		want, ok := maxLengths[stated.field]
 		if !ok {
-			t.Errorf("%s carries no maxLength in the spec, so the cap the description states is unpinned", field)
+			t.Errorf("%s carries no maxLength in the spec, so the cap the description states is unpinned", stated.field)
 			continue
 		}
-		i := strings.Index(desc, field+" (")
-		if i < 0 {
-			t.Errorf("the description does not open a %q clause", field+" (")
-			continue
-		}
-		clause := desc[i:]
-		if end := strings.Index(clause, ")"); end >= 0 {
-			clause = clause[:end]
-		}
-		m := maxRe.FindStringSubmatch(clause)
-		if m == nil {
-			t.Errorf("the %s clause states no \"max <n>\": %s", field, clause)
-			continue
-		}
-		if m[1] != formatBound(float64(want)) {
-			t.Errorf("the %s clause caps at %s, the spec maxLength is %d", field, m[1], want)
+		if stated.limit != want {
+			t.Errorf("the description caps %s at %d, the spec maxLength is %d", stated.field, stated.limit, want)
 		}
 	}
 
@@ -633,11 +740,18 @@ func TestContentJSONDesc(t *testing.T) {
 	if !strings.Contains(aPatch, "countdown") || !strings.Contains(aPatch, "Merge Patch") {
 		t.Errorf("activity PATCH desc wrong: %s", aPatch)
 	}
-	// The board/log templates must be advertised in the enum and documented.
-	if !strings.Contains(aPatch, "timeline|board|log)") {
-		t.Errorf("activity desc missing board/log in template enum: %s", aPatch)
+	// The board/log/media templates must be advertised in the enum and documented.
+	if !strings.Contains(aPatch, "timeline|board|log|media)") {
+		t.Errorf("activity desc missing board/log/media in template enum: %s", aPatch)
 	}
-	if !strings.Contains(aPatch, "board (tiles") || !strings.Contains(aPatch, "log (lines") {
-		t.Errorf("activity desc missing board/log field docs: %s", aPatch)
+	if !strings.Contains(aPatch, "board (tiles") || !strings.Contains(aPatch, "log (lines") || !strings.Contains(aPatch, "media (") {
+		t.Errorf("activity desc missing board/log/media field docs: %s", aPatch)
+	}
+	// Media fields are activity-only, and the widget description must not
+	// advertise a player card widgets cannot render.
+	for _, mediaOnly := range []string{"media_title", "playback_state", "controls"} {
+		if strings.Contains(wPost, mediaOnly) {
+			t.Errorf("widget desc should not mention activity media field %q: %s", mediaOnly, wPost)
+		}
 	}
 }
