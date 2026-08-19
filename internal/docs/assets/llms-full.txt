@@ -2,7 +2,7 @@
 
 > Full Markdown bundle of every PushWard docs page, auto-generated from the prerendered HTML at build time. Source: https://pushward.app
 
-> Generated: 2026-08-12T08:02:45.616Z
+> Generated: 2026-08-19T13:26:53.954Z
 
 ---
 <!-- source: https://pushward.app/docs/getting-started -->
@@ -136,7 +136,7 @@ Unlike a regular push notification - which appears once and then slips into the 
 
 ## Templates
 
-PushWard provides eight Live Activity templates. Each template has a distinct layout optimized for different use cases.
+PushWard provides nine Live Activity templates. Each template has a distinct layout optimized for different use cases.
 
 [
 
@@ -218,7 +218,19 @@ Streaming, newest-first feed of status lines with timestamps and severity levels
 
 
 
-](https://pushward.app/docs/live-activities/log)
+](https://pushward.app/docs/live-activities/log)[
+
+### MediaSoon
+
+Remote media-player card: cover art, a scrubber that ticks on the device, and transport buttons that fire your own webhooks.
+
+0:47
+
+
+
+
+
+](https://pushward.app/docs/live-activities/media)
 
 ---
 
@@ -305,7 +317,7 @@ _Requires PushWard iOS app 1.7.0 or later._
 
 ## Artwork
 
-Send `image_url` and the icon slot becomes an image slot: cover art for the episode that is playing, the poster of the film being downloaded, the album sleeve for the track. Only the generic and [steps](https://pushward.app/docs/live-activities/steps) templates have an image slot. Sending any of the three image fields on another template is rejected with `422` rather than ignored, so you never end up waiting for artwork that was never going to render.
+Send `image_url` and the icon slot becomes an image slot: cover art for the episode that is playing, the poster of the film being downloaded, the album sleeve for the track. Only the generic, [steps](https://pushward.app/docs/live-activities/steps) and [media](https://pushward.app/docs/live-activities/media) templates have an image slot. Sending any of the three image fields on another template is rejected with `422` rather than ignored, so you never end up waiting for artwork that was never going to render.
 
 ### The server never fetches the image
 
@@ -1145,6 +1157,189 @@ Streaming deploy log
 -   **Home automation** - event feeds (motion, doors, presence)
 -   **Monitoring** - rolling alert and incident streams
 -   **Self-hosting** - download/import progress, backup steps, sync activity
+
+---
+
+<!-- source: https://pushward.app/docs/live-activities/media -->
+
+# Media Template
+
+A remote media-player card in the style of the iOS 26 Now Playing view: cover art, title and artist, a scrubber that keeps ticking between pushes, and previous / play-pause / next buttons that fire your own webhooks - steer a Sonos, a TV or a Home Assistant media player from the Lock Screen.
+
+_Requires PushWard iOS app 1.9.0 or later._
+
+The `media` template turns a Live Activity into a remote for whatever is playing somewhere else -- a Sonos zone, the living-room TV, a Home Assistant `media_player`, a Jellyfin session. It draws like the iOS 26 Now Playing card: cover art, the track and artist, a scrubber that keeps moving on the device between your pushes, and a row of transport buttons. Every button fires **your** webhook; PushWard never talks to the player itself. Your side sends the state, the phone renders it, a tap comes back to you as an HTTP request, and your next push confirms what happened.
+
+ℹ Info
+
+**Requires PushWard 1.9.0 on the device.** Older builds do not know the template and fall back to the generic layout: name, subtitle and a plain progress bar (the server mirrors `position_seconds / duration_seconds` into `progress` for exactly that case). Nothing breaks, the buttons simply are not there until the app updates.
+
+## Fields
+
+The activity `name` is the _source_ ("Living Room", "Kitchen TV") and stays on the card in small type; `media_title` is the big line.
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `template` | string | **Required.** Must be `"media"` |
+| `media_title` | string | Track, episode or programme title. Max 128 characters |
+| `subtitle` | string | Artist, show, album or channel -- the second line under the title |
+| `playback_state` | string | One of `playing`, `paused`, `stopped`, `buffering`. Default: `paused`. Only `playing` makes the bar tick; the play/pause glyph follows it too |
+| `position_seconds` | float | Playback position at the moment you sampled it. `>= 0` |
+| `duration_seconds` | float | Total length. `> 0`, at most 604800 (7 days). **Omit it for live or indeterminate media** (radio, a stream): no bar is drawn and the elapsed clock still counts up |
+| `position_at` | integer | Unix timestamp (seconds) at which `position_seconds` was sampled. Defaults to the server's receive time, which is what you want when you push straight from the player. May be at most 300 s in the future. **Re-send `position_seconds` on every play/pause transition** so the device re-anchors instead of extrapolating from a stale sample |
+| `volume` | float | `0.0`\-`1.0`. Draws a thin volume bar between the volume buttons |
+| `favorite` | boolean | `true` fills the heart. Toggle it back on your next push after the favorite webhook lands |
+| `controls` | object | The transport buttons -- see [Controls](#controls). All slots optional; no slots, no buttons |
+| `image_url`, `image_shape`, `image_thumbhash` | string | Cover art. The same trio as the [generic template](https://pushward.app/docs/live-activities/generic#artwork); the default shape is `square`. The device downloads the image, the server never does -- send the ThumbHash so the card has something to show the instant it appears |
+| `icon` | string | SF Symbol drawn where the art would be when there is none. Default: `music.note` |
+| `accent_color` | string | Named color or hex for the icon and the filled heart. Default: `pink` |
+| `background_color`, `text_color` | string | Color overrides, as on every template |
+
+Sending any media field on another template is rejected with `422` rather than ignored, and switching an activity from `media` to another template clears them, so no card ends up carrying controls it cannot draw. `url_action` and `secondary_url_action` are accepted for compatibility but **not rendered** on the media card -- the transport row takes the button space; `tap_action` (tapping the card background) still works.
+
+## Controls
+
+`controls` is an object of named slots. Each slot is an [Action](https://pushward.app/docs/api/activities#tap-actions) object -- the same shape as `url_action`, with the same limits on `headers` and `body`.
+
+| Slot | Where it draws | Notes |
+| --- | --- | --- |
+| `previous` | Transport row | Skip back |
+| `play_pause` | Transport row (large, centre) | One toggle endpoint. The glyph shows pause while `playback_state` is `playing` and play otherwise |
+| `play`, `pause` | Transport row (same button) | Separate endpoints instead of a toggle. iOS picks `pause` while playing and `play` otherwise, and falls back to `play_pause` when the matching one is missing. Send whichever your player exposes; you can send all three |
+| `next` | Transport row | Skip forward |
+| `stop` | Transport row (small, trailing) |  |
+| `favorite` | Transport row (small, leading) | Heart; filled when `favorite: true` |
+| `volume_down`, `volume_up` | Volume row | Speaker glyphs either side of the `volume` bar |
+| `extra` | Extras row | Array of up to **3** custom buttons (shuffle, repeat, a source switch). `icon` is **required** on each; `title` is the accessibility label |
+
+### What a tap does
+
+-   An `http(s)` URL is **always a silent webhook**: the request is fired from the Live Activity, the app stays in the background, the response is discarded. The server fills in `method: "POST"` when you leave it out (stored and returned that way), and **rejects `foreground: true` on a control with `422`** -- a transport button that opens Safari is not a transport button.
+-   A custom scheme (`spotify:`, `homeassistant://`) opens that app instead.
+-   Play/pause flips optimistically on the device the moment it is tapped, then your next push is the truth. Previous, next and stop dim their glyph until your next push arrives, so a slow player still reads as "working on it".
+-   Buttons exist on the Lock Screen and in the expanded Dynamic Island. The compact and minimal Island and the Apple Watch card are tap-to-open, except that the Watch shows one play/pause button.
+
+⚠ Warning
+
+**Webhooks are best-effort and carry your credentials.** They run inside the widget extension under its time limits, and `headers` / `body` ride on the push. Point them at a webhook endpoint with its own short-lived secret rather than a full API token, and keep them small: the whole activity has to fit the 4 KB APNs payload -- see [Payload budget](#budget).
+
+## How the bar ticks
+
+The device does not poll you. From `position_seconds`, `position_at` and `duration_seconds` it derives a start instant and, while `playback_state` is `playing`, animates the scrubber and both clocks (elapsed on the left, `-remaining` on the right) natively -- no update quota spent while a track plays.
+
+-   `playing` with a duration: the bar and clocks run from `position_at - position_seconds` until the end. Past the end they freeze at the end; they never wrap.
+-   `playing` without a duration: no bar, the elapsed clock counts up.
+-   `paused`, `stopped`, `buffering`: the bar and clocks freeze at `position_seconds`.
+-   An activity the server has marked stale (see `stale_ttl`) freezes too, so a producer that died does not keep "playing".
+-   Ending the activity forces the wire state to `stopped`: an ended card never ticks.
+
+Because the device extrapolates, **every play/pause transition should carry the position you saw at that moment**. Pause with `{"playback_state": "paused", "position_seconds": 61.2}`, resume with `{"playback_state": "playing", "position_seconds": 61.2}`. Leave `position_at` out and the server stamps the receive time; set it only to backdate a sample you took earlier. Position-only patches (`position_seconds` / `position_at`) go out at low push priority and coalesce; anything else on the card -- title, state, duration, volume, favorite, controls -- is a structural change and goes out at high priority.
+
+## Updates are merge patches
+
+As on every template, a `PATCH` merges onto the stored content. Two things are specific to `controls`:
+
+-   The `controls` object **deep-merges**: sending `{"controls": {"stop": null}}` removes the stop button and leaves the others alone; sending `{"controls": {"next": {"url": "..."}}}` replaces only `next`.
+-   `controls.extra` is an array and **replaces wholesale**, like every array field.
+-   Re-sending a slot with a new `url` and no `method` re-derives the method (`POST` for `http(s)`): an explicit method from an earlier push is not remembered across a repoint, so send it again if you need something other than the default. `title` is ignored on the fixed slots -- the glyph is the label -- only `extra` buttons use `title` and `icon`.
+
+## Payload budget
+
+The full example below is about 1.3 KB; eight controls each carrying a 40-character bearer header and a small body come to about 2.2 KB, well inside the 4 KB APNs limit. If a payload still does not fit, the server drops _whole_ controls in this order until it does -- `extra`, then `volume_down` + `volume_up`, `favorite`, `stop`, then `image_thumbhash`, `image_url`, then `previous` + `next` -- and stops at the title, state, position and play slots. **Headers and bodies are never stripped from a control that survives**: a button that fires without its credentials and gets a 401 is worse than no button. What you `GET` back is always the full stored content; shedding only affects the push.
+
+## Surfaces
+
+-   **Lock Screen** -- art, title, subtitle, source, scrubber with both clocks, the transport row, then the volume row and extras when there is room (the extras row is hidden first, then the volume row, when the card would exceed the height iOS allows).
+-   **Dynamic Island, expanded** -- art leading, title and subtitle centred, elapsed trailing, scrubber and a compact transport row below. Buttons work here.
+-   **Dynamic Island, compact** -- art or icon leading; while playing the elapsed clock ticks trailing, otherwise a state glyph. Tap to open.
+-   **Apple Watch** -- art, title and one play/pause button. Mac and the in-app cards use the same layout as the Lock Screen.
+
+## Example: A Home Assistant player
+
+Create the activity once, then push the player state. Every control here points at a Home Assistant webhook automation; the same shape works for anything that accepts an HTTP request.
+
+Create the player activity 
+
+```
+curl -X POST https://api.pushward.app/activities \
+  -H "Authorization: Bearer hlk_YOUR_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "slug": "living-room-player",
+    "name": "Living Room"
+  }'
+```
+
+Push the player state with controls 
+
+```
+curl -X PATCH https://api.pushward.app/activities/living-room-player \
+  -H "Authorization: Bearer hlk_YOUR_TOKEN" \
+  -H "Content-Type: application/merge-patch+json" \
+  -d '{
+    "state": "ongoing",
+    "content": {
+      "template": "media",
+      "media_title": "Snooze",
+      "subtitle": "SZA",
+      "playback_state": "playing",
+      "position_seconds": 47.5,
+      "duration_seconds": 214,
+      "volume": 0.35,
+      "favorite": true,
+      "image_url": "https://cdn.example.com/art/snooze.jpg",
+      "image_shape": "square",
+      "image_thumbhash": "m8QNJRZ3d3B4aIh4iIiHd4iPjvcX",
+      "controls": {
+        "previous":    { "url": "https://ha.example/api/webhook/pw-prev" },
+        "play_pause":  { "url": "https://ha.example/api/webhook/pw-toggle" },
+        "next":        { "url": "https://ha.example/api/webhook/pw-next" },
+        "stop":        { "url": "https://ha.example/api/webhook/pw-stop" },
+        "favorite":    { "url": "https://ha.example/api/webhook/pw-fav" },
+        "volume_down": { "url": "https://ha.example/api/webhook/pw-vol-down" },
+        "volume_up":   { "url": "https://ha.example/api/webhook/pw-vol-up" },
+        "extra": [
+          { "url": "https://ha.example/api/webhook/pw-shuffle", "icon": "shuffle", "title": "Shuffle" }
+        ]
+      }
+    }
+  }'
+```
+
+Then, as the player reports back (each one a merge patch onto the same activity):
+
+Follow-up patches: pause, resume, next track, end 
+
+```
+{ "content": { "playback_state": "paused", "position_seconds": 61.2 } }
+
+{ "content": { "playback_state": "playing", "position_seconds": 61.2 } }
+
+{ "content": { "media_title": "Kill Bill", "position_seconds": 0, "duration_seconds": 153, "favorite": false } }
+
+{ "state": "ended" }
+```
+
+The one time `position_at` is worth sending is to backdate a sample you took a moment ago -- a poll that ran a few seconds before the push. The device starts the bar from that instant instead of from receipt:
+
+Backdating a position sample 
+
+```
+{ "content": { "position_seconds": 61.2, "position_at": 1755500000 } }
+```
+
+## Typical Flow
+
+1.  **Start** (`ended -> ongoing`): send the track, `playing`, the position, the duration, the art and the controls
+2.  **Transitions** (`ongoing -> ongoing`): on pause, resume, seek or track change send the new `playback_state` and the position you saw; on a webhook from a button, apply it to the player and confirm with the resulting state
+3.  **Finish** (`ongoing -> ended`): end the activity when the player turns off or the queue runs out; the card stops ticking on its own
+
+## Use Cases
+
+-   **Multi-room audio** -- one activity per zone, buttons steer Sonos, HEOS or Music Assistant through Home Assistant
+-   **The TV** -- what is on, pause and skip from the Lock Screen without finding the remote
+-   **Media servers** -- a Jellyfin or Plex session with cover art and a stop button
+-   **Radio and streams** -- no duration, the elapsed clock counts up, favorite bookmarks the show
 
 ---
 
@@ -4747,7 +4942,7 @@ The `content` object is shared across all templates. Only `template` is required
 
 | Field | Type | Description |
 | --- | --- | --- |
-| `template` | string | **Required.** One of: `generic`, `countdown`, `steps`, `alert`, `gauge`, `timeline`, `board`, `log` |
+| `template` | string | **Required.** One of: `generic`, `countdown`, `steps`, `alert`, `gauge`, `timeline`, `board`, `log`, `media` |
 | `progress` | float | Optional. Value between `0.0` and `1.0`. Computed automatically for `gauge` from `value`/`min_value`/`max_value`. |
 | `alarm` | boolean | Optional. Opt-in iOS AlarmKit alarm at `end_date`. Rings through silent mode and Focus. Requires `end_date`; iOS 26+ only. See [Alarms](#alarm). |
 | `snooze_seconds` | integer | Optional. How many seconds `POST /activities/{slug}/snooze` extends `end_date`, and the iOS AlarmKit snooze window. `60`-`3600`; defaults to `300` (5 min) when omitted. Only meaningful with `alarm: true`. |
@@ -4755,6 +4950,8 @@ The `content` object is shared across all templates. Only `template` is required
 | `tiles` | array | Required for the `board` template. 1-4 tile objects. See [Board](https://pushward.app/docs/live-activities/board). |
 | `lines` | array | Required for the `log` template. 1-20 line objects, newest first. See [Log](https://pushward.app/docs/live-activities/log). |
 | `log_backlog` | array | Read-only (`log` template). Server-kept scroll-back history, returned only on `GET /activities/{slug}?include=log_backlog`. Never sent by clients. |
+| `media_title`, `playback_state`, `position_seconds`, `duration_seconds`, `position_at`, `volume`, `favorite` | mixed | `media` template only; `422` on any other. The track, its playback state (`playing` / `paused` / `stopped` / `buffering`), the sampled position and when it was sampled, the length, and the volume/favorite indicators. See [Media](https://pushward.app/docs/live-activities/media). |
+| `controls` | object | `media` template only. Named transport slots (`previous`, `play_pause`, `play`, `pause`, `next`, `stop`, `favorite`, `volume_down`, `volume_up`) plus up to 3 `extra` buttons, each an [Action](#tap-actions) object. `http(s)` URLs are silent webhooks (`method` defaults to `POST`, `foreground: true` is a `422`). Deep-merges on `PATCH`; `{"stop": null}` removes a slot. See [Media controls](https://pushward.app/docs/live-activities/media#controls). |
 
 See the [Live Activities](https://pushward.app/docs/live-activities) section for template-specific fields.
 
@@ -7206,7 +7403,7 @@ GitHub Actions API --poll--> pushward-github --POST/PATCH /activities--> PushWar
 - **Stable step total** - GitHub creates jobs lazily (behind `needs:`/`if:`), so a fresh scan can't know the final count. The `X/N` denominator is seeded from a prior finished run of the same workflow + branch (last success preferred), giving a steady total from the first frame; falls back to a live scan when there is no prior run.
 - **Matrix & reusable-workflow grouping** - parallel matrix jobs (`Build (ubuntu, node-16)`) collapse into one step with per-shard `step_rows`; reusable caller prefixes (`ci-cd / Build` -> `Build`) are stripped for clean labels.
 - **Duration-sized, color-coded pills (opt-in)** - both off by default, and independent of each other. `PUSHWARD_GITHUB_STEP_WEIGHTS=true` sizes each pill (`step_weights`) by how long that group took in the previous run (the longest job, for a matrix group), so a long build reads wider than a quick lint; widths stay equal when there is no prior run. `PUSHWARD_GITHUB_STEP_COLORS=true` tints pills (`step_colors`) by job type (tests, lint, build, docker, deploy, security). With both off, the bridge sends the plain `step_rows` / `step_labels` layout.
-- **Self-filling step with a live ETA (on by default)** - the running step's pill fills on the phone between polls and its ETA counts down there, so a ten-minute build reads as motion instead of a frozen bar. The window runs from when the job actually started to that plus however long the same job took in the previous run, so a poll landing mid-step picks the bar up where it already is. A step with no measurement to draw on (a job added since the last run, or a first run on a branch) keeps the static bar and the `X/N` counter, and a step that outlasts its estimate stops at full rather than racing ahead. Set `PUSHWARD_GITHUB_LIVE_PROGRESS=false` to send the plain static bar instead.
+- **Self-filling step with a live ETA (on by default)** - the running step's pill fills on the phone between polls and its ETA counts down there, so a ten-minute build reads as motion instead of a frozen bar. The window runs from when the job actually started to that plus however long the same job took in the previous run, so a poll landing mid-step picks the bar up where it already is. A step with no measurement of its own (a job added since the last run) counts down toward the average of the run instead, the same estimate its pill is drawn at; only a first run on a branch, with nothing measured anywhere, keeps the static bar and the `X/N` counter. A step that outlasts its estimate stops at full rather than racing ahead. Set `PUSHWARD_GITHUB_LIVE_PROGRESS=false` to send the plain static bar instead.
 - **Monotonic progress** - the total step count only ever clamps upward across polls; it never decreases mid-run.
 - **Two-phase end** - a final result frame is held for `end_display_time` before the activity is dismissed; the last frame forces `N/N` so an over-counted seed self-heals to a full bar.
 - **Accent colors & deep links** - green while running, red on failure; each update carries the workflow-run URL and a secondary link to the repository.
@@ -7985,7 +8182,7 @@ The two surfaces are independent (separate config, managers, and caches) and sha
 ## Features
 
 - **Track any HA entity** as a PushWard Live Activity (Dynamic Island + Lock Screen)
-- **8 activity templates**: generic, countdown, alert, steps, gauge, timeline, board, log
+- **9 activity templates**: generic, countdown, alert, steps, gauge, timeline, board, log, media
 - **10 widget templates**: value, progress, gauge, status, stat_list, trend, countdown, battery, schedule, flow
 - **Two widget trigger modes**: `event` (state-change) or `poll` (10-3600 s interval), plus an optional
   staleness heartbeat that keeps a rarely-changing widget from greying out
@@ -7995,8 +8192,10 @@ The two surfaces are independent (separate config, managers, and caches) and sha
 - **Companion source entities**: read remaining time, progress, value, etc. from a *separate* entity
 - **Two-phase end** shows a completion state (green checkmark) before dismissing
 - **Live-progress ETA** fills the progress bar smoothly and counts down to a finish time (generic + steps)
-- **Activity artwork** beside the icon (generic + steps), with an inline ThumbHash computed here so a
-  picture that only Home Assistant can reach still renders on the phone
+- **Activity artwork** beside the icon (generic + steps + media), with an inline ThumbHash computed
+  here so a picture that only Home Assistant can reach still renders on the phone
+- **Tracked media players** as a player card: cover art read off the entity, a scrubber that ticks
+  on the device, and transport buttons that call back into Home Assistant
 - **Throttled updates** with content deduplication
 - **6-level icon fallback**: attribute -> config -> entity -> registry -> device class -> domain default
 - **Color support**: RGB, HSV, XY, Kelvin, named colors
@@ -8062,6 +8261,7 @@ A two-step flow. **Step 1** picks the entity and a template (a better template i
 | `timeline` | Sparkline chart, up to 10 named series from attributes or separate entities |
 | `board` | 1-4 tiles, each showing a value from a **separate** entity |
 | `log` | Newest-first list of log lines (up to 20), one per state change |
+| `media` | Player card for a `media_player`: cover art, a ticking scrubber, transport buttons |
 
 **Step 2** configures the details (fields vary by template).
 
@@ -8078,7 +8278,7 @@ A two-step flow. **Step 1** picks the entity and a template (a better template i
 | Update Interval | Min seconds between updates (default: 5) |
 | Progress Entity / Attribute | 0-100 progress, optionally from a separate entity |
 | Live Progress ETA | Fill the progress bar smoothly and count down an ETA to the finish time, using the remaining-time source (generic/steps templates; on steps it fills the current step) |
-| Image URL / Shape / ThumbHash | Artwork beside the icon (generic/steps templates) - see [Activity images](#activity-images) |
+| Image URL / Shape / ThumbHash | Artwork beside the icon (generic/steps/media templates) - see [Activity images](#activity-images). On a media player, leave it empty and the cover art fills in |
 | Remaining Time Entity / Attribute | Seconds remaining (countdown), with smart time parsing |
 | Total Steps / Current Step Entity / Attribute | Steps tracking, optionally from a separate entity |
 | Step Details | One row per step: label, row height (1-10), relative width, and color (steps template) |
@@ -8095,6 +8295,8 @@ A two-step flow. **Step 1** picks the entity and a template (a better template i
 | Board Tiles | Rows binding a separate entity to a tile (label, entity, attribute, unit, icon, color, URL), max 4 (board template) |
 | Log Columns | Rows adding extra values to each log line (label, entity, attribute, unit), max 6 (log template) |
 | Log Level Attribute | Attribute supplying each line's `info`/`warn`/`error` level (log template) |
+| Transport Buttons | Show previous/play-pause/next/stop/volume on the card, filtered to what the player supports (media template) |
+| Favorite Script | Script the heart button runs; hidden when empty (media template) |
 | Subtitle Entity / Attribute | Subtitle text, optionally from a separate entity |
 | State Labels | Rows giving custom display text per state (a state and its label, e.g. `on` shows `Running`) |
 | Completion Message | Text shown at end (default: "Complete") |
@@ -8169,6 +8371,57 @@ Consecutive lines with identical text are collapsed, so attribute-only churn (a 
 Each line's text is the state label followed by ` · ` and each resolved column. Values are raw Home Assistant values (e.g. `brightness` is 0-255). Columns whose source is missing or unavailable are skipped; if every column resolves empty (e.g. the lamp is off so `brightness` is absent) the line falls back to just the state label. Other-entity columns are tracked as companions, so a change in any one appends a new composed line while the tracked entity still owns start/end.
 
 Example for a lamp: a `K`-suffixed column reading `color_temp_kelvin` plus a bare `brightness` column render lines like `On · 4000K · 153`, and a brightness change now produces a distinct line instead of collapsing into the previous `On`.
+
+</details>
+
+<details>
+<summary><b>Tracked media players</b></summary>
+
+Pick a `media_player` in step 1 and the **media** template is suggested for it. The card shows the
+track title, the artist under it, the cover art, a scrubber the phone ticks forward on its own, and
+a row of transport buttons.
+
+Everything on it is read from the player's own attributes, so there is nothing to map:
+
+- **Title**: `media_title`, else `media_series_title`, else `media_channel`, else `source`.
+- **Subtitle**: `media_artist`, else `media_album_name`, else `app_name`. Setting a Subtitle Entity or Attribute overrides that chain.
+- **Scrubber**: `media_position` paired with `media_position_updated_at`, plus `media_duration`. The position is sent *with* the moment it was read, and iOS advances it from there while the state is playing - so the bar keeps moving between pushes. A player that reports a position but not the timestamp gets no scrubber rather than a wrong one, and a stale anchor (a player paused since yesterday) is dropped for the same reason.
+- **Volume**: `volume_level`.
+- **Playback state**: `playing`, `paused` and `buffering` map straight through; anything else reads as stopped.
+
+Start/end states default to **playing, buffering** and **off, idle, standby**. `paused` is
+deliberately in neither: while the card is up, pausing updates it rather than dismissing it, and
+while it is down, pausing starts nothing.
+
+**Cover art** comes from the player itself. `entity_picture` on a media player is usually a signed
+proxy path, which the phone can neither reach nor authenticate, so the integration reads the image
+bytes straight off the entity and sends a [ThumbHash](https://evanw.github.io/thumbhash/) inline
+with the activity. The picture path carries a per-track cache key, so a whole album costs one
+decode per track rather than one per push. Set an Image URL by hand and that picture wins instead.
+
+**Transport buttons** call back into Home Assistant. Each button carries a URL like
+`https://<your external URL>/api/pushward/media/<subentry>/next?token=<secret>`; pressing it POSTs
+silently (no app opens) and the integration runs `media_player.media_next_track` on the player. Only
+the buttons the player advertises through `supported_features` are sent, so a card never shows a
+button that would fail on press. `play_pause` needs both the play and pause capabilities, which is
+what Home Assistant's own `media_play_pause` service requires.
+
+Two things worth knowing before you leave the buttons on:
+
+- The callback **cannot** use your Home Assistant login: the request comes from the phone with only
+  what the notification carried. The per-player token in the URL is the whole credential, so anyone
+  who gets hold of that URL can drive that player - and run the favorite script, if you configured
+  one. Turn **Transport Buttons** off
+  for a display-only card; the endpoint then stops answering for that player too, and the next
+  update removes the buttons from cards already on a Lock Screen.
+- It needs an **https** URL Home Assistant knows about (Settings > System > Network) - the external
+  URL normally, though an https internal URL works for phones on the same network or a VPN. Without
+  one the buttons are simply left off and a warning is logged once; a plain-http URL counts as none,
+  because iOS refuses cleartext requests from the extension that fires these buttons.
+
+The **Favorite Script** option adds a heart button that runs a script you name - media players have
+no favorite of their own, so what "favorite" means is up to that script (starring the track in
+Spotify, adding it to a playlist, whatever the app supports).
 
 </details>
 
@@ -8314,7 +8567,7 @@ On premium, uncapped resources report `limit: unlimited`, and the notifications 
 
 ## Services
 
-All services live in the `pushward` domain. There are 17 in total: the nine below plus a per-template `update_activity_<template>` for each of the 8 activity templates (and the deprecated `update_activity` alias).
+All services live in the `pushward` domain. There are 18 in total: the nine below plus a per-template `update_activity_<template>` for each of the 9 activity templates (and the deprecated `update_activity` alias).
 
 ### `pushward.create_activity`
 
@@ -8334,8 +8587,8 @@ Create a new activity.
 Push a content update to an existing activity. There is **one action per template**:
 `update_activity_generic`, `update_activity_countdown`, `update_activity_steps`,
 `update_activity_alert`, `update_activity_gauge`, `update_activity_timeline`,
-`update_activity_board`, `update_activity_log`, so the UI shows only the fields that template
-supports (Home Assistant cannot hide service fields based on another field's value, so a single
+`update_activity_board`, `update_activity_log`, `update_activity_media`, so the UI shows only
+the fields that template supports (Home Assistant cannot hide service fields based on another field's value, so a single
 action with collapsed sections would always surface every template's fields). The template is
 implied by the action name; you no longer pass a `template` field.
 
@@ -8380,14 +8633,16 @@ implied by the action name; you no longer pass a `template` field.
 | `update_activity_timeline` | `value`, `unit`, `units`, `scale`, `decimals`, `smoothing`, `thresholds`, `history` |
 | `update_activity_board` | `tiles` |
 | `update_activity_log` | `lines` |
+| `update_activity_media` | `media_title` (max 128), `playback_state`, `position_seconds`, `duration_seconds`, `position_at`, `volume`, `favorite`, `controls`, `image_url`, `image_shape`, `image_thumbhash` |
 
-> **`board` / `log` use a lean schema.** They render no progress bar and no whole-activity
-> button slots, so `update_activity_board` and `update_activity_log` accept only the labels
-> (`state_text`, `subtitle`, `icon`), appearance (`completion_message`, the colors, `sound`,
-> `priority`, the TTLs `ended_ttl`/`stale_ttl`/`dismissal_ttl`), the whole-activity `tap_action`, and their template field
-> (`tiles` / `lines`), **not** `progress`, `remaining_time`, `url`, `secondary_url`,
-> `url_action`, or `secondary_url_action` (board tap targets are per-tile via each tile's
-> `url_action`). `tiles` is a list of 1-4 objects
+> **`board` / `log` / `media` use a lean schema.** They render no progress bar and no
+> whole-activity button slots, so `update_activity_board`, `update_activity_log` and
+> `update_activity_media` accept only the labels (`state_text`, `subtitle`, `icon`), appearance
+> (`completion_message`, the colors, `sound`, `priority`, the TTLs
+> `ended_ttl`/`stale_ttl`/`dismissal_ttl`), the whole-activity `tap_action`, and their template
+> fields (`tiles` / `lines` / the media fields), **not** `progress`, `remaining_time`, `url`,
+> `secondary_url`, `url_action`, or `secondary_url_action` (board tap targets are per-tile via
+> each tile's `url_action`; media buttons live in `controls`). `tiles` is a list of 1-4 objects
 > `{ label, value, unit?, icon?, color?, trend?, url_action? }` (`value` is a string max 16
 > chars). `lines` is a list of 1-20 newest-first objects `{ text, at?, level? }` where `level`
 > is `info`/`warn`/`error`.
@@ -8404,10 +8659,43 @@ implied by the action name; you no longer pass a `template` field.
 > the finish time using the remaining-time source; on steps it fills the current step rather
 > than the whole run. It needs a remaining-time entity or attribute to anchor the ETA.
 
+> **`media`** is a remote player card: `media_title` is the big line (the activity name is the
+> source device, `subtitle` the artist or show), `playback_state` is `playing` / `paused` /
+> `stopped` / `buffering`, and the scrubber ticks on the phone from `position_seconds` as
+> sampled at `position_at` (unix seconds, defaults to now) while playing. Leave
+> `duration_seconds` (max 604800) out for a live stream. `volume` (0.0-1.0) draws a level bar
+> and `favorite` fills the heart. `controls` is an object keyed by slot: `previous`,
+> `play_pause`, `play`, `pause`, `next`, `stop`, `favorite`, `volume_down`, `volume_up`, plus
+> `extra` (a list of up to 3 custom buttons, each with an `icon`). Every slot is an
+> [action object](#action-objects) with no `foreground` key at all: an `http(s)` control is
+> always a silent webhook (`POST` when no `method` is given), and a custom-scheme URL opens
+> that app. A slot set to `null` removes that button again (`controls: null` removes them all;
+> the server merges the object). Send `play` and `pause` separately or one `play_pause`
+> toggle; the phone picks by `playback_state`. The phone needs PushWard 1.9.0 or newer to
+> render the card (older builds show a generic card).
+>
+> ```yaml
+> - action: pushward.update_activity_media
+>   data:
+>     slug: living-room-player
+>     state: ongoing
+>     media_title: Snooze
+>     subtitle: SZA
+>     playback_state: playing
+>     position_seconds: 47.5
+>     duration_seconds: 214
+>     image_url: https://example.com/cover.jpg
+>     controls:
+>       previous: { url: "https://ha.example.com/api/webhook/pw-prev" }
+>       play_pause: { url: "https://ha.example.com/api/webhook/pw-toggle" }
+>       next: { url: "https://ha.example.com/api/webhook/pw-next" }
+> ```
+
 #### Activity images
 
-`generic` and `steps` can show a picture beside the icon. The server rejects the image fields
-on every other template, so the per-template actions only expose them on those two.
+`generic`, `steps` and `media` can show a picture beside the icon (on `media` it is the cover
+art). The server rejects the image fields on every other template, so the per-template actions
+only expose them on those three.
 
 | Field | Description |
 |-------|-------------|
@@ -8572,7 +8860,9 @@ automation:
 
 ## Domain Defaults
 
-When adding an entity, start/end states are pre-filled from the entity's domain.
+When adding an entity, start/end states are pre-filled from the entity's domain. The defaults
+apply at add time only - a player tracked before 0.43.0 still carries the old media_player set
+(which ended the card on `paused`); open the subentry's reconfigure to pick up the new one.
 
 <details>
 <summary><b>Per-domain start/end states and default icon</b></summary>
@@ -8585,7 +8875,7 @@ When adding an entity, start/end states are pre-filled from the entity's domain.
 | fan | on | off | mdi:fan |
 | climate | heating, cooling | off, idle | mdi:thermostat |
 | vacuum | cleaning | docked, idle | mdi:robot-vacuum |
-| media_player | playing | off, idle, paused | mdi:cast |
+| media_player | playing, buffering | off, idle, standby | mdi:cast |
 | lock | unlocked | locked | mdi:lock |
 | cover | opening, closing | open, closed | mdi:window-open |
 | timer | active | idle, paused | mdi:timer-outline |
