@@ -21,7 +21,7 @@ RUN CGO_ENABLED=0 go build -trimpath \
 # Ships the CA bundle needed for outbound HTTPS to api.pushward.app and to fetch
 # Client ID Metadata Documents during the OAuth flow. The MCP binary is a static
 # CGO_ENABLED=0 build and is configured entirely via environment variables.
-FROM gcr.io/distroless/static-debian12:nonroot@sha256:1b7b9f0f0e0a1d2155f531db587cc48ec26aaf97ab64364225f5bf18a054e66a
+FROM gcr.io/distroless/static-debian12:nonroot@sha256:afa5c872c891853ca7fcf1f12c3edb23f7eeef36189728842dd51042ff57f7ab
 
 ARG VERSION=dev
 ARG COMMIT_SHA=unknown
