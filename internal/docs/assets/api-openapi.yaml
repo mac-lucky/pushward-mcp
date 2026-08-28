@@ -174,16 +174,22 @@ components:
         color:
           type: string
         icon:
+          maxLength: 128
           type: string
         label:
+          maxLength: 32
+          minLength: 1
           type: string
         trend:
           type: string
         unit:
+          maxLength: 8
           type: string
         url_action:
           $ref: "#/components/schemas/TapAction"
         value:
+          maxLength: 16
+          minLength: 1
           type: string
       required:
         - label
@@ -268,7 +274,7 @@ components:
           type: string
         severity_label:
           description: Custom text shown in place of the Info/Warning/Critical badge (alert template).
-          maxLength: 32
+          maxLength: 40
           type: string
         snoozed_until:
           description: Server-set unix timestamp marking the new end_date after the most recent snooze. Non-nil and >= now means the activity is currently snoozed.
@@ -967,7 +973,7 @@ components:
           maxLength: 64
           type: string
         image_url:
-          description: "https URL of an image shown beside the icon. The server never fetches it: the device downloads and caches it, so the host must be publicly reachable over https (a LAN or Tailscale address will not load). Send image_thumbhash alongside it as the fallback."
+          description: "https URL of an image shown beside the icon. The server never fetches it: the device downloads and caches it, so the host must be publicly reachable over https (a LAN or Tailscale address will not load). Send image_thumbhash alongside it as the fallback. On updates an omitted key keeps the stored URL; null clears it (\"\" also clears)."
           maxLength: 2048
           type: string
         live_progress:
@@ -1753,7 +1759,7 @@ components:
           maxLength: 64
           type: string
         image_url:
-          description: "https URL of an image shown beside the icon. The server never fetches it: the device downloads and caches it, so the host must be publicly reachable over https (a LAN or Tailscale address will not load). Send image_thumbhash alongside it as the fallback."
+          description: "https URL of an image shown beside the icon. The server never fetches it: the device downloads and caches it, so the host must be publicly reachable over https (a LAN or Tailscale address will not load). Send image_thumbhash alongside it as the fallback. On updates an omitted key keeps the stored URL; null clears it (\"\" also clears)."
           maxLength: 2048
           type: string
         media_title:
@@ -1975,7 +1981,7 @@ components:
           maxLength: 64
           type: string
         image_url:
-          description: "https URL of an image shown beside the icon. The server never fetches it: the device downloads and caches it, so the host must be publicly reachable over https (a LAN or Tailscale address will not load). Send image_thumbhash alongside it as the fallback."
+          description: "https URL of an image shown beside the icon. The server never fetches it: the device downloads and caches it, so the host must be publicly reachable over https (a LAN or Tailscale address will not load). Send image_thumbhash alongside it as the fallback. On updates an omitted key keeps the stored URL; null clears it (\"\" also clears)."
           maxLength: 2048
           type: string
         live_progress:
@@ -2051,8 +2057,9 @@ components:
             type: string
           type: array
         step_labels:
-          description: Per-step labels (max 32 runes each).
+          description: Per-step labels. The rendered slot is 1/total_steps of the bar width, so the cap is reachable only at low step counts - four steps show about 14 characters on the Lock Screen, sixty-four show about three.
           items:
+            maxLength: 32
             type: string
           type: array
         step_rows:
@@ -2319,6 +2326,7 @@ components:
           type: string
         units:
           additionalProperties:
+            maxLength: 32
             type: string
           description: Per-series unit labels keyed to value keys.
           type: object
@@ -3041,20 +3049,25 @@ components:
       additionalProperties: false
       properties:
         body:
+          maxLength: 1024
           type: string
         foreground:
           type: boolean
         headers:
           additionalProperties:
             type: string
+          description: HTTP headers for a webhook action. Keys and values together must not exceed 1024 bytes.
           type: object
         icon:
+          maxLength: 64
           type: string
         method:
           type: string
         title:
+          maxLength: 64
           type: string
         url:
+          maxLength: 2048
           type: string
       required:
         - url
@@ -3065,6 +3078,7 @@ components:
         color:
           type: string
         label:
+          maxLength: 12
           type: string
         value:
           format: double
@@ -3336,8 +3350,10 @@ components:
         flow:
           $ref: "#/components/schemas/WidgetFlow"
         icon:
+          maxLength: 128
           type: string
         label:
+          maxLength: 256
           type: string
         max_value:
           format: double
@@ -3371,10 +3387,12 @@ components:
         stat_rows:
           items:
             $ref: "#/components/schemas/StatRow"
+          maxItems: 6
           type:
             - array
             - "null"
         subtitle:
+          maxLength: 256
           type: string
         subtitle_timer:
           $ref: "#/components/schemas/TimerValue"
@@ -3407,6 +3425,7 @@ components:
             - up
           type: string
         unit:
+          maxLength: 32
           type: string
         url_action:
           $ref: "#/components/schemas/TapAction"

@@ -2,7 +2,7 @@
 
 > Full Markdown bundle of every PushWard docs page, auto-generated from the prerendered HTML at build time. Source: https://pushward.app
 
-> Generated: 2026-08-19T13:26:53.954Z
+> Generated: 2026-08-27T13:08:21.143Z
 
 ---
 <!-- source: https://pushward.app/docs/getting-started -->
@@ -506,6 +506,10 @@ A step-based template designed for CI/CD pipelines and multi-stage workflows. Vi
 | `image_url` | string | https URL of an image shown in place of the icon. Max 2048 characters, no username or password in the URL. The _device_ downloads it, not the server, so the host has to be public. See [Artwork](#artwork). |
 | `image_shape` | string | How the image is framed: `poster` (2:3), `square`, or `circle`. Defaults to `square`. |
 | `image_thumbhash` | string | A ThumbHash of the image, as padded standard-alphabet base64 (about 28 characters). Rides on the push itself and renders as a blurred stand-in until the download lands. |
+
+_Requires PushWard iOS app 1.9.2 or later._
+
+The subtitle renders under the activity name on the Lock Screen card and in the expanded Dynamic Island; the Apple Watch card shows it in place of the name. Builds before 1.9.2 show it only on the Apple Watch.
 
 ### Changing `total_steps` on an existing activity
 
@@ -1216,7 +1220,7 @@ Sending any media field on another template is rejected with `422` rather than i
 
 -   An `http(s)` URL is **always a silent webhook**: the request is fired from the Live Activity, the app stays in the background, the response is discarded. The server fills in `method: "POST"` when you leave it out (stored and returned that way), and **rejects `foreground: true` on a control with `422`** -- a transport button that opens Safari is not a transport button.
 -   A custom scheme (`spotify:`, `homeassistant://`) opens that app instead.
--   Play/pause flips optimistically on the device the moment it is tapped, then your next push is the truth. Previous, next and stop dim their glyph until your next push arrives, so a slow player still reads as "working on it".
+-   Play/pause flips optimistically on the device the moment it is tapped, then your next push is the truth. Previous, next and stop give no pending visual -- the tap fires the webhook, and your next push updating the card is the confirmation.
 -   Buttons exist on the Lock Screen and in the expanded Dynamic Island. The compact and minimal Island and the Apple Watch card are tap-to-open, except that the Watch shows one play/pause button.
 
 ⚠ Warning
@@ -3806,11 +3810,12 @@ The integration listens for state changes on entities you configure. When an ent
 
 ### Via HACS (Recommended)
 
+PushWard is in the default HACS store, so there is no custom repository to add.
+
 1.  Open HACS in Home Assistant
-2.  Click the three-dot menu and select "Custom repositories"
-3.  Add `https://github.com/mac-lucky/pushward-hass` with category **Integration**
-4.  Search for "PushWard" in HACS and install
-5.  Restart Home Assistant
+2.  Search for "PushWard"
+3.  Open it and click **Download**
+4.  Restart Home Assistant
 
 ### Manual
 
@@ -8117,7 +8122,7 @@ Part of the [pushward-integrations](https://github.com/mac-lucky/pushward-integr
 
 <!-- source: https://github.com/mac-lucky/pushward-hass/blob/main/README.md -->
 
-[![HACS](https://img.shields.io/badge/HACS-Custom-41BDF5.svg?style=for-the-badge)](https://hacs.xyz)
+[![HACS](https://img.shields.io/badge/HACS-Default-41BDF5.svg?style=for-the-badge)](https://hacs.xyz)
 [![Website](https://img.shields.io/badge/pushward.app-5B4FE5?style=for-the-badge&logo=safari&logoColor=white)](https://pushward.app)
 [![App Store](https://img.shields.io/badge/App_Store-Download-0D96F6?style=for-the-badge&logo=apple&logoColor=white)](https://apps.apple.com/app/id6759689999)
 
@@ -8216,13 +8221,13 @@ The two surfaces are independent (separate config, managers, and caches) and sha
 
 [![Open your Home Assistant instance and open a repository inside the Home Assistant Community Store.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=mac-lucky&repository=pushward-hass&category=integration)
 
-One-click adds this custom repository to HACS; then install and restart. Or do it manually:
+PushWard is in the **default HACS store** - no custom repository needed. The button above opens it
+directly in HACS; then download and restart. Or do it manually:
 
 1. Open **HACS** in Home Assistant
-2. Click the three-dot menu (top right) > **Custom repositories**
-3. Add `https://github.com/mac-lucky/pushward-hass` with category **Integration**
-4. Search for **PushWard** and install
-5. **Restart Home Assistant**
+2. Search for **PushWard**
+3. Open it and click **Download**
+4. **Restart Home Assistant**
 
 ### Manual
 
@@ -8924,7 +8929,7 @@ Requires Python **3.13.2+**. CI also runs **HACS validation** and **hassfest** o
 ## CI/CD & Releases
 
 - **CI** (`.github/workflows/ci.yml`): HACS validation, hassfest, ruff lint+format, and pytest with coverage on every push/PR.
-- **Releases**: the integration version lives in `custom_components/pushward/manifest.json` (currently **0.38.0**). Bump it and push a matching **`v*`** git tag; CI builds the changelog and creates the GitHub release automatically. **Do not create releases manually.** HACS only sees GitHub releases, and `hide_default_branch: true` is set in `hacs.json`.
+- **Releases**: the integration version lives in `custom_components/pushward/manifest.json` (currently **0.43.0**). Bump it and push a matching **`v*`** git tag; CI builds the changelog and creates the GitHub release automatically. **Do not create releases manually.** HACS only sees GitHub releases, and `hide_default_branch: true` is set in `hacs.json`.
 
 ## Server compatibility
 
