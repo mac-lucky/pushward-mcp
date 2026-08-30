@@ -366,10 +366,13 @@ func TestWidgetContentFieldParity(t *testing.T) {
 	if len(widget.Properties) == 0 {
 		t.Fatalf("%s carries no properties - the committed openapi.yaml is behind the server", widgetContentSchema)
 	}
-	// POST and PATCH share the field list; only the lead sentence differs.
-	desc := contentJSONDesc(true, "POST")
+	// POST and PATCH share the field list; only the lead sentence differs. The
+	// template enum is stripped first: value, trend and flow are widget template
+	// names as well as WidgetContent properties, so that clause alone would keep
+	// the sweep green with the fields themselves undocumented.
+	desc := strings.Replace(contentJSONDesc(true, "POST"), widgetTemplateEnumClause, "", 1)
 	for name := range widget.Properties {
-		if !strings.Contains(desc, name) {
+		if !mentionsField(desc, name) {
 			t.Errorf("widget content field %q is in the spec but absent from the content_json description", name)
 		}
 	}
@@ -433,6 +436,100 @@ func TestActivityTemplateEnumParity(t *testing.T) {
 	for _, name := range activityTemplateNames {
 		if _, ok := mapping[name]; !ok {
 			t.Errorf("activity template %q is advertised but the spec mapping does not carry it", name)
+		}
+	}
+}
+
+// mentionsField reports whether desc names exactly this property. The widget
+// side gets away with strings.Contains because no two widget field names nest;
+// the activity set is full of pairs that do - url inside url_action, unit inside
+// units, value inside min_value, state inside playback_state, progress inside
+// live_progress - and a substring check passes on every one of them while the
+// field itself goes undocumented. RE2's \b counts _ as a word character, which
+// is the boundary these names need.
+func mentionsField(desc, name string) bool {
+	return regexp.MustCompile(`\b` + regexp.QuoteMeta(name) + `\b`).MatchString(desc)
+}
+
+// The activity content description drifted for several releases while the spec
+// grew step_rows, step_weights, step_colors, live_progress, primary_series and
+// the content-level tap targets: the widget side has had a parity guard since
+// device_sort shipped invisible, the activity side only had one for the media
+// and image clauses. This is the general case.
+//
+// Forward direction only, like the widget test. Server-owned properties are
+// exempted through the spec's own readOnly flag rather than a hand-list - the
+// generator already skips read-only properties when it builds tool params, so
+// the test agrees with it by construction - and the derived set is then pinned,
+// so a field the server newly marks read-only fails here instead of silently
+// falling out of the sweep. (The reverse - a field losing readOnly - is already
+// loud: it enters the sweep and has to be documented.)
+func TestActivityContentFieldParity(t *testing.T) {
+	spec := apiSpec(t)
+	mapping := activityContentMapping(t, spec)
+	// The template enum is stripped for the same reason the widget sweep strips
+	// its own: a field that shares a name with a template would match the enum
+	// and never need documenting.
+	desc := strings.Replace(contentJSONDesc(false, "PATCH"), activityTemplateEnumClause, "", 1)
+
+	readOnly, writable := make(map[string]bool), make(map[string]bool)
+	for template, ref := range mapping {
+		schema, ok := spec.Components.Schemas[refTypeName(ref)]
+		if !ok {
+			t.Fatalf("template %q maps to %q, which is not a component schema", template, ref)
+		}
+		for name, prop := range schema.Properties {
+			if prop.ReadOnly {
+				readOnly[name] = true
+				continue
+			}
+			writable[name] = true
+		}
+	}
+	// A field carried by several templates is only server-owned if every one of
+	// them marks it read-only. Classifying on the first schema seen would pick a
+	// side by map-iteration order, so a half-read-only field would flip the
+	// exemption between runs instead of failing.
+	var fields, serverOwned, conflicting []string
+	for name := range readOnly {
+		if writable[name] {
+			conflicting = append(conflicting, name)
+			continue
+		}
+		serverOwned = append(serverOwned, name)
+	}
+	if len(conflicting) > 0 {
+		t.Fatalf("%v are read-only on one activity template and writable on another - the spec has to pick one", sortedClone(conflicting))
+	}
+	for name := range writable {
+		fields = append(fields, name)
+	}
+	if len(fields) == 0 {
+		t.Fatal("the activity content schemas carry no properties - the committed openapi.yaml is behind the server")
+	}
+
+	for _, name := range sortedClone(fields) {
+		if !mentionsField(desc, name) {
+			t.Errorf("activity content field %q is in the spec but absent from the content_json description", name)
+		}
+	}
+
+	// log_backlog is exempt from the sweep but still documented, as a read-only
+	// field an agent fetches rather than sends; the other two are invisible on
+	// purpose.
+	want := []string{"log_backlog", "snoozed_until", "warning_pushed"}
+	if got := sortedClone(serverOwned); !slices.Equal(got, want) {
+		t.Errorf("the spec marks %v read-only, the exemption list is %v", got, want)
+	}
+	// The exempt fields also have to stay out of the description: naming one
+	// invites a write the server strips. log_backlog is the deliberate
+	// exception, documented as something to fetch rather than send.
+	for _, name := range sortedClone(serverOwned) {
+		if name == "log_backlog" {
+			continue
+		}
+		if mentionsField(desc, name) {
+			t.Errorf("server-owned field %q is named in the content_json description", name)
 		}
 	}
 }
@@ -754,4 +851,8 @@ func TestContentJSONDesc(t *testing.T) {
 			t.Errorf("widget desc should not mention activity media field %q: %s", mediaOnly, wPost)
 		}
 	}
+	// The per-field sweep, in both directions, lives in
+	// TestActivityContentFieldParity: it derives the names from the spec instead
+	// of hand-listing them, and matches on word boundaries rather than
+	// substrings.
 }

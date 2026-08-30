@@ -2,7 +2,7 @@
 
 > Full Markdown bundle of every PushWard docs page, auto-generated from the prerendered HTML at build time. Source: https://pushward.app
 
-> Generated: 2026-08-27T13:08:21.143Z
+> Generated: 2026-08-30T07:58:15.829Z
 
 ---
 <!-- source: https://pushward.app/docs/getting-started -->

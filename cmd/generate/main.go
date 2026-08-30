@@ -601,14 +601,15 @@ var (
 // combined clause let the top-level documentation be deleted and still match.
 var (
 	activityTemplateEnumClause = "Fields: template (" + strings.Join(activityTemplateNames, "|") + "), "
-	activitySharedFieldsClause = "progress (0.0-1.0), state, icon, subtitle, accent_color, background_color, text_color. Template-specific: "
+	activitySharedFieldsClause = "progress (0.0-1.0), state, icon, subtitle, remaining_time (seconds), accent_color, background_color, text_color, plus three tap targets every template takes: tap_action {url, foreground, method, headers, body} makes the whole card tappable, url_action and secondary_url_action take that shape plus title and icon and draw buttons, and the legacy url / secondary_url strings still work but lose to them. "
 
-	activityCountdownClause     = "countdown (duration as integer seconds (60) or duration string (\"60s\", \"1h30m\"), end_date [unix timestamp], warning_threshold, completion_message, alarm, snooze_seconds (60-3600, default 300; how far the /snooze action and iOS AlarmKit snooze extend the timer, only with alarm); if both duration and end_date are sent, end_date wins), "
-	activityStepsClause         = "steps (current_step, total_steps, step_labels), "
+	activityTimingClause        = "Timing (generic, countdown, steps): end_date [unix timestamp], start_date, duration as integer seconds (60) or string (\"60s\", \"1h30m\") which sets both from now; end_date wins when both are sent. live_progress (generic, steps) animates the bar and ETA on device between pushes instead of a static fill, needs end_date, and has to be re-anchored on each step change. Template-specific: "
+	activityCountdownClause     = "countdown (warning_threshold, completion_message, alarm, snooze_seconds (60-3600, default 300; how far the /snooze action and iOS AlarmKit snooze extend the timer, only with alarm)), "
+	activityStepsClause         = "steps (current_step, total_steps, step_labels, step_rows [per-step row index, 1-10, for multi-row layouts], step_weights [relative widths, one positive number per step], step_colors [named or hex, empty entries fall back to accent_color]), "
 	activityAlertClause         = "alert (severity: critical|warning|info, fired_at, severity_label), "
-	activityGaugeClause         = "gauge (value, min_value, max_value, unit), "
-	activityTimelineClause      = "timeline (value as {key:number}, history as {key:[{timestamp,value}]}, scale, thresholds), "
-	activityBoardClause         = "board (tiles: 1-4 labeled tiles, each {label, value [string], unit, icon, color, trend [up|down|flat], url_action {url}}, replaced wholesale per update), "
+	activityGaugeClause         = "gauge (value, min_value, max_value, unit, decimals), "
+	activityTimelineClause      = "timeline (value as {key:number}, history as {key:[{timestamp,value}]}, unit, units [per series, keyed to value keys], primary_series [the series driving the headline number], scale, decimals, smoothing, thresholds), "
+	activityBoardClause         = "board (tiles: 1-4 labeled tiles, each {label, value [string], unit, icon, color, trend [up|down|flat], url_action [button shape above]}, replaced wholesale per update), "
 	activityLogClause           = "log (lines: 1-20 newest-first entries, each {text, at [unix seconds], level [info|warn|error]}, replaced wholesale per update; the server also keeps a read-only rolling log_backlog, fetch it via get_activity include_log_backlog), "
 	activityMediaClause         = "media (remote player card, needs iOS 1.9.0, older builds show the generic card; these fields are 422 on any other template: media_title [track/episode, the big line; subtitle is the artist/show, the activity name the source device], playback_state [" + strings.Join(mediaPlaybackStates, "|") + ", default paused; only playing ticks the scrubber on device], position_seconds [0-" + strconv.Itoa(mediaSecondsMax) + " (7 days), playhead at position_at, which defaults to the receive time and has to fall within the last 12h and at most 5min ahead; a patch carrying only position is a low-priority coalescable update], duration_seconds [0-" + strconv.Itoa(mediaSecondsMax) + ", omit for live streams and radio: indeterminate bar, elapsed still ticks], volume [0-1, thin bar between the volume buttons], favorite [bool, filled heart], "
 	activityMediaControlsClause = "controls [{previous, play_pause, play, pause, next, stop, favorite, volume_down, volume_up: each {url, method, headers, body}, plus extra: up to 3 {url, icon (required), title}}; http(s) control URLs are always silent webhooks (method defaults to POST, foreground is rejected), custom schemes open that app; on PATCH controls deep-merges, a null slot removes that button, extra is replaced wholesale]). "
@@ -642,7 +643,7 @@ func contentJSONDesc(isWidget bool, method string) string {
 		lead += mergePatchNote
 	}
 	return lead + activityTemplateEnumClause + activitySharedFieldsClause +
-		activityCountdownClause + activityStepsClause + activityAlertClause +
+		activityTimingClause + activityCountdownClause + activityStepsClause + activityAlertClause +
 		activityGaugeClause + activityTimelineClause + activityBoardClause +
 		activityLogClause + activityMediaClause + activityMediaControlsClause +
 		activityImageClause
