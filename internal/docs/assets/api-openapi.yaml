@@ -458,7 +458,7 @@ components:
                 pattern: ^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$
                 type: string
               method:
-                description: HTTP method for silent webhook (foreground=false). Defaults to GET. Ignored for custom-scheme URLs.
+                description: HTTP method for the webhook. Defaults to POST for approval options (unlike url_action, whose default is GET). Ignored for custom-scheme URLs.
                 enum:
                   - GET
                   - POST

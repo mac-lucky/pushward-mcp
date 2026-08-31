@@ -3,6 +3,7 @@ package tools
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -12,6 +13,7 @@ import (
 	"time"
 
 	"github.com/mark3labs/mcp-go/mcp"
+	mcpserver "github.com/mark3labs/mcp-go/server"
 
 	"github.com/mac-lucky/pushward-mcp/internal/client"
 )
@@ -1596,5 +1598,291 @@ func TestTestPayloads_AllMarshalable(t *testing.T) {
 		if len(data) == 0 {
 			t.Errorf("testPayloads[%q] marshaled to empty", provider)
 		}
+	}
+}
+
+// ---------- handleWaitForAnswer ----------
+
+// shortAnswerPoll shrinks the poll interval for one test. Tests in this
+// package do not run in parallel, so a plain save/restore is race-free.
+func shortAnswerPoll(t *testing.T) {
+	t.Helper()
+	saved := answerPollInterval
+	answerPollInterval = 5 * time.Millisecond
+	t.Cleanup(func() { answerPollInterval = saved })
+}
+
+func activityJSON(state, template, answer string) string {
+	if answer == "" {
+		return fmt.Sprintf(`{"state":%q,"content":{"template":%q}}`, state, template)
+	}
+	return fmt.Sprintf(`{"state":%q,"content":{"template":%q,"answer":%s}}`, state, template, answer)
+}
+
+// waitForAnswerOutcome runs the handler and decodes the non-error result.
+func waitForAnswerOutcome(t *testing.T, ctx context.Context, api *client.APIClient, args map[string]any) waitOutcome {
+	t.Helper()
+	result, err := handleWaitForAnswer(ctx, newReq(args), api)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	text := resultText(t, result)
+	if result.IsError {
+		t.Fatalf("expected a regular result, got tool error: %s", text)
+	}
+	var out waitOutcome
+	if err := json.Unmarshal([]byte(text), &out); err != nil {
+		t.Fatalf("result is not JSON (%v): %s", err, text)
+	}
+	return out
+}
+
+func TestHandleWaitForAnswer_AnswerRecorded(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		io.WriteString(w, activityJSON("ongoing", "approval", `{"option":"yes","at":123,"by":"device"}`))
+	}))
+	defer srv.Close()
+	api := client.NewAPIClient(srv.URL, "tok")
+
+	out := waitForAnswerOutcome(t, context.Background(), api, map[string]any{"slug": "appr"})
+	if !out.Answered || out.State != "ongoing" || !strings.Contains(string(out.Answer), `"yes"`) {
+		t.Errorf("unexpected outcome: %+v", out)
+	}
+}
+
+func TestHandleWaitForAnswer_PollsThroughPreempted(t *testing.T) {
+	shortAnswerPoll(t)
+	var calls atomic.Int64
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Preempted is not terminal: the server promotes preempted activities
+		// back to ongoing, where the answer then lands.
+		if calls.Add(1) < 3 {
+			io.WriteString(w, activityJSON("preempted", "approval", ""))
+			return
+		}
+		io.WriteString(w, activityJSON("ongoing", "approval", `{"option":"ok","at":1,"by":"device"}`))
+	}))
+	defer srv.Close()
+	api := client.NewAPIClient(srv.URL, "tok")
+
+	out := waitForAnswerOutcome(t, context.Background(), api, map[string]any{"slug": "appr"})
+	if !out.Answered {
+		t.Errorf("expected an answer after the preempted stretch, got: %+v", out)
+	}
+	if calls.Load() < 3 {
+		t.Errorf("expected at least 3 polls, got %d", calls.Load())
+	}
+}
+
+func TestHandleWaitForAnswer_EndedUnansweredIsResult(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		io.WriteString(w, activityJSON("ended", "approval", ""))
+	}))
+	defer srv.Close()
+	api := client.NewAPIClient(srv.URL, "tok")
+
+	out := waitForAnswerOutcome(t, context.Background(), api, map[string]any{"slug": "appr"})
+	if out.Answered || out.State != "ended" || out.Reason == "" {
+		t.Errorf("expected answered=false with state=ended and a reason, got: %+v", out)
+	}
+}
+
+func TestHandleWaitForAnswer_TimeoutIsResult(t *testing.T) {
+	shortAnswerPoll(t)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		io.WriteString(w, activityJSON("ongoing", "approval", ""))
+	}))
+	defer srv.Close()
+	api := client.NewAPIClient(srv.URL, "tok")
+
+	out := waitForAnswerOutcome(t, context.Background(), api, map[string]any{"slug": "appr", "timeout_seconds": 0.05})
+	if out.Answered || out.State != "ongoing" || !strings.Contains(out.Reason, "no answer") {
+		t.Errorf("expected an answered=false timeout outcome, got: %+v", out)
+	}
+}
+
+func TestHandleWaitForAnswer_TransientFailuresTolerated(t *testing.T) {
+	shortAnswerPoll(t)
+	var calls atomic.Int64
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if calls.Add(1) <= 2 {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			return
+		}
+		io.WriteString(w, activityJSON("ongoing", "approval", `{"option":"ok","at":1,"by":"device"}`))
+	}))
+	defer srv.Close()
+	api := client.NewAPIClient(srv.URL, "tok")
+
+	out := waitForAnswerOutcome(t, context.Background(), api, map[string]any{"slug": "appr"})
+	if !out.Answered {
+		t.Errorf("expected the wait to ride out two transient failures, got: %+v", out)
+	}
+}
+
+func TestHandleWaitForAnswer_TransientFailureBudgetExhausted(t *testing.T) {
+	shortAnswerPoll(t)
+	var calls atomic.Int64
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls.Add(1)
+		w.WriteHeader(http.StatusServiceUnavailable)
+	}))
+	defer srv.Close()
+	api := client.NewAPIClient(srv.URL, "tok")
+
+	result, err := handleWaitForAnswer(context.Background(), newReq(map[string]any{"slug": "appr"}), api)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !result.IsError {
+		t.Fatalf("expected a tool error once the failure budget is spent, got: %s", resultText(t, result))
+	}
+	if got := calls.Load(); got != answerPollFailureBudget {
+		t.Errorf("expected exactly %d polls, got %d", answerPollFailureBudget, got)
+	}
+}
+
+func TestHandleWaitForAnswer_HardMissAborts(t *testing.T) {
+	var calls atomic.Int64
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls.Add(1)
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer srv.Close()
+	api := client.NewAPIClient(srv.URL, "tok")
+
+	result, err := handleWaitForAnswer(context.Background(), newReq(map[string]any{"slug": "appr"}), api)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !result.IsError {
+		t.Fatalf("expected a tool error for a 404, got: %s", resultText(t, result))
+	}
+	if got := calls.Load(); got != 1 {
+		t.Errorf("a 404 should abort on the first poll, got %d polls", got)
+	}
+}
+
+func TestHandleWaitForAnswer_EmptyTemplateIsError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		io.WriteString(w, `{"state":"ongoing"}`)
+	}))
+	defer srv.Close()
+	api := client.NewAPIClient(srv.URL, "tok")
+
+	result, err := handleWaitForAnswer(context.Background(), newReq(map[string]any{"slug": "appr"}), api)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !result.IsError || !strings.Contains(resultText(t, result), "no content") {
+		t.Errorf("an activity without content should fail immediately, got: %s", resultText(t, result))
+	}
+}
+
+func TestHandleWaitForAnswer_NonApprovalTemplateIsError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		io.WriteString(w, activityJSON("ongoing", "generic", ""))
+	}))
+	defer srv.Close()
+	api := client.NewAPIClient(srv.URL, "tok")
+
+	result, err := handleWaitForAnswer(context.Background(), newReq(map[string]any{"slug": "appr"}), api)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !result.IsError || !strings.Contains(resultText(t, result), "not approval") {
+		t.Errorf("a non-approval template should fail immediately, got: %s", resultText(t, result))
+	}
+}
+
+func TestHandleWaitForAnswer_CancelledContext(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		io.WriteString(w, activityJSON("ongoing", "approval", ""))
+	}))
+	defer srv.Close()
+	api := client.NewAPIClient(srv.URL, "tok")
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	result, err := handleWaitForAnswer(ctx, newReq(map[string]any{"slug": "appr"}), api)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !result.IsError || !strings.Contains(resultText(t, result), "cancelled") {
+		t.Errorf("expected a cancellation error, got: %s", resultText(t, result))
+	}
+}
+
+// TestWaitForAnswer_StreamsKeepalivesWithoutProgressToken drives
+// wait_for_answer through a real streamable-HTTP transport with no
+// progressToken, the way a browser connector behind Cloudflare calls it. The
+// response must upgrade to SSE and carry a notifications/message keepalive
+// frame before the result - that byte flow is what keeps the gateway and
+// Cloudflare from cutting a byteless wait at their idle timeouts.
+func TestWaitForAnswer_StreamsKeepalivesWithoutProgressToken(t *testing.T) {
+	shortAnswerPoll(t)
+	apiSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		io.WriteString(w, activityJSON("ongoing", "approval", ""))
+	}))
+	defer apiSrv.Close()
+
+	mcpSrv := mcpserver.NewMCPServer("pushward-test", "0.0.0")
+	registerCompositeTools(mcpSrv, client.NewAPIClient(apiSrv.URL, "tok"), nil)
+	httpSrv := httptest.NewServer(mcpserver.NewStreamableHTTPServer(mcpSrv))
+	defer httpSrv.Close()
+
+	post := func(body, sessionID string) *http.Response {
+		t.Helper()
+		req, err := http.NewRequest(http.MethodPost, httpSrv.URL+"/mcp", strings.NewReader(body))
+		if err != nil {
+			t.Fatalf("building request: %v", err)
+		}
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Accept", "application/json, text/event-stream")
+		if sessionID != "" {
+			req.Header.Set(mcpserver.HeaderKeySessionID, sessionID)
+		}
+		resp, err := httpSrv.Client().Do(req)
+		if err != nil {
+			t.Fatalf("posting: %v", err)
+		}
+		return resp
+	}
+
+	initBody := fmt.Sprintf(`{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":%q,"capabilities":{},"clientInfo":{"name":"probe","version":"0"}}}`, mcp.LATEST_PROTOCOL_VERSION)
+	initResp := post(initBody, "")
+	defer initResp.Body.Close()
+	if initResp.StatusCode != http.StatusOK {
+		t.Fatalf("initialize returned %d", initResp.StatusCode)
+	}
+	sessionID := initResp.Header.Get(mcpserver.HeaderKeySessionID)
+	if sessionID == "" {
+		t.Fatal("initialize returned no session id")
+	}
+
+	callResp := post(`{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"wait_for_answer","arguments":{"slug":"appr","timeout_seconds":1}}}`, sessionID)
+	defer callResp.Body.Close()
+	if callResp.StatusCode != http.StatusOK {
+		t.Fatalf("tools/call returned %d", callResp.StatusCode)
+	}
+	if ct := callResp.Header.Get("Content-Type"); !strings.Contains(ct, "text/event-stream") {
+		t.Fatalf("expected an SSE response for a token-less wait, got Content-Type %q", ct)
+	}
+	body, err := io.ReadAll(callResp.Body)
+	if err != nil {
+		t.Fatalf("reading SSE body: %v", err)
+	}
+	text := string(body)
+	t.Logf("SSE body:\n%s", text)
+	keepaliveAt := strings.Index(text, "notifications/message")
+	resultAt := strings.Index(text, "answered")
+	if keepaliveAt < 0 {
+		t.Fatalf("no notifications/message keepalive frame in the SSE body: %s", text)
+	}
+	if resultAt < 0 {
+		t.Fatalf("no wait result frame in the SSE body: %s", text)
+	}
+	if keepaliveAt > resultAt {
+		t.Errorf("keepalive frame arrived after the result: %s", text)
 	}
 }

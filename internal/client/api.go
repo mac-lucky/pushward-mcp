@@ -14,7 +14,10 @@ import (
 
 var slugPattern = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$`)
 
-func validateSlug(slug string) error {
+// ValidateSlug rejects a malformed activity or widget slug before it reaches
+// the wire. Exported so polling tools can fail bad input instantly instead of
+// spending their transient-failure budget on a request that can never succeed.
+func ValidateSlug(slug string) error {
 	if !slugPattern.MatchString(slug) {
 		return fmt.Errorf("invalid slug %q: must match ^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$", slug)
 	}
@@ -149,25 +152,26 @@ func (c *APIClient) CreateActivity(ctx context.Context, input CreateActivityInpu
 	return raw, err
 }
 
-// GetActivity returns a single activity by slug. Optional includes (e.g.
-// "log_backlog") are sent as a comma-separated ?include= query - the server
-// returns server-owned extras like the log template's rolling backlog only
-// when asked, omitting them from the default lean response.
-func (c *APIClient) GetActivity(ctx context.Context, slug string, includes ...string) (json.RawMessage, error) {
-	if err := validateSlug(slug); err != nil {
-		return nil, err
+// GetActivity returns a single activity by slug, plus the upstream HTTP
+// status code (0 when no response arrived), which lets a polling caller tell
+// transient upstream trouble (429, 5xx) from a hard miss (404, 401). Optional
+// includes (e.g. "log_backlog") are sent as a comma-separated ?include= query
+// - the server returns server-owned extras like the log template's rolling
+// backlog only when asked, omitting them from the default lean response.
+func (c *APIClient) GetActivity(ctx context.Context, slug string, includes ...string) (json.RawMessage, int, error) {
+	if err := ValidateSlug(slug); err != nil {
+		return nil, 0, err
 	}
 	q := url.Values{}
 	if len(includes) > 0 {
 		q.Set("include", strings.Join(includes, ","))
 	}
-	raw, _, err := c.DoJSON(ctx, http.MethodGet, withQuery("/activities/"+slug, q), nil)
-	return raw, err
+	return c.DoJSON(ctx, http.MethodGet, withQuery("/activities/"+slug, q), nil)
 }
 
 // DeleteActivity deletes an activity by slug.
 func (c *APIClient) DeleteActivity(ctx context.Context, slug string) error {
-	if err := validateSlug(slug); err != nil {
+	if err := ValidateSlug(slug); err != nil {
 		return err
 	}
 	_, _, err := c.DoJSON(ctx, http.MethodDelete, "/activities/"+slug, nil)
@@ -190,7 +194,7 @@ type UpdateActivityInput struct {
 
 // UpdateActivity updates an activity's state and content.
 func (c *APIClient) UpdateActivity(ctx context.Context, slug string, input UpdateActivityInput) (json.RawMessage, error) {
-	if err := validateSlug(slug); err != nil {
+	if err := ValidateSlug(slug); err != nil {
 		return nil, err
 	}
 	raw, _, err := c.DoJSON(ctx, http.MethodPatch, "/activities/"+slug, input)
@@ -298,7 +302,7 @@ func (c *APIClient) ListWidgets(ctx context.Context) (json.RawMessage, error) {
 
 // GetWidget returns a single widget by slug.
 func (c *APIClient) GetWidget(ctx context.Context, slug string) (json.RawMessage, error) {
-	if err := validateSlug(slug); err != nil {
+	if err := ValidateSlug(slug); err != nil {
 		return nil, err
 	}
 	raw, _, err := c.DoJSON(ctx, http.MethodGet, "/widgets/"+slug, nil)
@@ -317,7 +321,7 @@ type UpdateWidgetInput struct {
 
 // UpdateWidget partially updates a widget's content.
 func (c *APIClient) UpdateWidget(ctx context.Context, slug string, input UpdateWidgetInput) (json.RawMessage, error) {
-	if err := validateSlug(slug); err != nil {
+	if err := ValidateSlug(slug); err != nil {
 		return nil, err
 	}
 	raw, _, err := c.DoJSON(ctx, http.MethodPatch, "/widgets/"+slug, input)
@@ -326,7 +330,7 @@ func (c *APIClient) UpdateWidget(ctx context.Context, slug string, input UpdateW
 
 // DeleteWidget removes a widget by slug.
 func (c *APIClient) DeleteWidget(ctx context.Context, slug string) error {
-	if err := validateSlug(slug); err != nil {
+	if err := ValidateSlug(slug); err != nil {
 		return err
 	}
 	_, _, err := c.DoJSON(ctx, http.MethodDelete, "/widgets/"+slug, nil)

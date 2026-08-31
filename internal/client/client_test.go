@@ -263,7 +263,7 @@ func TestDoJSON_RequestBodySentCorrectly(t *testing.T) {
 	}
 }
 
-// ---- validateSlug tests ----
+// ---- ValidateSlug tests ----
 
 func TestValidateSlug(t *testing.T) {
 	tests := []struct {
@@ -293,9 +293,9 @@ func TestValidateSlug(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.slug, func(t *testing.T) {
-			err := validateSlug(tt.slug)
+			err := ValidateSlug(tt.slug)
 			if (err != nil) != tt.wantErr {
-				t.Errorf("validateSlug(%q) error = %v, wantErr %v", tt.slug, err, tt.wantErr)
+				t.Errorf("ValidateSlug(%q) error = %v, wantErr %v", tt.slug, err, tt.wantErr)
 			}
 		})
 	}
@@ -353,7 +353,7 @@ func TestAPIClient_GetActivity(t *testing.T) {
 	defer srv.Close()
 
 	c := NewAPIClient(srv.URL, "tok")
-	raw, err := c.GetActivity(context.Background(), "test-slug")
+	raw, _, err := c.GetActivity(context.Background(), "test-slug")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -364,7 +364,7 @@ func TestAPIClient_GetActivity(t *testing.T) {
 
 func TestAPIClient_GetActivity_InvalidSlug(t *testing.T) {
 	c := NewAPIClient("http://unused", "tok")
-	_, err := c.GetActivity(context.Background(), "bad/slug")
+	_, _, err := c.GetActivity(context.Background(), "bad/slug")
 	if err == nil {
 		t.Fatal("expected error for invalid slug")
 	}

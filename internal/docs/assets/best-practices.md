@@ -96,17 +96,16 @@ Screen.
   -> `stop` -> image -> `previous`/`next`. iOS builds older than 1.9.0 render
   the card as `generic` with a static progress bar and no buttons.
 - **Approval specifics.** The question rides `state`; keep it short and
-  interrogative. Prefer url-less options (the server-recorded form): the
-  server signs an answer URL into each one, the first tap is written to the
-  read-only `answer` field, pushed to every device, and the activity ends a
-  few seconds later with `dismissal_ttl` deciding how long the answered card
-  lingers - so read the outcome by polling `get_activity` or with the
-  `wait_for_answer` tool instead of hosting a webhook. Give options with your
-  own `url` a stable endpoint and expect no `answer`. Set `end_date` with
-  `on_expire` so an ignored question resolves itself; two options render as
-  labelled buttons, three or four as icon tiles (icons required there). Older
-  iOS builds render the card as `generic` with the first two options as
-  working buttons.
+  interrogative. Prefer url-less options: the server signs an answer URL into
+  each one, writes the first tap to the read-only `answer` field, pushes that
+  to every device and ends the activity a few seconds later (`dismissal_ttl`
+  decides how long the answered card lingers). Read the outcome with the
+  `wait_for_answer` tool, or poll `get_activity`, rather than hosting a webhook
+  of your own. An option carrying your own `url` needs a stable endpoint and
+  records no `answer`. Set `end_date` with `on_expire` so an ignored question
+  resolves itself; two options render as labeled buttons, three or four as icon
+  tiles (icons required there). Older iOS builds render the card as `generic`
+  with the first two options as working buttons.
 
 ## relay-provider
 
