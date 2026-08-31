@@ -14,6 +14,7 @@ components:
           discriminator:
             mapping:
               alert: "#/components/schemas/ContentAlert"
+              approval: "#/components/schemas/ContentApproval"
               board: "#/components/schemas/ContentBoard"
               countdown: "#/components/schemas/ContentCountdown"
               gauge: "#/components/schemas/ContentGauge"
@@ -42,6 +43,8 @@ components:
               title: Log
             - $ref: "#/components/schemas/ContentMedia"
               title: Media
+            - $ref: "#/components/schemas/ContentApproval"
+              title: Approval
         created_at:
           description: Timestamp when the activity was created.
           format: date-time
@@ -375,6 +378,193 @@ components:
       required:
         - template
       title: Alert
+      type: object
+    ContentApproval:
+      additionalProperties: true
+      description: A question card with 2-4 answer buttons. The question rides state; each option with a url fires your webhook directly, while an option without one gets a signed answer URL - the server records the tap in answer, pushes the resolved card to every device and ends the activity (dismissal_ttl controls how long the answered card lingers on the Lock Screen). Set end_date with on_expire for a deadline that applies a default answer. Older app builds render the generic card with the first two options as working buttons.
+      properties:
+        accent_color:
+          description: "Accent color: named color or hex (#RRGGBB / #RRGGBBAA)."
+          type: string
+        answer:
+          description: "Server-recorded resolution. Read-only and server-owned: ignored on write, cleared when a patch re-sends options. Set when an option without a url is tapped, or when the deadline passes."
+          properties:
+            at:
+              description: Unix timestamp when the answer was recorded.
+              type: integer
+            by:
+              description: user = someone tapped a server-recorded option; expired = the deadline sweep applied on_expire.
+              enum:
+                - user
+                - expired
+              type: string
+            option:
+              description: Chosen option id, or "none" when the deadline passed with no default.
+              type: string
+          readOnly: true
+          type: object
+        background_color:
+          description: "Background color: named color or hex."
+          type: string
+        details:
+          description: Up to two label/value context rows between the question and the buttons. With details present keep the activity name short and interrogative - the rows take the space the question text had.
+          items:
+            properties:
+              label:
+                description: Row label (e.g. To, Amount).
+                maxLength: 24
+                type: string
+              value:
+                description: Row value (e.g. ops@example.com).
+                maxLength: 64
+                type: string
+            required:
+              - label
+              - value
+            type: object
+          maxItems: 2
+          type: array
+        end_date:
+          description: Unix timestamp deadline. Enables the countdown pill on the card, and with on_expire a default answer when nobody taps.
+          type: integer
+        icon:
+          description: "Icon name. SF Symbol (e.g. washer, flame) or Material Design Icon with mdi: prefix (e.g. mdi:thermometer)."
+          maxLength: 128
+          type: string
+        on_expire:
+          description: Option id the server records at end_date when nobody answered, or "none" to just expire. Requires end_date. The expired card is pushed to every device and the activity ends.
+          type: string
+        options:
+          description: 2-4 answer buttons. Replaced wholesale on each update; re-sending them starts a new round and clears the stored answer. Required when template is approval.
+          items:
+            description: One answer button (2-4 per card).
+            properties:
+              body:
+                description: HTTP request body for silent webhook. <=1KB. Ignored for custom-scheme URLs.
+                maxLength: 1024
+                type: string
+              headers:
+                additionalProperties:
+                  type: string
+                description: HTTP headers for silent webhook. Total <=1KB. Ignored for custom-scheme URLs.
+                type: object
+              icon:
+                description: SF Symbol name (e.g. checkmark.circle). Required when there are 3 or more options - compact surfaces render icon-first tiles.
+                maxLength: 64
+                type: string
+              id:
+                description: Stable identifier recorded in answer.option when this option is chosen. Unique within options.
+                maxLength: 64
+                pattern: ^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$
+                type: string
+              method:
+                description: HTTP method for silent webhook (foreground=false). Defaults to GET. Ignored for custom-scheme URLs.
+                enum:
+                  - GET
+                  - POST
+                  - PUT
+                  - PATCH
+                  - DELETE
+                  - HEAD
+                type: string
+              style:
+                description: "Button weight: primary (filled accent), secondary (outlined), destructive (red). Default: the first option renders primary, the rest secondary."
+                enum:
+                  - primary
+                  - secondary
+                  - destructive
+                type: string
+              title:
+                description: Button label. Up to four buttons share one row, so keep it short.
+                maxLength: 24
+                type: string
+              url:
+                description: "Webhook fired when this option is tapped. http(s) URLs are always silent webhooks (method defaults to POST; foreground is rejected); custom schemes open that app. Omit it for the server-recorded form: the server fills a signed answer URL, the tap lands in answer, is pushed to every device, and the activity ends."
+                maxLength: 2048
+                type: string
+            required:
+              - id
+              - title
+            type: object
+          maxItems: 4
+          minItems: 2
+          type: array
+        progress:
+          description: Progress value [0.0 - 1.0]
+          maximum: 1
+          minimum: 0
+          type: number
+        remaining_time:
+          description: Remaining time in seconds.
+          minimum: 0
+          type: integer
+        secondary_url:
+          description: Secondary button URL (legacy). Use secondary_url_action for richer routing.
+          maxLength: 2048
+          type: string
+        snoozed_until:
+          description: Server-set unix timestamp marking the new end_date after the most recent snooze. Non-nil and >= now means the activity is currently snoozed.
+          readOnly: true
+          type: integer
+        source:
+          description: Who is asking - rendered as a badge in the card header (e.g. Agent, GitHub, n8n).
+          maxLength: 24
+          type: string
+        state:
+          description: Short status text (e.g. Washing, Build Container Image).
+          maxLength: 256
+          type: string
+        subtitle:
+          description: Secondary descriptive text (e.g. Layer 150/200, repo / CI/CD).
+          maxLength: 256
+          type: string
+        tap_action:
+          description: Widget-wide tap action. When set, overrides the default behavior (opening the PushWard app to the activity detail page). The whole Live Activity becomes tappable as a single target.
+          properties:
+            body:
+              description: HTTP request body for silent webhook. <=1KB. Ignored for custom-scheme URLs.
+              maxLength: 1024
+              type: string
+            foreground:
+              description: "For http(s) URLs only: true opens the URL in Safari / in-app browser; false fires the request silently without launching the app (silent webhook). Ignored for custom-scheme URLs."
+              type: boolean
+            headers:
+              additionalProperties:
+                type: string
+              description: HTTP headers for silent webhook. Total <=1KB. Ignored for custom-scheme URLs.
+              type: object
+            method:
+              description: HTTP method for silent webhook (foreground=false). Defaults to GET. Ignored for custom-scheme URLs.
+              enum:
+                - GET
+                - POST
+                - PUT
+                - PATCH
+                - DELETE
+                - HEAD
+              type: string
+            url:
+              description: Target URL. Any scheme except javascript/data/file/vbscript. http(s) URLs require a host; custom schemes (e.g. youtube://, homeassistant://) open the matching app.
+              maxLength: 2048
+              type: string
+          required:
+            - url
+          type: object
+        template:
+          description: Template type that determines the Live Activity layout.
+          enum:
+            - approval
+          type: string
+        text_color:
+          description: "Text color: named color or hex."
+          type: string
+        url:
+          description: Primary button URL (legacy). Use url_action for richer routing (silent webhook, custom HTTP method/headers/body).
+          maxLength: 2048
+          type: string
+      required:
+        - template
+      title: Approval
       type: object
     ContentBoard:
       additionalProperties: true
@@ -3110,6 +3300,7 @@ components:
           discriminator:
             mapping:
               alert: "#/components/schemas/ContentAlert"
+              approval: "#/components/schemas/ContentApproval"
               board: "#/components/schemas/ContentBoard"
               countdown: "#/components/schemas/ContentCountdown"
               gauge: "#/components/schemas/ContentGauge"
@@ -3138,6 +3329,8 @@ components:
               title: Log
             - $ref: "#/components/schemas/ContentMedia"
               title: Media
+            - $ref: "#/components/schemas/ContentApproval"
+              title: Approval
         dismissal_ttl:
           description: "Seconds after ENDED before Lock Screen removal (0 = immediate, max 4h). Tri-state: omit to keep, null to clear, number to set."
           format: int64

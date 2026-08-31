@@ -325,6 +325,7 @@ func TestBuildTestContent_AllLifecycleTemplatesValidJSON(t *testing.T) {
 		"board":     {"template", "tiles"},
 		"log":       {"template", "lines"},
 		"media":     {"template", "media_title", "playback_state", "position_seconds", "controls"},
+		"approval":  {"template", "options", "source"},
 	}
 	// Parity: the assertions below must cover exactly the templates the tool
 	// advertises in lifecycleTemplates - adding one to the enum without a fixture

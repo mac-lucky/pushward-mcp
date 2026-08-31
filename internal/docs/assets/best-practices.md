@@ -45,7 +45,7 @@ General rules for any code that talks to the PushWard REST API
 Writing Live Activity content that renders well on the Dynamic Island and Lock
 Screen.
 
-- **Pick the right template.** Nine templates, each with a distinct layout:
+- **Pick the right template.** Ten templates, each with a distinct layout:
   `generic` (progress for builds/downloads/deploys), `countdown` (server-managed
   timer with automatic warning/completion pushes), `steps` (CI/CD multi-stage
   matrix), `alert` (severity-based monitoring with deep links), `gauge`
@@ -57,7 +57,9 @@ Screen.
   keeps a rolling backlog readable via `GET /activities/{slug}?include=log_backlog`),
   `media` (a remote player card: cover art, `media_title` over `subtitle`, a
   scrubber that ticks on device while playing, and transport buttons that fire
-  your webhooks). Always set `content.template`.
+  your webhooks), `approval` (a question card with 2-4 answer buttons; the
+  server can record the tapped option itself and end the card). Always set
+  `content.template`.
 - **Images are fetched by the device, not the server.** `content.image_url` is
   accepted on `generic`, `steps` and `media` only (anything else is a `422`), and the
   phone downloads it itself - a LAN or Tailscale host renders nothing at all.
@@ -93,6 +95,18 @@ Screen.
   buttons, never their headers, in the order `extra` -> volume -> `favorite`
   -> `stop` -> image -> `previous`/`next`. iOS builds older than 1.9.0 render
   the card as `generic` with a static progress bar and no buttons.
+- **Approval specifics.** The question rides `state`; keep it short and
+  interrogative. Prefer url-less options (the server-recorded form): the
+  server signs an answer URL into each one, the first tap is written to the
+  read-only `answer` field, pushed to every device, and the activity ends a
+  few seconds later with `dismissal_ttl` deciding how long the answered card
+  lingers - so read the outcome by polling `get_activity` or with the
+  `wait_for_answer` tool instead of hosting a webhook. Give options with your
+  own `url` a stable endpoint and expect no `answer`. Set `end_date` with
+  `on_expire` so an ignored question resolves itself; two options render as
+  labelled buttons, three or four as icon tiles (icons required there). Older
+  iOS builds render the card as `generic` with the first two options as
+  working buttons.
 
 ## relay-provider
 

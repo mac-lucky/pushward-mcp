@@ -514,18 +514,19 @@ func TestActivityContentFieldParity(t *testing.T) {
 		}
 	}
 
-	// log_backlog is exempt from the sweep but still documented, as a read-only
-	// field an agent fetches rather than sends; the other two are invisible on
-	// purpose.
-	want := []string{"log_backlog", "snoozed_until", "warning_pushed"}
+	// log_backlog and answer are exempt from the sweep but still documented,
+	// as read-only fields an agent fetches rather than sends (answer is the
+	// whole outcome API of the approval template); the other two are invisible
+	// on purpose.
+	want := []string{"answer", "log_backlog", "snoozed_until", "warning_pushed"}
 	if got := sortedClone(serverOwned); !slices.Equal(got, want) {
 		t.Errorf("the spec marks %v read-only, the exemption list is %v", got, want)
 	}
 	// The exempt fields also have to stay out of the description: naming one
-	// invites a write the server strips. log_backlog is the deliberate
-	// exception, documented as something to fetch rather than send.
+	// invites a write the server strips. log_backlog and answer are the
+	// deliberate exceptions, documented as something to fetch rather than send.
 	for _, name := range sortedClone(serverOwned) {
-		if name == "log_backlog" {
+		if name == "log_backlog" || name == "answer" {
 			continue
 		}
 		if mentionsField(desc, name) {
@@ -837,12 +838,16 @@ func TestContentJSONDesc(t *testing.T) {
 	if !strings.Contains(aPatch, "countdown") || !strings.Contains(aPatch, "Merge Patch") {
 		t.Errorf("activity PATCH desc wrong: %s", aPatch)
 	}
-	// The board/log/media templates must be advertised in the enum and documented.
-	if !strings.Contains(aPatch, "timeline|board|log|media)") {
-		t.Errorf("activity desc missing board/log/media in template enum: %s", aPatch)
+	// The board/log/media/approval templates must be advertised in the enum
+	// and documented.
+	if !strings.Contains(aPatch, "timeline|board|log|media|approval)") {
+		t.Errorf("activity desc missing board/log/media/approval in template enum: %s", aPatch)
 	}
 	if !strings.Contains(aPatch, "board (tiles") || !strings.Contains(aPatch, "log (lines") || !strings.Contains(aPatch, "media (") {
 		t.Errorf("activity desc missing board/log/media field docs: %s", aPatch)
+	}
+	if !strings.Contains(aPatch, "approval (a question card") || !strings.Contains(aPatch, "wait_for_answer") {
+		t.Errorf("activity desc missing approval field docs: %s", aPatch)
 	}
 	// Media fields are activity-only, and the widget description must not
 	// advertise a player card widgets cannot render.
