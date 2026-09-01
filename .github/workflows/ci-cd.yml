@@ -45,3 +45,24 @@ jobs:
       enable_container_tests: false
       enable_kubernetes_tests: false
     secrets: inherit
+
+  # The MCP server mirrors the app's activity contract, so the release notes
+  # open with the app release they target. The version comes from the newest
+  # row of the App Store release feed instead of being typed by hand. Tag runs
+  # only; on PRs and main pushes the job skips.
+  release-app-version-note:
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    needs: ci-cd
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: State the required app version in the release notes
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version=$(curl -sSf --retry 3 'https://api.pushward.app/app/releases?channel=appstore' | jq -r '.items[0].version')
+          test -n "$version" && test "$version" != "null"
+          body=$(gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --json body --jq .body)
+          printf 'Requires the PushWard iOS app %s or later.\n\n%s\n' "$version" "$body" | \
+            gh release edit "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --notes-file -
