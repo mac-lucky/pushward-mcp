@@ -2,7 +2,7 @@
 
 > Full Markdown bundle of every PushWard docs page, auto-generated from the prerendered HTML at build time. Source: https://pushward.app
 
-> Generated: 2026-08-30T07:58:15.829Z
+> Generated: 2026-09-09T22:29:22.117Z
 
 ---
 <!-- source: https://pushward.app/docs/getting-started -->
@@ -117,13 +117,6 @@ curl -X PATCH https://api.pushward.app/activities/my-build \
 
 After ending, the Live Activity remains visible on the Lock Screen for up to 4 hours (iOS behavior). The activity returns to `ended` state and can be started again.
 
-## Next Steps
-
--   [Choose a Live Activity template](https://pushward.app/docs/live-activities) -- generic, countdown, steps, alert, gauge, or timeline
--   [Explore the full API](https://pushward.app/docs/api) -- all endpoints and options
--   [Set up integrations](https://pushward.app/docs/integrations) -- Relay, GitHub Actions, Home Assistant, and more
--   [Code examples](https://pushward.app/docs/examples) -- curl, Python, Go, and JavaScript
-
 ---
 
 <!-- source: https://pushward.app/docs/live-activities -->
@@ -132,11 +125,9 @@ After ending, the Live Activity remains visible on the Lock Screen for up to 4 h
 
 A Live Activity is an iOS feature that shows live, glanceable information right on the Lock Screen, in the Dynamic Island, and in StandBy - without the recipient ever opening an app. PushWard turns a single HTTP request into one.
 
-Unlike a regular push notification - which appears once and then slips into the notification list - a Live Activity stays pinned and updates in real time: a build moving through its steps, a timer counting down, a delivery getting closer. When the task finishes, it ends and clears itself. You create, update, and end activities entirely through PushWard's REST API, so any service that can send an HTTP request can drive what people see at a glance.
+Unlike a regular push notification - which appears once and then slips into the notification list - a Live Activity stays pinned and updates in real time, then ends and clears itself when the task finishes. You create, update, and end activities entirely through PushWard's REST API, choosing one of ten templates, each with a layout tuned to a different job.
 
 ## Templates
-
-PushWard provides nine Live Activity templates. Each template has a distinct layout optimized for different use cases.
 
 [
 
@@ -224,13 +215,21 @@ Streaming, newest-first feed of status lines with timestamps and severity levels
 
 Remote media-player card: cover art, a scrubber that ticks on the device, and transport buttons that fire your own webhooks.
 
-0:47
+![](https://pushward.app/_app/immutable/assets/media-nolock-poster.C1hrCngL.webp)
 
 
 
+](https://pushward.app/docs/live-activities/media)[
+
+### ApprovalSoon
+
+Question card with 2-4 answer buttons - the server records the tapped option, pushes it to every device, and resolves the card.
+
+![](https://pushward.app/_app/immutable/assets/approval-nolock-poster.C4pF8NBV.webp)
 
 
-](https://pushward.app/docs/live-activities/media)
+
+](https://pushward.app/docs/live-activities/approval)
 
 ---
 
@@ -247,19 +246,21 @@ A flexible progress-based template suitable for builds, downloads, deployments, 
 | Field | Type | Description |
 | --- | --- | --- |
 | `template` | string | **Required.** Must be `"generic"` |
-| `progress` | float | **Required.** Value between `0.0` and `1.0` |
+| `progress` | float | **Required.** Value between `0.0` and `1.0`; shown as a percentage in the top-right corner |
 | `state` | string | Short status text (e.g. "Building...", "Complete") |
 | `icon` | string | SF Symbol name (e.g. `"arrow.triangle.branch"`, `"washer"`) or MDI icon with `mdi:` prefix (e.g. `"mdi:washing-machine"`, `"mdi:thermometer"`) |
-| `remaining_time` | integer | Remaining time in seconds |
+| `remaining_time` | integer | Remaining time in seconds, shown as a countdown alongside the progress bar |
 | `subtitle` | string | Secondary text below the progress bar |
 | `accent_color` | string | Named color or hex (e.g. `"cyan"`, `"#00BCD4"`) |
 | `background_color` | string | Background color override |
 | `text_color` | string | Text color override |
 | `end_date` | integer | Unix timestamp (seconds) for the estimated completion. Acts as the ETA anchor for `live_progress`. See [Live progress](#live-progress). |
-| `live_progress` | boolean | When `true`, iOS animates the progress bar and counts the ETA down natively between pushes instead of jumping only when you send an update. **Requires `end_date`.** See [Live progress](#live-progress). |
+| `live_progress` | boolean | When `true`, iOS animates the progress bar and counts the ETA down natively between pushes instead of jumping only when you send an update. **Requires `end_date`** (or `duration`); rejected with `422` without one. See [Live progress](#live-progress). |
 | `image_url` | string | https URL of an image shown in place of the icon -- cover art, a poster, an album sleeve. Max 2048 characters, no username or password in the URL. The _device_ downloads it, not the server. See [Artwork](#artwork). |
 | `image_shape` | string | How the image is framed: `poster` (2:3), `square`, or `circle`. Defaults to `square`. |
 | `image_thumbhash` | string | A [ThumbHash](https://evanw.github.io/thumbhash/) of the image, as padded standard-alphabet base64 (about 28 characters). Renders as a blurred stand-in until the download lands, and is the only thing that shows for an image the phone cannot reach. |
+
+Renders `url_action` and `secondary_url_action` as buttons beneath the progress bar, and treats taps on the rest of the card as `tap_action` -- see [Tap actions](https://pushward.app/docs/api/activities#tap-actions).
 
 ## Example Payload
 
@@ -289,11 +290,7 @@ By default the progress bar only moves when you push an update, so a slow job lo
 -   iOS interpolates from the last pushed `progress` toward completion at `end_date`, so the bar glides instead of stepping.
 -   Each push re-anchors the animation: send a fresh `progress` and, if the estimate changed, a new `end_date`.
 -   If the job stalls and the ETA passes without an update, the bar **freezes at the last pushed `progress`** rather than running to 100% on its own - so a stuck task never looks finished.
--   Updates are merge-patches - fields you omit carry forward. On the update that finishes the job (or the push that ends the activity), clear the countdown explicitly with `"end_date": null, "live_progress": null`, or the finished card keeps counting toward an ETA that no longer means anything.
-
-ℹ Info
-
-`live_progress` requires `end_date` (or `duration`, which resolves to one). Without it there's nothing to animate toward, so the server rejects `live_progress: true` with `422`.
+-   Fields you omit carry forward ([update semantics](https://pushward.app/docs/api/activities#merge-patch)): on an update that finishes the job while the activity stays ongoing, clear the countdown explicitly with `"end_date": null, "live_progress": null`, or the finished card keeps counting toward an ETA that no longer means anything. Ending the activity clears the anchors for you.
 
 Download with native live progress 
 
@@ -322,8 +319,6 @@ Send `image_url` and the icon slot becomes an image slot: cover art for the epis
 ### The server never fetches the image
 
 The URL travels on the push and the _phone_ downloads it, which has two consequences worth planning around. The host has to be reachable from the open internet over https, and the file has to be small -- the device stops at 2 MB. A poster at 400x600 is well inside that; a 4K still is not. Format is whatever the system image decoder reads, which is wider than it sounds -- JPEG, PNG, HEIC, GIF, WebP and more -- provided the response is served with an `image/*` content type. (That is a separate question from what the Relay's ThumbHash encoder can read; see [Poster artwork](https://pushward.app/docs/integrations/relay#artwork).)
-
-⚠ Warning
 
 A private _address_ never loads: iOS refuses to open a connection to a `192.168.x.x` host, or anything on Tailscale (`100.64/10`), because activities can be shared view-only and a URL on one is otherwise a way to point somebody else's phone at your LAN. A private _name_ like `https://jellyfin.local/...` resolves normally, so it loads wherever it resolves and the certificate is valid -- which in practice means on your own network, and nowhere else. Either way, send `image_thumbhash`: it is what viewers outside the network see, and it is the only tier that always renders.
 
@@ -359,31 +354,11 @@ Now playing, with cover art and its ThumbHash
 ### Updating the artwork
 
 -   Changing any of the three fields sends a high-priority push instead of a coalesced one. Swapping the poster mid-activity (next episode, next track) is the most visible change this template can make, and holding it behind the update cooldown would leave the old artwork on screen.
--   Updates are merge-patches, so the artwork carries forward until you change it. Clear it with `"image_url": null`.
+-   Artwork carries forward across updates; clear it with `"image_url": null`.
 -   If a `PATCH` switches the activity to a template with no image slot, the server drops the image fields you _inherited_ from the stored content rather than failing the update -- you cannot be held responsible for keys you never sent. Fields sent in that same patch are still a `422`: switching to `alert` while also sending `image_url` is a contradiction only you can resolve.
 -   Widgets and push notifications have no equivalent. The closest thing a notification has is `icon_url`, which replaces the source avatar rather than filling an artwork slot. See [Notifications](https://pushward.app/docs/notifications/basics).
 
 Several [Relay](https://pushward.app/docs/integrations/relay) providers do all of this for you: Jellyfin, Radarr, Sonarr and Overseerr attach the poster and its ThumbHash to the activities they create. A media server on your own network needs one setting on a self-hosted relay -- see [Poster artwork](https://pushward.app/docs/integrations/relay#artwork).
-
-## Typical Flow
-
-1.  **Start** (`ended -> ongoing`): Set `progress: 0.0` with an initial status
-2.  **Update** (`ongoing -> ongoing`): Increment progress, change status text
-3.  **End** (`ongoing -> ended`): Set `progress: 1.0` with a completion status
-
-## Buttons & tap targets
-
-Renders `url_action` and `secondary_url_action` as buttons beneath the progress bar, and treats taps on the rest of the widget as `tap_action`. Buttons appear only when their action is present. See [Tap actions](https://pushward.app/docs/api/activities#tap-actions) for the action object shape.
-
-💡 Tip
-
-The progress percentage is displayed in the top-right corner of the Live Activity. Use `remaining_time` to show a countdown alongside the progress bar.
-
-## Integrations Using This Template
-
--   [SABnzbd](https://pushward.app/docs/integrations/sabnzbd) - tracks download progress with speed and ETA
--   [Bambu Lab](https://pushward.app/docs/integrations/bambulab) - tracks 3D print progress with layer counts and temperature
--   [Home Assistant](https://pushward.app/docs/integrations/home-assistant) - default template for entity state tracking
 
 ---
 
@@ -391,7 +366,7 @@ The progress percentage is displayed in the top-right corner of the Live Activit
 
 # Countdown Template
 
-A timer-based template with server-managed lifecycle. Set it and forget it -- the server handles warning and completion pushes automatically.
+A timer with server-managed lifecycle: send one start push and the server fires the warning and completion updates itself.
 
 ![Live Activity demonstration](https://pushward.app/_app/immutable/assets/timer-poster.Cfb8TqW1.webp)
 
@@ -412,8 +387,10 @@ A timer-based template with server-managed lifecycle. Set it and forget it -- th
 | `accent_color` | string | Named color or hex |
 | `background_color` | string | Background color override |
 | `text_color` | string | Text color override |
-| `alarm` | boolean | Opt-in: schedule an iOS AlarmKit alarm at `end_date` that rings through silent mode and Focus. iOS 26+ only. See [Ringing an Alarm on Completion](#ringing-an-alarm-on-completion). |
+| `alarm` | boolean | Opt-in: schedule an iOS AlarmKit alarm at `end_date` that rings through silent mode and Focus, with built-in Dismiss and Snooze. iOS 26+ only. Persists across partial updates until cleared with `alarm: null` or a transition to `ended` - see [Alarms](https://pushward.app/docs/api/activities#alarm). |
 | `snooze_seconds` | integer | How long the alarm's **Snooze** button defers the alarm, in seconds (60-3600). Defaults to `300` (5 minutes). |
+
+Accepts `url_action`, `secondary_url_action`, and `tap_action` - `tap_action` is useful for deep-linking back into the timer's source app while it runs. See [Tap actions](https://pushward.app/docs/api/activities#tap-actions).
 
 ## Example Payload
 
@@ -439,35 +416,13 @@ Start a countdown
 
 ## Auto-Managed Lifecycle
 
-After starting a countdown, the server automatically manages the remaining lifecycle:
+After the start push the server manages the remaining lifecycle, in this order; the timer display itself is computed on-device from `start_date` and `end_date`, so it counts down in real time without additional pushes.
 
-1.  **You send the start push** -- sets `ended -> ongoing` with the countdown content
-2.  **Server sends warning push** -- when `warning_threshold` seconds remain, the server automatically sends an update with `accent_color: "orange"`
-3.  **Server sends completion push** -- when `end_date` is reached, the server sends an end push with `completion_message` and `progress: 1.0`
-
-ℹ Info
-
-The countdown timer display on the device is computed from `start_date` and `end_date`, so it counts down in real-time without needing additional pushes.
-
-💡 Tip
-
-Only the initial start push is required. You don't need to send any follow-up requests -- the server handles everything automatically.
-
-## Buttons & tap targets
-
-Accepts `url_action`, `secondary_url_action`, and `tap_action` - `tap_action` is useful for deep-linking back into the timer's source app while it runs. See [Tap actions](https://pushward.app/docs/api/activities#tap-actions) for the action object shape.
-
-## Ringing an Alarm on Completion
-
-Setting [`alarm: true`](https://pushward.app/docs/api/activities#alarm) (as shown above) schedules an iOS **AlarmKit** alarm at `end_date`. The alarm rings through silent mode and Focus -- like a native Clock alarm -- alongside the Live Activity countdown, with built-in **Dismiss** and **Snooze** controls (snooze defaults to 5 minutes; override per activity with `snooze_seconds`, 60-3600 s).
-
-ℹ Info
-
-Requires iOS 26+ and user authorization on first use. Once set, the alarm persists across partial updates until you clear it with `{"content":{"alarm":null}}` in a `PATCH` body, or a transition to `ended`. See [Alarms](https://pushward.app/docs/api/activities#alarm) for details.
-
-## Integrations Using This Template
-
--   [Home Assistant](https://pushward.app/docs/integrations/home-assistant) - configurable via the `template` option in entity config
+| Phase | Trigger | What the server sends |
+| --- | --- | --- |
+| Start | Your push | Nothing -- your update sets `ended -> ongoing` with the countdown content |
+| Warning | `warning_threshold` seconds remain | An update with `accent_color: "orange"`, automatically |
+| Completion | `end_date` reached | An end push with `completion_message` and `progress: 1.0` |
 
 ---
 
@@ -499,7 +454,7 @@ A step-based template designed for CI/CD pipelines and multi-stage workflows. Vi
 | `text_color` | string | Text color override |
 | `step_weights` | number\[\] | Gives each step a relative width. On its own it renders a single row of proportional segments (e.g. `[1, 2, 1]` makes the middle step twice as wide as its neighbours). Combined with `step_rows` it widths the matrix columns while each column keeps its fan-out. Length must equal `total_steps`. See [Segmented layout](#segmented). |
 | `step_colors` | string\[\] | Per-step colors for the segmented layout (named color or hex). Length must equal `total_steps`. An empty entry (`""`) falls back to `accent_color` for that segment, so you can tint just a few steps. |
-| `live_progress` | boolean | When `true`, iOS animates the **current step** toward completion and counts down an ETA, natively, between your pushes. Requires `end_date`. See [Live progress](#live-progress). |
+| `live_progress` | boolean | When `true`, iOS animates the **current step** toward completion and counts down an ETA, natively, between your pushes. Requires `end_date` (or `duration`); rejected with `422` without one. See [Live progress](#live-progress). |
 | `duration` | integer | string | How long the **current step** takes: seconds (`5400`) or a duration string (`"90m"`, `"1h30m"`). Sets `start_date` to now and `end_date` to now + duration, which is how you re-anchor the animation on each step change. |
 | `end_date` | integer | Unix timestamp when the **current step** is expected to finish -- not the end of the whole run. Wins over `duration` when both are sent. |
 | `start_date` | integer | Unix timestamp when the current step began. Set for you by `duration`; the bar fills across `start_date` to `end_date`. |
@@ -511,11 +466,11 @@ _Requires PushWard iOS app 1.9.2 or later._
 
 The subtitle renders under the activity name on the Lock Screen card and in the expanded Dynamic Island; the Apple Watch card shows it in place of the name. Builds before 1.9.2 show it only on the Apple Watch.
 
+Renders `url_action` and `secondary_url_action` as buttons under the segment bar and background taps as `tap_action`; the legacy `url` / `secondary_url` strings still work. See [Tap actions](https://pushward.app/docs/api/activities#tap-actions).
+
 ### Changing `total_steps` on an existing activity
 
-Updates are merge-patches, so an array you leave out of a `PATCH` keeps the value it already had. That matters when you reuse one slug across runs: if the new run has a different `total_steps`, the arrays carried over from the last run no longer describe it. Any of them you do not re-send is dropped for you rather than failing the update, so a shorter or longer run still goes through. Re-send the ones you want, and the rest come back as the plain equal-width matrix.
-
-An array you _do_ send still has to match: a length that disagrees with `total_steps` in the same payload is rejected with `422`.
+Updates are merge-patches -- an array you leave out of a `PATCH` keeps its stored value ([update semantics](https://pushward.app/docs/api/activities#merge-patch)). When you reuse one slug across runs and the new run changes `total_steps`, any carried-over array that no longer matches it is dropped for you rather than failing the update; re-send the ones you want, and the rest come back as the plain equal-width matrix. An array you _do_ send still has to match: a length that disagrees with `total_steps` in the same payload is rejected with `422`.
 
 ## Example Payload
 
@@ -541,7 +496,7 @@ Steps step 3 of 8
 
 ## Step Rows
 
-The `step_rows` array defines how many parallel jobs exist at each step. This creates a matrix visualization on the Live Activity:
+The `step_rows` array defines how many parallel jobs exist at each step, creating a matrix visualization -- the [GitHub Actions](https://pushward.app/docs/integrations/github-actions) bridge maps workflow jobs to steps this way:
 
 ```
 // [1, 1, 3, 1, 1, 2, 1, 1]
@@ -565,11 +520,7 @@ _Requires PushWard iOS app 1.3.3 or later._
 
 Set `step_weights` to render the steps as a **single row of proportional segments** instead of the equal-width matrix. Each weight is that step's relative share of the bar width, so `[1, 2, 1]` gives a narrow-wide-narrow layout. This suits a linear process whose stages take different amounts of time (a wash cycle, a multi-part checkout) more than a CI matrix.
 
-In this layout the shared `progress` field fills the **current** segment fractionally: completed steps are filled solid, the `current_step` segment fills to `progress` (0.0-1.0), and later steps stay empty. Pair it with `step_colors` to give each stage its own tint; leave an entry blank to fall back to `accent_color`.
-
-💡 Tip
-
-Send `step_weights` and `step_rows` together for a **weighted matrix**: each column's width follows its weight while it still stacks its parallel jobs. Both arrays must be length `total_steps`. Weights alone give the single segmented row; `step_rows` alone gives the equal-width matrix.
+In this layout the shared `progress` field fills the **current** segment fractionally: completed steps are filled solid, the `current_step` segment fills to `progress` (0.0-1.0), and later steps stay empty. Pair it with `step_colors` to give each stage its own tint.
 
 Dishwasher: segmented steps with per-step colors 
 
@@ -622,24 +573,13 @@ CI pipeline: weighted matrix (duration-sized columns with fan-out)
 
 _Requires PushWard iOS app 1.3.5 or later._
 
-By default the bar only moves when you push an update, so a long step looks frozen in between. If you know how long the current step takes -- a 90-minute wash cycle, a 4-minute test suite -- set `live_progress: true` and tell the server when that step ends. iOS then fills the current step and counts an ETA down **natively on the device**, with no extra pushes.
-
-The easiest way is `duration`, which the server turns into `start_date = now` and `end_date = now + duration`. Send it again whenever you advance `current_step`, and the animation re-anchors to the new step.
+If you know how long the current step takes -- a 90-minute wash cycle, a 4-minute test suite -- set `live_progress: true` and tell the server when that step ends: iOS fills the current step and counts an ETA down natively between your pushes. The shared mechanics -- how the animation anchors, how the anchors carry forward across updates, and how to clear them -- are on the [generic template](https://pushward.app/docs/live-activities/generic#live-progress). What is specific to steps:
 
 -   The ETA describes the **current step**, not the whole run. Steps before it stay filled solid; steps after it stay empty.
 -   While it is counting, the ETA takes the header and the `current_step/total_steps` counter moves down beside the step name. Leave `live_progress` off and the counter keeps the header.
 -   It works in every layout: the matrix column, the weighted column, and the segmented bar. In a fan-out column all the parallel jobs fill together, since they share one step deadline.
 -   If a step overruns its estimate without an update, its bar **stops at full** rather than racing ahead -- a stuck step never advances the counter on its own.
--   Updates are merge-patches, so the anchors carry forward. Ending the activity clears them for you; on a mid-run update that should stop the animation, clear them explicitly with `"end_date": null, "live_progress": null`.
--   Send `duration` only when `current_step` changes. Restamping the window on every update makes each one a high-priority push that skips update coalescing, and snaps the bar back to empty.
-
-ℹ Info
-
-`live_progress` requires `end_date` (or `duration`, which resolves to one). Without it there is nothing to animate toward, so the server rejects `live_progress: true` with `422`.
-
-💡 Tip
-
-Sending `duration` on every update would restamp `start_date` to now each time and snap the bar back to empty. Send it once per step -- when `current_step` changes -- and let the anchors carry forward in between.
+-   Send `duration` only when `current_step` changes -- that is what re-anchors the animation to the new step. Restamping the window on every update makes each one a high-priority push that skips update coalescing, and snaps the bar back to empty.
 
 Dishwasher: a 90-minute wash step that fills itself 
 
@@ -666,12 +606,7 @@ _Requires PushWard iOS app 1.7.0 or later._
 
 ## Artwork
 
-Steps has the same image slot as the [generic](https://pushward.app/docs/live-activities/generic) template: send `image_url` and the leading icon becomes artwork. On a step sequence that usually means the thing being processed rather than the tool doing the processing -- the film poster for a download that is grabbing, importing and renaming, the album sleeve for an import pipeline. The full rules live on the [generic page](https://pushward.app/docs/live-activities/generic#artwork); the short version:
-
--   The phone downloads the image, not the server, so the URL has to be https and the file under 2 MB. A LAN or Tailscale _address_ never loads at all; a private _name_ loads only where it resolves with a valid certificate, which is your own network.
--   `image_thumbhash` is about 28 characters and travels inside the push, so it renders immediately and is the only thing that shows for an image the phone cannot reach. Send it even when the URL is public.
--   `image_shape` is `poster`, `square` or `circle`; on the Lock Screen card a poster widens the leading column and grows downward.
--   Only generic and steps accept these fields. On any other template they are a `422`.
+Steps has the same image slot as the [generic](https://pushward.app/docs/live-activities/generic) template: send `image_url` and the leading icon becomes artwork. On a step sequence that usually means the thing being processed rather than the tool doing the processing -- the film poster for a download that is grabbing, importing and renaming, the album sleeve for an import pipeline. The full rules -- reachability, the 2 MB limit, ThumbHash, shapes -- live on the [generic page](https://pushward.app/docs/live-activities/generic#artwork).
 
 Movie import pipeline with the film's poster 
 
@@ -695,21 +630,6 @@ Movie import pipeline with the film's poster
 ```
 
 Radarr, Sonarr, Jellyfin and Overseerr do this automatically when you drive them through the [Relay](https://pushward.app/docs/integrations/relay).
-
-## Typical Flow
-
-1.  **Start**: Set `current_step: 0`, `progress: 0.0` (nothing running yet)
-2.  **Each step**: Increment `current_step` (`1` = first step), update `progress` and `state` with the current job name
-3.  **End**: Set `state: "ended"` with `progress: 1.0`
-
-## Buttons & tap targets
-
-Renders `url_action` and `secondary_url_action` as buttons under the segment bar; background taps invoke `tap_action`. The legacy `url` / `secondary_url` strings still work, but the structured action lets you attach silent-webhook acknowledgements (e.g. "Cancel job" -> POST to your CI's cancel endpoint). See [Tap actions](https://pushward.app/docs/api/activities#tap-actions) for the action object shape.
-
-## Integrations Using This Template
-
--   [GitHub Actions](https://pushward.app/docs/integrations/github-actions) - maps workflow jobs to steps
--   [Home Assistant](https://pushward.app/docs/integrations/home-assistant) - configurable via the `template` option in entity config
 
 ---
 
@@ -738,6 +658,8 @@ A severity-based template for monitoring alerts. Displays firing alerts with dee
 | `accent_color` | string | Named color or hex (typically `"red"` for firing, `"green"` for resolved) |
 | `background_color` | string | Background color override |
 | `text_color` | string | Text color override |
+
+For one-tap acknowledgements, set `url_action` to a silent webhook, `secondary_url_action` with `foreground: true` to open the dashboard in Safari, and `tap_action` to a custom scheme to deep-link into your alerting tool's iOS app; the legacy `url` / `secondary_url` strings render as buttons that open in Safari. See [Tap actions](https://pushward.app/docs/api/activities#tap-actions).
 
 ## Example: Firing Alert
 
@@ -782,23 +704,7 @@ Alert resolved
 }
 ```
 
-## Typical Flow
-
-1.  **Alert fires** (`ended -> ongoing`): Show the alert with `severity`, `fired_at`, and deep-link URLs
-2.  **Alert resolves** (`ongoing -> ended`): Update with resolved status and green accent
-
-ℹ Info
-
-The legacy `url` and `secondary_url` string fields render as tappable buttons that open in Safari. For richer behavior (silent webhooks, custom-scheme deep-links) use the structured `url_action` / `secondary_url_action` documented below.
-
-## Buttons & tap targets
-
-The alert template is a natural fit for one-tap acknowledgements. Set `url_action` to a silent webhook (HTTP `method` with `foreground` absent or `false`) to ack from the Live Activity without launching the app, `secondary_url_action` with `foreground: true` to open the dashboard in Safari, and `tap_action` to a custom scheme to deep-link into your alerting tool's iOS app. See [Tap actions](https://pushward.app/docs/api/activities#tap-actions) for the action object shape.
-
-## Integrations Using This Template
-
--   [Relay](https://pushward.app/docs/integrations/relay) - forwards Grafana, Uptime Kuma, and Gatus alerts with deep links
--   [Home Assistant](https://pushward.app/docs/integrations/home-assistant) - configurable via the `template` option in entity config
+The [Relay](https://pushward.app/docs/integrations/relay) forwards Grafana, Uptime Kuma and Gatus alerts into this template with deep links.
 
 ---
 
@@ -806,7 +712,7 @@ The alert template is a natural fit for one-tap acknowledgements. Set `url_actio
 
 # Gauge Template
 
-A range-based template for monitoring numeric values. Displays the current value with unit, and shows min/max labels on the progress bar endpoints. Progress is auto-calculated by the server.
+Monitor a numeric value within a range: the current reading with unit, min/max endpoints, and a progress bar the server fills in for you.
 
 ![Live Activity demonstration](https://pushward.app/_app/immutable/assets/gauge-poster.B0wl5Au_.webp)
 
@@ -815,7 +721,7 @@ A range-based template for monitoring numeric values. Displays the current value
 | Field | Type | Description |
 | --- | --- | --- |
 | `template` | string | **Required.** Must be `"gauge"` |
-| `value` | float | **Required.** Current value within the range |
+| `value` | float | **Required.** Current value within the range. The server derives `progress` from `(value - min_value) / (max_value - min_value)` - don't send it |
 | `min_value` | float | **Required.** Minimum value of the range |
 | `max_value` | float | **Required.** Maximum value of the range. Must be greater than `min_value` |
 | `unit` | string | Unit label displayed after the value (e.g. "degC", "%", "rpm"). Max 32 characters |
@@ -826,9 +732,7 @@ A range-based template for monitoring numeric values. Displays the current value
 | `background_color` | string | Background color override |
 | `text_color` | string | Text color override |
 
-ℹ Info
-
-The `progress` field is **auto-calculated** by the server from `(value - min_value) / (max_value - min_value)`. You do not need to send it.
+On Lock Screen surfaces `url_action` and `secondary_url_action` render as buttons; the circular Dynamic Island variant has no inline buttons, so `tap_action` is the most useful field there. See [Tap actions](https://pushward.app/docs/api/activities#tap-actions).
 
 ## Example: Oven Preheating
 
@@ -870,20 +774,6 @@ Gauge complete
 }
 ```
 
-## Typical Flow
-
-1.  **Start monitoring** (`ended -> ongoing`): Set initial value, min/max range, and unit
-2.  **Update value** (`ongoing -> ongoing`): Send updated value - server recalculates progress automatically
-3.  **Target reached** (`ongoing -> ended`): Final value with completion state
-
-💡 Tip
-
-The gauge template is ideal for any value that changes within a known range: temperature, humidity, battery level, disk usage, download speed, etc.
-
-## Buttons & tap targets
-
-The circular Dynamic Island variant has no inline buttons; `tap_action` is the most useful field there. On Lock Screen surfaces, `url_action` and `secondary_url_action` render as buttons. See [Tap actions](https://pushward.app/docs/api/activities#tap-actions) for the action object shape.
-
 ## Use Cases
 
 -   **Smart home** - oven temperature, thermostat setpoint, humidity sensors
@@ -918,9 +808,9 @@ A real-time sparkline chart for tracking values over time. Each push sends a dat
 | `accent_color` | string | Named color or hex. Default: `teal` |
 | `primary_series` | string | Names which series drives the headline value and the compact high/low range on iOS. Max 32 chars, and must match one of the `value` keys to take effect. When omitted (or naming an unknown key), the alphabetically-first series is used. |
 
-ℹ Info
+Each push appends a timestamped data point to the **server-managed** `history`, which never needs to be sent: a seed on the first update is honored, but once any history exists a client-supplied `history` is ignored. Up to 300 points per series are stored; APNs payloads are dynamically downsampled via LTTB to fit 4KB while preserving peaks and visual shape.
 
-The server accumulates history automatically - each push appends a timestamped data point. The `history` field is **server-managed**, so you don't need to send it: a seed on the first update is honored, but once the server has accumulated any history, a client-supplied `history` is ignored. Up to 300 points per series are stored; APNs payloads are dynamically downsampled via LTTB to fit 4KB while preserving peaks and visual shape.
+Renders `url_action` and `secondary_url_action` as buttons below the sparkline; `tap_action` covers taps elsewhere on the card - see [Tap actions](https://pushward.app/docs/api/activities#tap-actions).
 
 ## Example: Single Value
 
@@ -972,21 +862,11 @@ _Requires PushWard iOS app 1.3.3 or later._
 
 💡 Tip
 
-With more than one series, set `primary_series` to choose which one leads. On iOS its latest value becomes the big headline number and its min/max drive the compact high/low range shown next to the sparkline; the other series still draw as lines. Omit it and PushWard falls back to the alphabetically-first key (here `CPU` either way), which is rarely the one you mean once you have series like `GPU` or `SSD`.
-
-## Typical Flow
-
-1.  **Start tracking** (`ended -> ongoing`): Set initial value, unit, and display options (scale, smoothing, thresholds)
-2.  **Send data points** (`ongoing -> ongoing`): Push updated values - the sparkline grows with each push
-3.  **Stop tracking** (`ongoing -> ended`): Final value displayed, sparkline frozen
+With more than one series, set `primary_series`: the non-primary series still draw as lines behind the headline.
 
 💡 Tip
 
 Value-only updates are delivered at low priority to conserve the iOS push budget. Changing `scale`, `smoothing`, `decimals`, `unit`, or `units` triggers high-priority delivery.
-
-## Buttons & tap targets
-
-Renders `url_action` and `secondary_url_action` as buttons below the sparkline; `tap_action` covers taps elsewhere on the widget. See [Tap actions](https://pushward.app/docs/api/activities#tap-actions) for the action object shape.
 
 ## Use Cases
 
@@ -994,7 +874,6 @@ Renders `url_action` and `secondary_url_action` as buttons below the sparkline; 
 -   **Smart home** - room temperature trends, humidity tracking, energy consumption
 -   **3D printing** - hotend/bed temperature curves during a print
 -   **CI/CD** - build time trends, test suite duration over consecutive runs
--   **IoT** - sensor readings over time with threshold alerts
 
 ---
 
@@ -1002,7 +881,7 @@ Renders `url_action` and `secondary_url_action` as buttons below the sparkline; 
 
 # Board Template
 
-A compact dashboard that shows up to four labeled tiles side by side. Each tile carries a value, optional unit, icon, color, trend arrow, and its own tap target - ideal for surfacing several related metrics at a glance.
+A compact dashboard of up to four labeled tiles - each with a value, icon, trend arrow, and its own tap target - for related metrics at a glance.
 
 ![Live Activity demonstration](https://pushward.app/_app/immutable/assets/board-poster.tdV2awap.webp)
 
@@ -1011,7 +890,7 @@ A compact dashboard that shows up to four labeled tiles side by side. Each tile 
 | Field | Type | Description |
 | --- | --- | --- |
 | `template` | string | **Required.** Must be `"board"` |
-| `tiles` | array | **Required.** 1-4 tile objects (see below). Sending more than four is rejected with a validation error |
+| `tiles` | array | **Required.** 1-4 tile objects (see below). Sending more than four is rejected with a validation error. Replaced wholesale on `PATCH` - re-send the full array and the board redraws in place ([why](https://pushward.app/docs/api/activities#merge-patch)) |
 | `state` | string | Status text shown beside the activity `name` (e.g. "All systems nominal") |
 | `icon` | string | SF Symbol name (e.g. `"server.rack"`) or MDI icon with `mdi:` prefix |
 | `accent_color` | string | Named color or hex used for the heading icon and tile values. Default: `teal` |
@@ -1032,9 +911,9 @@ Each entry in `tiles` is an object:
 | `trend` | string | One of `up`, `down`, `flat` - renders a trend arrow |
 | `url_action` | object | Per-tile tap target. Same shape as [tap actions](https://pushward.app/docs/api/activities#tap-actions) |
 
-ℹ Info
+Tiles share the ~4 KB APNs payload with the rest of the activity, so keep labels and values short.
 
-Send **1 to 4 tiles**. The board fits inside the same ~4 KB APNs payload as every other template, so keep labels and values short - a label, value, or unit longer than the limits above is rejected with a validation error.
+Each tile can carry its own `url_action`, so one board can deep-link to several destinations - see [Tap actions](https://pushward.app/docs/api/activities#tap-actions).
 
 ## Example: Service Status Board
 
@@ -1066,16 +945,6 @@ Service status board
 }
 ```
 
-## Typical Flow
-
-1.  **Start the board** (`ended -> ongoing`): Send the initial set of tiles
-2.  **Update tiles** (`ongoing -> ongoing`): Re-send the `tiles` array with new values - the board redraws in place
-3.  **Finish** (`ongoing -> ended`): Optionally send a final snapshot, then end the activity
-
-## Buttons & tap targets
-
-Each tile can carry its own `url_action`, so a single board can deep-link to several destinations - one per metric. See [Tap actions](https://pushward.app/docs/api/activities#tap-actions) for the action object shape.
-
 ## Use Cases
 
 -   **Infrastructure** - uptime, CPU, memory, and error-rate at a glance
@@ -1098,7 +967,7 @@ A streaming feed of up to 20 newest-first lines, each with optional timestamp an
 | Field | Type | Description |
 | --- | --- | --- |
 | `template` | string | **Required.** Must be `"log"` |
-| `lines` | array | **Required.** 1-20 line objects, **newest first** (see below) |
+| `lines` | array | **Required.** 1-20 line objects, **newest first** (see below). Replaced wholesale on `PATCH` - to stream a feed, prepend the new line and re-send the full array ([why](https://pushward.app/docs/api/activities#merge-patch)) |
 | `state` | string | Status text shown beside the activity name (e.g. the source name) |
 | `icon` | string | SF Symbol name (e.g. `"doc.text"`) or MDI icon with `mdi:` prefix |
 | `accent_color` | string | Named color or hex used for the heading icon. Default: `green` |
@@ -1121,7 +990,7 @@ Each entry in `lines` is an object:
 
 ℹ Info
 
-Send the **newest line first**, up to **20 lines** per push. To stream a feed, prepend the new line and re-send the array. The Live Activity always shows the most recent lines that fit the ~4 KB APNs payload.
+The Live Activity always shows the most recent lines that fit the ~4 KB APNs payload.
 
 💡 Tip
 
@@ -1149,12 +1018,6 @@ Streaming deploy log
 }
 ```
 
-## Typical Flow
-
-1.  **Start the feed** (`ended -> ongoing`): Send the first batch of lines, newest first
-2.  **Append events** (`ongoing -> ongoing`): Prepend each new line and re-send `lines` - older lines roll into the backlog
-3.  **Finish** (`ongoing -> ended`): Send a closing line, then end the activity
-
 ## Use Cases
 
 -   **CI/CD** - live deploy and pipeline logs
@@ -1168,15 +1031,15 @@ Streaming deploy log
 
 # Media Template
 
-A remote media-player card in the style of the iOS 26 Now Playing view: cover art, title and artist, a scrubber that keeps ticking between pushes, and previous / play-pause / next buttons that fire your own webhooks - steer a Sonos, a TV or a Home Assistant media player from the Lock Screen.
+A Now Playing-style media card: cover art, a live scrubber, and transport buttons that fire your webhooks - control any player from the Lock Screen.
 
 _Requires PushWard iOS app 1.9.0 or later._
 
-The `media` template turns a Live Activity into a remote for whatever is playing somewhere else -- a Sonos zone, the living-room TV, a Home Assistant `media_player`, a Jellyfin session. It draws like the iOS 26 Now Playing card: cover art, the track and artist, a scrubber that keeps moving on the device between your pushes, and a row of transport buttons. Every button fires **your** webhook; PushWard never talks to the player itself. Your side sends the state, the phone renders it, a tap comes back to you as an HTTP request, and your next push confirms what happened.
+PushWard never talks to the player: you send the state, the phone renders it, a tap arrives at your webhook, and your next push confirms what happened.
 
 ℹ Info
 
-**Requires PushWard 1.9.0 on the device.** Older builds do not know the template and fall back to the generic layout: name, subtitle and a plain progress bar (the server mirrors `position_seconds / duration_seconds` into `progress` for exactly that case). Nothing breaks, the buttons simply are not there until the app updates.
+Builds older than 1.9.0 fall back to the generic layout with a plain progress bar (the server mirrors `position_seconds / duration_seconds` into `progress` for exactly that case).
 
 ## Fields
 
@@ -1197,7 +1060,7 @@ The activity `name` is the _source_ ("Living Room", "Kitchen TV") and stays on t
 | `image_url`, `image_shape`, `image_thumbhash` | string | Cover art. The same trio as the [generic template](https://pushward.app/docs/live-activities/generic#artwork); the default shape is `square`. The device downloads the image, the server never does -- send the ThumbHash so the card has something to show the instant it appears |
 | `icon` | string | SF Symbol drawn where the art would be when there is none. Default: `music.note` |
 | `accent_color` | string | Named color or hex for the icon and the filled heart. Default: `pink` |
-| `background_color`, `text_color` | string | Color overrides, as on every template |
+| `background_color`, `text_color` | string | Color overrides |
 
 Sending any media field on another template is rejected with `422` rather than ignored, and switching an activity from `media` to another template clears them, so no card ends up carrying controls it cannot draw. `url_action` and `secondary_url_action` are accepted for compatibility but **not rendered** on the media card -- the transport row takes the button space; `tap_action` (tapping the card background) still works.
 
@@ -1214,18 +1077,16 @@ Sending any media field on another template is rejected with `422` rather than i
 | `stop` | Transport row (small, trailing) |  |
 | `favorite` | Transport row (small, leading) | Heart; filled when `favorite: true` |
 | `volume_down`, `volume_up` | Volume row | Speaker glyphs either side of the `volume` bar |
-| `extra` | Extras row | Array of up to **3** custom buttons (shuffle, repeat, a source switch). `icon` is **required** on each; `title` is the accessibility label |
+| `extra` | Extras row | Array of up to **3** custom buttons (shuffle, repeat, a source switch). `icon` is **required** on each; `title` is the accessibility label. Replaced wholesale on `PATCH`, like every array field -- re-send the full array |
 
 ### What a tap does
 
--   An `http(s)` URL is **always a silent webhook**: the request is fired from the Live Activity, the app stays in the background, the response is discarded. The server fills in `method: "POST"` when you leave it out (stored and returned that way), and **rejects `foreground: true` on a control with `422`** -- a transport button that opens Safari is not a transport button.
--   A custom scheme (`spotify:`, `homeassistant://`) opens that app instead.
+Controls follow the [standard tap rules](https://pushward.app/docs/api/activities#silent-only) -- an `http(s)` URL is a silent webhook, a custom scheme opens that app, and a control is never allowed to open the browser: a transport button that opens Safari is not a transport button. Specific to this template:
+
 -   Play/pause flips optimistically on the device the moment it is tapped, then your next push is the truth. Previous, next and stop give no pending visual -- the tap fires the webhook, and your next push updating the card is the confirmation.
 -   Buttons exist on the Lock Screen and in the expanded Dynamic Island. The compact and minimal Island and the Apple Watch card are tap-to-open, except that the Watch shows one play/pause button.
 
-⚠ Warning
-
-**Webhooks are best-effort and carry your credentials.** They run inside the widget extension under its time limits, and `headers` / `body` ride on the push. Point them at a webhook endpoint with its own short-lived secret rather than a full API token, and keep them small: the whole activity has to fit the 4 KB APNs payload -- see [Payload budget](#budget).
+Keep `headers` and `body` small -- the whole activity has to fit the 4 KB APNs payload (see [Payload budget](#budget)).
 
 ## How the bar ticks
 
@@ -1237,14 +1098,13 @@ The device does not poll you. From `position_seconds`, `position_at` and `durati
 -   An activity the server has marked stale (see `stale_ttl`) freezes too, so a producer that died does not keep "playing".
 -   Ending the activity forces the wire state to `stopped`: an ended card never ticks.
 
-Because the device extrapolates, **every play/pause transition should carry the position you saw at that moment**. Pause with `{"playback_state": "paused", "position_seconds": 61.2}`, resume with `{"playback_state": "playing", "position_seconds": 61.2}`. Leave `position_at` out and the server stamps the receive time; set it only to backdate a sample you took earlier. Position-only patches (`position_seconds` / `position_at`) go out at low push priority and coalesce; anything else on the card -- title, state, duration, volume, favorite, controls -- is a structural change and goes out at high priority.
+Position-only patches (`position_seconds` / `position_at`) go out at low push priority and coalesce; anything else on the card -- title, state, duration, volume, favorite, controls -- is a structural change and goes out at high priority.
 
 ## Updates are merge patches
 
-As on every template, a `PATCH` merges onto the stored content. Two things are specific to `controls`:
+A `PATCH` merges onto the stored content ([update semantics](https://pushward.app/docs/api/activities#merge-patch)); two things are specific to `controls`:
 
 -   The `controls` object **deep-merges**: sending `{"controls": {"stop": null}}` removes the stop button and leaves the others alone; sending `{"controls": {"next": {"url": "..."}}}` replaces only `next`.
--   `controls.extra` is an array and **replaces wholesale**, like every array field.
 -   Re-sending a slot with a new `url` and no `method` re-derives the method (`POST` for `http(s)`): an explicit method from an earlier push is not remembered across a repoint, so send it again if you need something other than the default. `title` is ignored on the fixed slots -- the glyph is the label -- only `extra` buttons use `title` and `icon`.
 
 ## Payload budget
@@ -1332,18 +1192,172 @@ Backdating a position sample
 { "content": { "position_seconds": 61.2, "position_at": 1755500000 } }
 ```
 
-## Typical Flow
-
-1.  **Start** (`ended -> ongoing`): send the track, `playing`, the position, the duration, the art and the controls
-2.  **Transitions** (`ongoing -> ongoing`): on pause, resume, seek or track change send the new `playback_state` and the position you saw; on a webhook from a button, apply it to the player and confirm with the resulting state
-3.  **Finish** (`ongoing -> ended`): end the activity when the player turns off or the queue runs out; the card stops ticking on its own
-
 ## Use Cases
 
 -   **Multi-room audio** -- one activity per zone, buttons steer Sonos, HEOS or Music Assistant through Home Assistant
--   **The TV** -- what is on, pause and skip from the Lock Screen without finding the remote
--   **Media servers** -- a Jellyfin or Plex session with cover art and a stop button
+-   **TVs and media servers** -- a Jellyfin or Plex session with cover art, pause and skip from the Lock Screen
 -   **Radio and streams** -- no duration, the elapsed clock counts up, favorite bookmarks the show
+
+---
+
+<!-- source: https://pushward.app/docs/live-activities/approval -->
+
+# Approval Template
+
+A question card with 2-4 answer buttons that fire your webhook or record the answer server-side - built for agents, deploy gates, and home automations.
+
+_Requires PushWard iOS app 1.11.0 or later._
+
+The question rides `state`; the buttons are `options` -- each one either fires **your** webhook directly from the device, or is recorded by the server into the read-only `answer` field. The second form is what lets an agent script, a CI job or a Home Assistant automation block on a human decision without exposing any endpoint to the internet.
+
+ℹ Info
+
+Builds older than 1.11.0 fall back to the generic layout with the first two options as working buttons.
+
+## Fields
+
+The activity `name` is the card title and stays short; `state` is the question, two lines at most before it truncates. When `details` rows are present they take the space the question had on the Lock Screen, so make the `name` itself interrogative ("Send follow-up to Brightlane?") -- the question still shows in the expanded Dynamic Island and in-app.
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `template` | string | **Required.** Must be `"approval"` |
+| `state` | string | The question. Max 256 characters, about 80 fit in the two rendered lines |
+| `options` | array | **Required, 2-4 items.** The answer buttons -- see [Options](#options). Replaced wholesale on `PATCH` -- re-send the full list ([why](https://pushward.app/docs/api/activities#merge-patch)); re-sending them clears the stored `answer` and starts a new round, so one activity can carry a sequence of questions, one after another |
+| `source` | string | Who is asking ("Agent", "GitHub", "n8n") -- a badge on the right of the card header, and the subtitle in the expanded Dynamic Island. Max 24 characters |
+| `details` | array | Up to **2** label/value context rows between the header and the buttons (recipient, amount, environment). `label` max 24, `value` max 64 characters; the array replaces wholesale |
+| `end_date` | integer | Unix deadline. Adds a live countdown pill to the header -- the timer ticks on the device, no pushes spent -- and enables `on_expire` |
+| `on_expire` | string | Option id the server records when nobody has answered by `end_date`, or `"none"` to just expire. Requires `end_date`. The expired card is pushed to every device and the activity ends |
+| `answer` | object | **Read-only, server-owned.** `{"option", "at", "by"}` -- ignored on write, cleared when a patch re-sends `options`. `by` is `user` (someone tapped a server-recorded option) or `expired` (the deadline applied `on_expire`); `option` is `"none"` when the deadline passed with no default. Once set, the buttons give way to a resolution row naming the chosen option |
+| `icon` | string | SF Symbol drawn in the accent-tinted square at the head of the card |
+| `accent_color` | string | Named color or hex for the icon, the badges and the primary button |
+| `background_color`, `text_color` | string | Color overrides |
+
+Sending an approval field on another template is rejected with `422` rather than ignored, and so is the reverse: `url_action`, `secondary_url_action`, `alarm` and `snooze_seconds` are rejected on this template -- the options row _is_ the button row. `tap_action` (tapping the card background) still works.
+
+## Options
+
+Each option is one button. Two options render as a filled-primary next to an outlined-secondary; three or four render as a row of icon-over-label tiles, which is why `icon` becomes required at that count.
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `id` | string | **Required.** Stable identifier recorded in `answer.option`. Unique within `options`, max 64 characters, slug charset (`a-z A-Z 0-9 _ -`); the first character must be a letter or digit |
+| `title` | string | **Required.** Button label, max 24 characters -- up to four buttons share one row, keep it short |
+| `style` | string | `primary` (filled accent), `secondary` (outlined) or `destructive` (red). Default: the first option renders primary, the rest secondary |
+| `icon` | string | SF Symbol, max 64 characters. **Required when there are 3 or more options** -- they draw as icon-first tiles |
+| `url` | string | Webhook fired when the option is tapped. **Omit it for the server-recorded form** -- see [how the answer comes back](#answer-modes) |
+| `method` | string | HTTP method for the webhook. Defaults to `POST` |
+| `headers`, `body` | object, string | Ride on the webhook request, 1 KB each -- same limits as every other [Action](https://pushward.app/docs/api/activities#tap-actions) |
+
+## Two ways the answer comes back
+
+Taps follow the [standard tap rules](https://pushward.app/docs/api/activities#silent-only) -- an `http(s)` URL is a silent webhook, a custom scheme opens that app, and a button is never allowed to open the browser: an answer button that opens Safari is not an answer button. The card itself never invents state: after a tap it waits for a push, and which push that is depends on whether the option carries a `url`.
+
+-   **Producer webhooks** -- every option carries a `url`. The device calls your endpoint directly; your side then confirms with a `PATCH` (new question, new options) or ends the activity. The server never learns what was tapped, and a second device can fire the same webhook again -- use the server-recorded form when a repeat matters.
+-   **Server-recorded** -- options omit `url`. The server fills in a signed answer URL when it stores the option; the first tap writes `answer`, the resolved card is pushed to every device, and the activity ends on its own a few seconds later. First answer wins -- a second device tapping later changes nothing. `dismissal_ttl` (an activity-level field) is how long the answered card lingers on the Lock Screen. Your code just polls:
+
+Poll for the answer 
+
+```
+curl https://api.pushward.app/activities/approval-request \
+  -H "Authorization: Bearer hlk_YOUR_TOKEN"
+
+{
+  "state": "ended",
+  "content": {
+    "template": "approval",
+    "state": "Promote 1.11.0 to production?",
+    "options": [
+      { "id": "promote", "title": "Promote", "style": "primary",
+        "url": "https://api.pushward.app/activity/answer?token=...", "method": "POST" },
+      { "id": "hold", "title": "Hold", "style": "secondary",
+        "url": "https://api.pushward.app/activity/answer?token=...", "method": "POST" }
+    ],
+    "answer": { "option": "promote", "at": 1788220800, "by": "user" }
+  }
+}
+```
+
+Poll `GET /activities/{slug}` until `content.answer` is set (a few seconds between requests is plenty). Each option comes back carrying the signed answer `url` the server filled in when it stored the url-less options (the token is shortened to `...` here) and `method: "POST"`. The two forms mix freely: a "More info" option can carry a webhook while "Approve" and "Deny" stay server-recorded.
+
+## Example: An agent asking before it acts
+
+Create the activity once, then push the question. This is the webhook form -- both options point at the agent's own endpoint:
+
+Create the approval activity 
+
+```
+curl -X POST https://api.pushward.app/activities \
+  -H "Authorization: Bearer hlk_YOUR_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "slug": "approval-request",
+    "name": "Approval Needed"
+  }'
+```
+
+Ask with producer webhooks 
+
+```
+curl -X PATCH https://api.pushward.app/activities/approval-request \
+  -H "Authorization: Bearer hlk_YOUR_TOKEN" \
+  -H "Content-Type: application/merge-patch+json" \
+  -d '{
+    "state": "ongoing",
+    "content": {
+      "template": "approval",
+      "state": "Send the follow-up email to Brightlane?",
+      "source": "Agent",
+      "icon": "sparkles",
+      "accent_color": "green",
+      "details": [
+        { "label": "To", "value": "ops@brightlane.com" },
+        { "label": "Subject", "value": "Q3 proposal follow-up" }
+      ],
+      "options": [
+        { "id": "send", "title": "Send", "style": "primary",
+          "url": "https://agent.example/hooks/brightlane", "body": "{\"decision\":\"send\"}" },
+        { "id": "deny", "title": "Deny", "style": "secondary",
+          "url": "https://agent.example/hooks/brightlane", "body": "{\"decision\":\"deny\"}" }
+      ]
+    }
+  }'
+```
+
+Drop the URLs and the same question becomes server-recorded -- nothing to host, nothing exposed; the agent polls the activity instead:
+
+Server-recorded options, no webhook 
+
+```
+{
+  "state": "ongoing",
+  "content": {
+    "template": "approval",
+    "state": "Promote 1.11.0 to production?",
+    "source": "Forgejo CI",
+    "icon": "shippingbox.fill",
+    "accent_color": "blue",
+    "options": [
+      { "id": "promote", "title": "Promote", "style": "primary" },
+      { "id": "hold", "title": "Hold", "style": "secondary" }
+    ]
+  }
+}
+```
+
+Either form takes a deadline; here nobody answering within five minutes counts as "hold":
+
+Deadline with a default answer 
+
+```
+{ "content": { "end_date": 1788221100, "on_expire": "hold" } }
+```
+
+## Use Cases
+
+-   **Agents** -- "Should I send this?": the script blocks on a human decision
+-   **Deploy gates** -- pipeline green, "Staging, prod, or skip?" from the Lock Screen
+-   **Home automation** -- "Unlock the gate for the courier?" pointing at Home Assistant webhooks
+-   **Paging** -- "Ack the incident?" with a deadline that escalates when it expires
 
 ---
 
@@ -1416,10 +1430,6 @@ Title, body, subtitle, and interruption level - the minimum payload for a push n
 | `time-sensitive` | Bypasses Focus modes (other than Do Not Disturb) and stays on the lock screen for an hour. Use sparingly - Apple may rate-limit apps that overuse it. |
 | `critical` | Plays a sound and breaks through silent mode and Focus even when the device is muted. Requires the user to have granted Critical Alerts permission. Pair with the optional `volume` field (0.0-1.0) to set the loudness. |
 
-ℹ Info
-
-By default, every notification is delivered as an APNs push to the user's devices. Set `push: false` to store it in the inbox only.
-
 ## Example
 
 Send a basic notification 
@@ -1455,9 +1465,7 @@ Attach an image, video, or audio file. iOS downloads and renders the attachment 
 | `media.url` | string | Yes | HTTPS URL to the asset (max 2048 chars). HTTP is rejected. |
 | `media.type` | string | Yes | One of `image`, `video`, or `audio`. |
 
-ℹ Info
-
-The request takes a nested `media` object, but the server flattens it on the way back out - responses return `media_url` and `media_type` as top-level fields rather than a nested object.
+The request takes a nested `media` object; responses flatten it into top-level `media_url` and `media_type` fields.
 
 ⚠ Warning
 
@@ -1546,7 +1554,7 @@ Add up to 10 buttons that appear when the user long-presses (or pulls down) the 
 
 ## The `actions` array
 
-iOS lets a notification show up to 10 buttons when the user long-presses (or pulls down) the banner. Define them with the `actions` array - each entry is one button. Labels, icons, and URLs travel with the push, so they can change on every notification.
+Each entry in the `actions` array is one button. Labels, icons, and URLs travel with the push, so they can change on every notification.
 
 | Field | Type | Required | Description |
 | --- | --- | --- | --- |
@@ -1751,10 +1759,6 @@ Set icon\_url to render the notification with iOS Communication Notification sty
 | `source_display_name` | string | The pretty version users see - e.g. `Sonarr`, `GitHub Actions`. Shown above the title and used to group notifications under that source in iOS settings and the inbox. |
 | `icon_url` | string | http or https avatar (max 2048 chars). Recommended <=256x256 and <=100 KB; the iOS extension rejects responses larger than 512 KB to protect its 24 MB memory budget. When set, iOS renders the notification in Communication Notification style - a round avatar floating on the side, like an iMessage. |
 
-ℹ Info
-
-Communication Notifications were introduced in iOS 15 for messaging apps. PushWard uses the same APIs to give your push notifications a personality - the source avatar floats on the side instead of being embedded as a tiny attachment.
-
 ## Example: Home Assistant doorbell
 
 Communication-style notification 
@@ -1951,10 +1955,6 @@ Create an in-app notification and optionally push it to all user devices. No sub
 | `activity_slug` | string | No | Optional link to an existing activity. An unknown slug is rejected with `422` before the notification is persisted. |
 | `push` | boolean | No | If `true` (default), send APNs rich alert to all user devices. Set `false` to store in the inbox only. |
 
-ℹ Info
-
-By default, every notification is delivered as an APNs push to the user's devices. Set `push: false` to store the notification in the inbox without triggering an alert.
-
 Example 
 
 ```
@@ -2006,7 +2006,7 @@ On `POST /notifications` only, the response also includes two read-only fields d
 
 ## Error Responses
 
-Errors follow [RFC 9457 Problem Details](https://pushward.app/docs/api/activities#errors) with `Content-Type: application/problem+json`. See the canonical [Errors](https://pushward.app/docs/api/activities#errors) section for the body shape and known `code` values.
+Errors use the RFC 9457 Problem Details shape (`Content-Type: application/problem+json`) - see [Errors](https://pushward.app/docs/api/activities#errors) for the body shape and known `code` values.
 
 | Status | Meaning |
 | --- | --- |
@@ -2027,11 +2027,11 @@ PushWard ships App Intents, so you can drive it from Siri, the Shortcuts app, an
 
 _Requires PushWard iOS app 1.5.0 or later._
 
-App Intents are the actions iOS surfaces to Siri and the Shortcuts app. PushWard exposes two of them. They act as the signed-in user on that device, so anything they do stays on your own account. Both require iOS 26 or later with PushWard installed and signed in.
+Both actions run as the signed-in user on that device, so anything they do stays on your own account. They require iOS 26 or later with PushWard installed and signed in.
 
 ## Send a notification with PushWard
 
-Sends a push notification to yourself -- it lands on every device signed in to your PushWard account, exactly like a notification from the API. It takes two fields, a Title and a Message, so in the Shortcuts editor the action reads "Send \[Title\] with \[Message\]." Use it to jot a quick note, hand a result off from another Shortcut, or fire a reminder from an automation.
+Sends a push notification to yourself -- it lands on every device signed in to your PushWard account, exactly like a notification from the API. It takes two fields, a Title and a Message, so in the Shortcuts editor the action reads "Send \[Title\] with \[Message\]."
 
 -   **From Siri** -- say "Send a notification with PushWard" and give it a Title and a Message when prompted.
 -   **In a Shortcut** -- add the action, then wire its Message (and Title) to an earlier step (a calculation, a web request, the current weather) so the notification carries a real result.
@@ -2050,11 +2050,7 @@ Opens PushWard straight to your inbox, filtered to unread notifications. Handy a
 
 ## Building automations
 
-Both actions appear under **PushWard** when you add a step in the Shortcuts app, and inside **Automation** when you build a personal automation. Combine them with the rest of the Shortcuts library:
-
--   Run a web request, then send yourself its result as a notification.
--   Trigger a notification on a schedule, a location, an alarm, or a Focus change.
--   Add "Show my unread notifications" to the Action button for a dedicated inbox key.
+Both actions appear under **PushWard** when you add a step in the Shortcuts app, and inside **Automation** when you build a personal automation.
 
 For notifications driven by an external service or a server rather than your own device, use the [notifications API](https://pushward.app/docs/notifications) or one of the [integrations](https://pushward.app/docs/integrations) instead.
 
@@ -2142,11 +2138,7 @@ Energy, water, or data moving between sources, storage, and consumers, with a li
 
   ![Flow widget - Power showing Solar at 3,200 W, Grid at 1,400 W with an outbound arrow, Battery at 800 W with an inbound charging arrow, and Home drawing 1,000 W.](https://pushward.app/_app/immutable/assets/flow-540.m-lAY5Th.png)](https://pushward.app/docs/widgets/templates/flow)  
 
-Every template accepts the shared content fields - `label`, `subtitle`, `icon`, the colors, and the three tap-action slots - so the styling you already use carries across. Preview any of them on the [playground](https://pushward.app/playground).
-
-ℹ Info
-
-`stat_list` stores up to 6 rows, but how many render depends on the placement size. By default, medium and large Home Screen widgets show all 6; the small widget shows 4, and the Lock Screen rectangular shows 3, packing rows two-up to fit up to 6 when every value is very short (a single status glyph, a small count). You can change Row Density per widget in the PushWard app: _Compact_ packs two columns to surface up to 6 rows on any size (labels may truncate on the small placements), and _Comfortable_ keeps a single column with larger rows (showing fewer on the smaller sizes). To see all 6 rows with full labels, use a medium or large widget, or set Compact.
+Preview any of them on the [playground](https://pushward.app/playground).
 
 ## How it works
 
@@ -2164,12 +2156,7 @@ Widgets don't require an integration to exist. There are two paths to the same b
 
 ## Authentication
 
-The widgets API is reachable with an integration key (`hlk_`) that has the `widgets` flag enabled. This is the right choice for third-party integrations - toggle the flag on the key in the iOS app's integration-keys screen.
-
-## Next steps
-
--   [Widgets API reference](https://pushward.app/docs/widgets/api) - endpoint shapes, content fields, and validation rules.
--   [Authentication](https://pushward.app/docs/api/authentication) - how to enable the `widgets` flag on an integration key.
+The widgets API is reachable with an [integration key](https://pushward.app/docs/api/authentication) (`hlk_`) that has the `widgets` flag enabled.
 
 ---
 
@@ -2181,11 +2168,7 @@ Register, update, list, and delete widgets via REST. Widgets are push-driven - e
 
 ℹ Info
 
-Widget endpoints accept an integration key (`hlk_`) with the `widgets` flag enabled. The flag is off by default - turn it on per-key in the iOS app's integration-keys screen. See [Authentication](https://pushward.app/docs/api/authentication).
-
-ℹ Info
-
-Each user can have a maximum of **50 widgets**. Attempting to create more returns `429 Too Many Requests` with `code: "widget.limit_exceeded"`.
+Widget endpoints require an integration key (`hlk_`) with the `widgets` flag, which is off by default - turn it on per-key in the iOS app's integration-keys screen (see [Authentication](https://pushward.app/docs/api/authentication)). Each user can have a maximum of **50 widgets**; attempting to create more returns `429` with `code: "widget.limit_exceeded"`.
 
 ## Create Widget
 
@@ -2199,7 +2182,7 @@ Register a widget by slug. Idempotent - re-POSTing the same slug refreshes name 
 | --- | --- | --- | --- |
 | `slug` | string | Yes | URL-safe identifier (alphanumeric, hyphens, underscores; first char alphanumeric; max 128 chars). Unique per user. The widget slug namespace is independent of activity slugs. |
 | `name` | string | Yes | Human-readable name shown in the iOS widget picker. Max 256 chars. |
-| `content` | object | Yes | Initial content snapshot. Must include `content.template` (one of `value`, `progress`, `status`, `gauge`, `stat_list`). Other fields are template-dependent - see [Content](#content). |
+| `content` | object | Yes | Initial content snapshot. Must include `content.template` (one of the ten template ids). Other fields are template-dependent - see [Content](#content). |
 | `push_throttle` | integer | No | Minimum seconds between APNs pushes for this widget (1 - 3600). Overrides the server's default coalesce window when you know updates will be bursty. |
 
 Create a CPU-load widget 
@@ -2239,9 +2222,7 @@ curl -X POST https://api.pushward.app/widgets \
 }
 ```
 
-ℹ Info
-
-Re-POSTing the same slug is idempotent. The response includes `X-Resource-Action: created` on the first call and `X-Resource-Action: updated` on subsequent calls - the same convention used by `POST /activities`.
+The `X-Resource-Action` response header (`created` / `updated`) says which happened - the same convention as [`POST /activities`](https://pushward.app/docs/api/activities).
 
 ## List Widgets
 
@@ -2291,9 +2272,7 @@ PATCH `/widgets/{slug}`
 
 RFC 7396 JSON merge patch. Absent fields preserve, explicit null clears, present values overwrite. Triggers a thin push so the iOS extension reloads.
 
-ℹ Info
-
-Canonical `Content-Type` is `application/merge-patch+json`; `application/json` is also accepted. Template lives inside `content` - change it via `content.template`, and include any newly-required fields for the new template in the same patch (invalid combinations return `422`).
+Semantics - `Content-Type` rules included - follow the activities [merge-patch contract](https://pushward.app/docs/api/activities#merge-patch). Widget-specific: the template lives inside `content`, so change it via `content.template` and include any newly-required fields for the new template in the same patch (invalid combinations return `422`).
 
 Update a value 
 
@@ -2335,11 +2314,11 @@ curl -X DELETE https://api.pushward.app/widgets/cpu-load \
 
 ## Content
 
-The `content` object is shared across all templates. Per-template required fields are listed in [the overview](https://pushward.app/docs/widgets); everything else is optional.
+Per-template required fields are listed in [the overview](https://pushward.app/docs/widgets); everything else on `content` is optional:
 
 | Field | Type | Description |
 | --- | --- | --- |
-| `template` | string | **Required.** One of `value`, `progress`, `status`, `gauge`, `stat_list`. Determines which other fields are required for this widget. |
+| `template` | string | **Required.** One of `value`, `progress`, `status`, `gauge`, `stat_list`, `trend`, `countdown`, `battery`, `schedule`, `flow` - each documented on its own page under [Widgets](https://pushward.app/docs/widgets). Determines which other fields are required for this widget. |
 | `value` | float | Primary value. Required for `progress` (0.0-1.0) and `gauge` (must fall within `min_value`/`max_value`). Must be finite. |
 | `min_value` | float | Required for `gauge`. Must be strictly less than `max_value`. |
 | `max_value` | float | Required for `gauge`. |
@@ -2351,30 +2330,26 @@ The `content` object is shared across all templates. Per-template required field
 | `accent_color` | string | Named colour (see [Colors](https://pushward.app/docs/colors)) or hex string. Falls back to a per-template default. |
 | `background_color` | string | Optional override for the widget background. |
 | `text_color` | string | Optional override for primary text colour. |
-| `stat_rows` | array | **Required for `stat_list`.** 1 - 6 rows. Each row is `{ label (<=32), value (<=32), unit? (<=16) }`. `value` and `progress` render the first 3 as supporting rows on the large family; the remaining templates ignore them. |
+| `stat_rows` | array | **Required for `stat_list`.** 1 - 6 rows. Each row is `{ label (<=32), value (<=32), unit? (<=16) }`. `value` and `progress` render the first 3 as supporting rows on the large family; the remaining templates ignore them. Row shape, string formatting, and a full example: [Stat list](https://pushward.app/docs/widgets/templates/stat-list). |
 | `trend` | string | Optional `up` / `down` / `flat` annotation. Renders as an inline arrow on the rectangular (medium) `value` family. The server also accepts it on `gauge`, but the current iOS widget doesn't render the arrow there; `progress`, `status`, and `stat_list` ignore it. |
 | `device_sort` | object\[\] | Up to 2 `{ field, direction }` keys applied to `devices` before they are stored, so the prefix each family renders holds the devices that matter. `field` is `level` or `name`, `direction` is `asc` (the default) or `desc`. Omit to keep the order you sent. Applies to `battery`; the other templates ignore it. |
-| `tap_action` | object | Whole-widget tap target. When set, overrides the default "open the PushWard app to the widget detail" behaviour. See [Tap actions](#tap-actions). |
+| `tap_action` | object | Whole-widget tap target - mapped to SwiftUI's `widgetURL`, and therefore the only slot that applies to the accessory families (`accessoryCircular`, `accessoryInline`), which have no room for inline controls. When set, overrides the default "open the PushWard app to the widget detail" behaviour. See [Tap actions](#tap-actions). |
 | `url_action` | object | Primary inline button rendered on system widget families (small/medium/large). Same shape as `tap_action`; the optional `title` and `icon` become the button label. |
 | `secondary_url_action` | object | Secondary button shown next to `url_action` on medium and large families. Ignored on small. |
+| `subtitle_timer` | object | **Any template.** `{ date (RFC 3339), style? }` - renders the subtitle as a self-updating timer (`style: "timer"`, the default, ticks like `01:23:45`; `"relative"` renders coarse units like `2 min`). A past date counts up, a future date counts down. `subtitle` stays the static fallback for clients that don't render timers. |
+| `stat_rows[].timer` | object | Same shape, applied to one `stat_list` row: the row's trailing text becomes a ticking timer. The row's `value` is still required and remains the static fallback. |
 
 ### Tap actions
 
-Widget tap actions share the same shape - and the same iOS dispatcher - as Live Activity tap actions and [notification actions](https://pushward.app/docs/notifications/actions). The widget surface exposes three slots:
+Widget tap actions use the same [Action object, dispatch modes, and limits](https://pushward.app/docs/api/activities#tap-actions) - and the same iOS dispatcher - as Live Activity tap actions and [notification actions](https://pushward.app/docs/notifications/actions), including the best-effort caveat on silent webhooks. The three slots - `tap_action`, `url_action`, `secondary_url_action` - are described in the [Content](#content) table above.
 
--   `tap_action` - fires when the user taps anywhere on the widget body. Mapped to SwiftUI's `widgetURL`. The only slot that applies to accessory families (`accessoryCircular`, `accessoryInline`) since those surfaces have no room for inline controls.
--   `url_action` - primary button rendered under the widget content on `systemSmall`, `systemMedium`, and `systemLarge`.
--   `secondary_url_action` - a second button next to `url_action` on `systemMedium` / `systemLarge`. Ignored on small.
+Differences from the Live Activity contract on the widget surface:
 
-| Field | Type | Required | Description |
-| --- | --- | --- | --- |
-| `url` | string | Yes | Target URL. Any scheme is accepted except `javascript:`, `data:`, `file:`, `vbscript:`. Use `http(s)://` for silent webhooks, custom schemes (`homeassistant://`, `shortcuts://`) to launch other apps, or your own `pushward://` deep links. Max 2048 chars. |
-| `foreground` | boolean | No | When `false` (default) an `http(s)` URL fires silently from the widget extension - no app launch, no Safari. When `true` the URL is opened in the foreground via Safari. Ignored for custom-scheme URLs (they always launch their target app). |
-| `method` | string | No | HTTP method for silent webhooks: `GET` (default), `POST`, `PUT`, `PATCH`, `DELETE`, `HEAD`. Rejected on custom-scheme URLs. |
-| `headers` | object | No | HTTP headers for the silent webhook (object of string keys to string values). Total <=1 KB. Rejected on custom-scheme URLs. |
-| `body` | string | No | HTTP request body (<=1024 chars). `Content-Type: application/json` is set automatically when a body is present and no `Content-Type` header was supplied. |
-| `title` | string | No | Button label rendered on `url_action` / `secondary_url_action`. Ignored by `tap_action` (no label is shown against the whole widget). Max 64 chars. |
-| `icon` | string | No | SF Symbol name shown next to `title` on inline buttons. Max 64 chars. |
+-   An `http(s)` action fires silently by default - `foreground` defaults to `false` and no HTTP shape (`method` / `headers` / `body`) is needed for silent dispatch. Set `foreground: true` to open the URL in Safari instead.
+-   `method`, `headers`, and `body` are **rejected** on custom-scheme URLs, not silently ignored.
+-   `Content-Type: application/json` is set automatically when a `body` is present and no `Content-Type` header was supplied.
+-   The widget extension's URLSession budget is ~30 seconds - design webhooks to return promptly.
+-   Besides third-party schemes (`homeassistant://`, `shortcuts://`), PushWard's own `pushward://` deep links work as custom-scheme targets.
 
 Home Assistant blinds widget (silent POST + custom-scheme fallback) 
 
@@ -2409,65 +2384,9 @@ curl -X PATCH https://api.pushward.app/widgets/blinds \
   }'
 ```
 
-ℹ Info
-
-Silent webhooks fire directly from the widget extension process - the host app is never launched, the user stays on the Home Screen, and the request completes in the background. The extension's URLSession budget is ~30 seconds; design webhooks to return promptly. Lock Screen / StandBy accessory families render only `tap_action` (via `widgetURL`); silent webhooks set on `url_action` / `secondary_url_action` are still applied to system families but ignored on the accessory surfaces because there is no room for the button.
-
-### Stat list payload
-
-The `stat_list` template renders up to six `label : value` rows - useful for SaaS dashboards (MRR / Subs / Trials), homelab summaries (Up / Down / Maintenance), or anywhere you want a compact table of figures without a chart.
-
-SaaS dashboard widget 
-
-```
-curl -X POST https://api.pushward.app/widgets \
-  -H "Authorization: Bearer hlk_YOUR_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "slug": "saas-dashboard",
-    "name": "SaaS Dashboard",
-    "content": {
-      "template": "stat_list",
-      "label": "April",
-      "icon": "chart.bar.fill",
-      "accent_color": "indigo",
-      "stat_rows": [
-        { "label": "MRR",    "value": "$8 333", "unit": "USD" },
-        { "label": "Subs",   "value": "412" },
-        { "label": "Trials", "value": "37" },
-        { "label": "Churn",  "value": "1.2",    "unit": "%" }
-      ]
-    }
-  }'
-```
-
-ℹ Info
-
-Each row's `label` and `value` are **strings**, not numbers - pre-format on the server so the widget renders the value exactly as you intend (currency symbol, thousands separator, fixed decimals). `unit` is optional and rendered to the right of the value when set.
-
 _Requires PushWard iOS app 1.6 or later._
 
-## New in 1.6
-
-`content.template` gains five values - `trend`, `countdown`, `battery`, `schedule`, and `flow` - each with its own page: [Trend](https://pushward.app/docs/widgets/templates/trend), [Countdown](https://pushward.app/docs/widgets/templates/countdown), [Battery](https://pushward.app/docs/widgets/templates/battery), [Schedule](https://pushward.app/docs/widgets/templates/schedule), [Flow](https://pushward.app/docs/widgets/templates/flow). The content fields they add are listed below, along with three that work on any template.
-
-| Field | Type | Description |
-| --- | --- | --- |
-| `points` | number\[\] | **Required for `trend`.** Sparkline history, oldest first. 2 - 48 finite numbers. `min_value` / `max_value` fix the chart bounds here (a different meaning than on `gauge`); with either missing the widget auto-scales to the posted points. |
-| `end_date` | string | **Required for `countdown`.** RFC 3339. Must be after 2000-01-01 and no more than 366 days ahead; a past date counts up instead of down. On `progress` it pairs with `start_date` - see the note below. |
-| `start_date` | string | RFC 3339, same bounds, and must be strictly before `end_date`. On `countdown` it adds a progress bar; on `progress` it is half of the self-advancing pair. |
-| `expired_text` | string | Replaces the `countdown` readout once `end_date` passes. Max 64 chars. Absent means the widget shows time elapsed since the target instead. |
-| `devices` | array | **Required for `battery`.** 1 - 8 entries of `{ name (non-empty, <=32), level (0-100), charging?, icon? (<=128), color? }`. |
-| `periods` | array | **Required for `schedule`.** 1 - 48 entries of `{ start (RFC 3339), value (finite), level? }`. Starts must be strictly increasing; `level` is `low` / `medium` / `high`, and when absent the client derives bands from the posted range. |
-| `flow` | object | **Required for `flow`.** `{ inputs? (<=3 nodes), output?, storage?, exchange? }`, at least one slot set. Each node is `{ rate (required, finite, signed), name? (<=32), total? (>=0), level? (0-100, storage only), icon? (<=128), color? }`. |
-| `subtitle_timer` | object | **Any template.** `{ date (RFC 3339), style? }` - renders the subtitle as a self-updating timer (`style: "timer"`, the default, ticks like `01:23:45`; `"relative"` renders coarse units like `2 min`). A past date counts up, a future date counts down. `subtitle` stays the static fallback for clients that don't render timers. |
-| `stat_rows[].timer` | object | Same shape, applied to one `stat_list` row: the row's trailing text becomes a ticking timer. The row's `value` is still required and remains the static fallback. |
-
-ℹ Info
-
-`progress` no longer requires `value` when `start_date` and `end_date` are both set - the bar advances on device across that window with no further pushes. Send `value` as well when you can: clients that predate 1.6 render it and ignore the dates.
-
-### Staleness (`stale_after`)
+## Staleness (`stale_after`)
 
 `stale_after` is a **widget-level** field - a sibling of `slug` and `name`, not part of `content` - accepted on both `POST /widgets` and `PATCH /widgets/{slug}`.
 
@@ -2489,7 +2408,7 @@ curl -X PATCH https://api.pushward.app/widgets/cpu-load \
 
 ℹ Info
 
-A PATCH that changes nothing still counts as a heartbeat - it re-stamps `updated_at` and resets the staleness clock. That is what makes `stale_after` a liveness signal rather than a change signal: a poller that finds the value unchanged should PATCH anyway, and a widget that goes quiet because the producer died visibly says so instead of showing a confident, wrong number forever.
+A PATCH that changes nothing still re-stamps `updated_at` and resets the staleness clock - `stale_after` is a liveness signal, not a change signal. A poller that finds the value unchanged should PATCH anyway, so a widget whose producer died shows as stale instead of a confident, wrong number.
 
 ## Errors
 
@@ -2512,7 +2431,7 @@ Widget errors use the same [RFC 9457 Problem Details](https://pushward.app/docs/
 
 One big number with an optional unit, label, and trend arrow. Best for sensor readings, counters, and anything that fits on a single line.
 
-The `value` template is the plainest of the ten: one number, sized to fill the widget, with an optional unit after it and a label above. Nothing is required beyond `template`, which makes it the right first widget to wire up - post a number and it renders.
+Nothing is required beyond `template`, which makes it the right first widget to wire up - post a number and it renders.
 
 ## Fields
 
@@ -2552,8 +2471,6 @@ The number is formatted on device for the user's locale, so send a raw float rat
 
 `min_value` and `max_value` do not clamp anything on this template - they only give the widget context to draw against. A value outside them is rendered as sent. If you want the reading positioned on a dial between two bounds, that is the [gauge](https://pushward.app/docs/widgets/templates/gauge) template.
 
-Try it on the [playground](https://pushward.app/playground) to see how a number sizes across the small, medium, large, and Lock Screen families.
-
 ---
 
 <!-- source: https://pushward.app/docs/widgets/templates/progress -->
@@ -2561,8 +2478,6 @@ Try it on the [playground](https://pushward.app/playground) to see how a number 
 # Progress widget
 
 How far along something is, drawn as a bar. Best for rollouts, backups, quotas, and any task with a known finish line.
-
-The `progress` template renders a fraction as a percentage and a bar. Send `value` as a fraction between 0 and 1 - not a percentage - and the widget does the arithmetic and the formatting.
 
 ## Fields
 
@@ -2600,7 +2515,7 @@ PATCH /widgets/oncall-pages
 
 The percentage shown above the bar is derived from `value`, so the number and the fill can never disagree. There is no "indeterminate" state: a job whose progress you cannot measure is better modelled as a [status](https://pushward.app/docs/widgets/templates/status) widget than as a bar stuck at some arbitrary fraction.
 
-Bars do not animate between pushes - each update paints the new fill immediately. For something that should keep moving on its own, use the date pair below, or reach for a [Live Activity](https://pushward.app/docs/live-activities), which is the right surface for work that is happening right now and will end.
+Bars do not animate between pushes - each update paints the new fill immediately. For something that should keep moving on its own, use the date pair below, or reach for a [Live Activity](https://pushward.app/docs/live-activities).
 
 _Requires PushWard iOS app 1.6 or later._
 
@@ -2632,9 +2547,7 @@ A two-hour maintenance window
 
 ℹ Info
 
-Send `value` as well whenever you can, as the example does. Builds released before 1.6 ignore the dates and render `value`, so it is what keeps the widget honest on an older phone. Builds that understand the pair prefer the dates: they advance the bar from the window, and a window whose `end_date` has passed reads 100% no matter what `value` says.
-
-Drag the value and open a window on the [playground](https://pushward.app/playground) to see both modes across the small, medium, large, and Lock Screen families.
+Send `value` as well, as the example does: builds released before 1.6 ignore the dates and render it. Builds that understand the pair prefer the dates - they advance the bar from the window, and a window whose `end_date` has passed reads 100% no matter what `value` says.
 
 ---
 
@@ -2643,8 +2556,6 @@ Drag the value and open a window on the [playground](https://pushward.app/playgr
 # Status widget
 
 A single state - healthy, degraded, down - carried by an icon and a severity color instead of a number.
-
-The `status` template is the one that carries no number. It shows a large severity icon, a headline, and the subtitle broken into pills - the shape you want when the answer is "everything is fine" or "something is on fire", not "73".
 
 ## Fields
 
@@ -2681,11 +2592,9 @@ Severity picks the icon as well as the color, and that pairing is deliberate: on
 
 Setting `icon` replaces the severity glyph everywhere, including the Lock Screen, so a custom icon costs you that at-a-glance distinction. Use it for a brand or service mark on a widget that stays at one severity, not on one that flips between states.
 
-Severity also tints the whole surface - header hairline, pills, and the action buttons - rather than just the icon, so a critical widget does not end up red with a blue button. Sending `accent_color` takes that decision back and applies your color at every severity.
+Severity also tints the whole surface - header hairline, pills, and the action buttons - rather than just the icon, so a critical widget does not end up red with a blue button.
 
 If you find yourself encoding a count into the subtitle ("3 down"), the shape you want is probably [stat\_list](https://pushward.app/docs/widgets/templates/stat-list) or [value](https://pushward.app/docs/widgets/templates/value). Status is for the state itself.
-
-Flip through the four severities on the [playground](https://pushward.app/playground) to see how each one reads on the Home Screen and in the Lock Screen's vibrant rendering.
 
 ---
 
@@ -2695,7 +2604,7 @@ Flip through the four severities on the [playground](https://pushward.app/playgr
 
 A value on a dial between a fixed minimum and maximum. Best for SLOs, error budgets, temperatures, and capacity.
 
-The `gauge` template draws a value on an arc between two bounds you choose. It answers "how close to the limit is this?", which a bare number cannot: 2.4 means nothing until you know the ceiling is 5.
+The `gauge` template answers "how close to the limit is this?", which a bare number cannot: 2.4 means nothing until you know the ceiling is 5.
 
 ## Fields
 
@@ -2745,8 +2654,6 @@ _Requires PushWard iOS app 1.6 or later._
 
 When the recent history matters more than the ceiling, [trend](https://pushward.app/docs/widgets/templates/trend) plots the same reading with the values that led to it.
 
-Set the bounds and drag the needle on the [playground](https://pushward.app/playground) to see the arc across the small, medium, large, and Lock Screen families.
-
 ---
 
 <!-- source: https://pushward.app/docs/widgets/templates/stat-list -->
@@ -2755,14 +2662,12 @@ Set the bounds and drag the needle on the [playground](https://pushward.app/play
 
 Up to six label and value rows in one card. Best for compact dashboards - MRR, subscribers, trials - where a chart would say less.
 
-The `stat_list` template renders up to six `label : value` rows. Every value is a string you format yourself, which makes it the escape hatch from the numeric templates: a currency figure, a version tag, a person's name, or a mixed dashboard of all three.
-
 ## Fields
 
 | Field | Type | Notes |
 | --- | --- | --- |
 | `template` | string | **Required.** Must be `"stat_list"` |
-| `stat_rows` | object\[\] | **Required.** Between 1 and 6 rows, drawn in the order you send them |
+| `stat_rows` | object\[\] | **Required.** Between 1 and 6 rows, drawn in the order you send them. Replaced wholesale on PATCH - re-send the full list ([why](https://pushward.app/docs/api/activities#merge-patch)) |
 | `stat_rows[].label` | string | **Required.** Non-blank, max 32 characters. The left-hand caption |
 | `stat_rows[].value` | string | **Required.** Non-blank, max 32 characters. A _string_, not a number - rendered exactly as sent |
 | `stat_rows[].unit` | string | Rendered after the value. Max 16 characters |
@@ -2795,10 +2700,6 @@ Values are strings, so formatting is yours to decide and yours to keep consisten
 
 How many rows actually render depends on the placement. Medium and large Home Screen widgets show all six by default; the small widget shows four, and the Lock Screen rectangular shows three, packing rows two-up to reach six when every value is very short. Users can change this per widget in the PushWard app: _Compact_ packs two columns to surface up to six rows on any size, at the cost of truncated labels on the smaller placements, and _Comfortable_ keeps one column with larger rows and shows fewer of them. Put the row that matters most first - it is the one that survives every placement.
 
-ℹ Info
-
-A merge patch **replaces** `stat_rows` rather than merging into it, so send the whole list on every update. Patching a single row is not possible; patching a shorter list deletes the rows you left out.
-
 _Requires PushWard iOS app 1.6 or later._
 
 ## Row timers
@@ -2830,8 +2731,6 @@ A backup row that counts up on its own
 
 `value` stays required on a row that carries a timer, and it stays the static fallback: builds released before 1.6 render it and ignore the timer. Send the text the value had at push time ("12 min ago"), not a placeholder - an older phone shows exactly that string until the next update.
 
-Build a list and switch placements on the [playground](https://pushward.app/playground) to see which rows survive each size before you wire up an integration.
-
 ---
 
 <!-- source: https://pushward.app/docs/widgets/templates/trend -->
@@ -2842,15 +2741,13 @@ A current reading with its recent history drawn as a sparkline. Best for latency
 
 _Requires PushWard iOS app 1.6 or later._
 
-The `trend` template pairs one large current reading with a sparkline of the values that led to it. Send the number you would have sent to a [value](https://pushward.app/docs/widgets/api#content) widget, plus the recent history, and the widget shows both at a glance.
-
 ## Fields
 
 | Field | Type | Notes |
 | --- | --- | --- |
 | `template` | string | **Required.** Must be `"trend"` |
 | `value` | float | **Required.** The current reading, rendered large above the chart. Must be finite |
-| `points` | number\[\] | **Required.** The sparkline history, **oldest first**. Between 2 and 48 entries, each finite |
+| `points` | number\[\] | **Required.** The sparkline history, **oldest first**. Between 2 and 48 entries, each finite. Replaced wholesale on PATCH - re-send the whole window, not one new point ([why](https://pushward.app/docs/api/activities#merge-patch)) |
 | `unit` | string | Unit rendered after the value (e.g. `"ms"`, `"%"`, `"req/s"`). Max 32 characters |
 | `min_value` | float | Fixed lower bound of the chart. Must be less than `max_value` when both are sent |
 | `max_value` | float | Fixed upper bound of the chart. With either bound missing the widget auto-scales to the posted points |
@@ -2881,12 +2778,6 @@ PATCH /widgets/api-latency
 
 Points are plotted left to right in the order you send them, so the last entry sits under the current reading - keep `value` and the final point in agreement or the chart appears to lag the number above it. Without `min_value` and `max_value` the chart scales to whatever range the posted points span, which makes a flat series look dramatic; set both bounds when you want consecutive updates to stay visually comparable (an SLO ceiling, a 0 - 100 percentage).
 
-ℹ Info
-
-Updates are RFC 7396 merge patches, and a merge patch **replaces** an array rather than appending to it. Send the whole window on every update - the newest reading plus however many earlier points you want drawn - instead of sending one new point and expecting it to be pushed onto the series.
-
-Try it on the [playground](https://pushward.app/playground) to see how a series renders across the small, medium, large, and Lock Screen families before you wire up an integration.
-
 ---
 
 <!-- source: https://pushward.app/docs/widgets/templates/countdown -->
@@ -2897,7 +2788,7 @@ A countdown to a date that keeps ticking on device between pushes. Add a start d
 
 _Requires PushWard iOS app 1.6 or later._
 
-The `countdown` template renders the time remaining until a date. WidgetKit redraws the number itself, so one push sets the target and the widget stays correct for as long as it is pinned - you only send another update when the target moves.
+WidgetKit redraws the number itself, so one push sets the target and the widget stays correct for as long as it is pinned - you only send another update when the target moves.
 
 ## Fields
 
@@ -2928,17 +2819,9 @@ PATCH /widgets/cert-renewal
 }
 ```
 
-## Behavior
-
-With only `end_date` the widget is a bare countdown. Add `start_date` and it also draws a bar that fills from the start to the target, advancing between pushes without any further requests - the widget knows both ends of the window, so it can interpolate. That makes the template cheap to drive: a maintenance window, a lease expiry, or a release date costs one PATCH when it is scheduled and one when it changes.
-
-After the target passes, `expired_text` takes over if you set it (`"Renewing"`, `"Out now"`, `"Overdue"`). If you did not, the widget flips to counting the time elapsed since `end_date`, which is the right default for a deadline you want to keep staring at.
-
 ℹ Info
 
 Dates are bounded on both sides: anything before 2000-01-01 is rejected outright (it catches milliseconds accidentally sent as seconds, which land in 1970), and anything more than 366 days ahead is rejected too. The bounds are re-checked on every PATCH against the merged content, so a widget whose `end_date` has aged into the past stays patchable.
-
-Pick a target and watch it tick on the [playground](https://pushward.app/playground) before wiring it to a real schedule.
 
 ---
 
@@ -2950,14 +2833,14 @@ Charge levels for up to eight devices, drawn as rings. Best for smart-home batte
 
 _Requires PushWard iOS app 1.6 or later._
 
-The `battery` template renders one ring per device, in the same idiom as Apple's own Batteries widget. It is the right shape for any set of things that each have a percentage and a name - smart-home batteries, sensor nodes, UPS units, tool packs.
+The `battery` template renders one ring per device, in the same idiom as Apple's own Batteries widget.
 
 ## Fields
 
 | Field | Type | Notes |
 | --- | --- | --- |
 | `template` | string | **Required.** Must be `"battery"` |
-| `devices` | object\[\] | **Required.** Between 1 and 8 device objects, rendered in the order you send them |
+| `devices` | object\[\] | **Required.** Between 1 and 8 device objects, rendered in the order you send them. Replaced wholesale on PATCH - re-send the full roster, unchanged devices included ([why](https://pushward.app/docs/api/activities#merge-patch)) |
 | `devices[].name` | string | **Required.** Must not be empty. Max 32 characters |
 | `devices[].level` | float | **Required.** Charge percentage, 0 to 100 |
 | `devices[].charging` | boolean | Overlays a charging bolt on the ring |
@@ -2991,11 +2874,11 @@ PATCH /widgets/devices
 
 ## Behavior
 
-Each ring fills to its `level` and is tinted by its own `color`, falling back to green - and to red at or below 20%, so a device that needs attention stands out without you computing the color. `charging: true` adds the bolt overlay. Large Home Screen widgets list all eight devices; smaller families render as many as fit, taking them from the front of the array, so put the devices you care most about first.
+Large Home Screen widgets list all eight devices; smaller families render as many as fit, taking them from the front of the array, so put the devices you care most about first.
 
-Once you track more than two devices that ordering matters, because the small family shows only the first two and the medium family the first four. Send `"device_sort": [{ "field": "level" }]` and the server reorders `devices` for you on every update, so the emptiest devices are the ones that stay visible as levels drift. Add `"direction": "desc"` to put the fullest first instead. Leave `device_sort` off when your order is deliberate - grouped by room, say - and nothing is reordered.
+Once you track more than two devices that ordering matters, because the small family shows only the first two and the medium family the first four. Send `"device_sort": [{ "field": "level" }]` and the server reorders `devices` for you on every update, so the emptiest devices are the ones that stay visible as levels drift.
 
-Keys apply in order and the first one that separates two devices wins, so a second key is a tie-break. With one key, devices sharing a level keep the order you sent them in; add `{ "field": "name" }` after the level key and those ties resolve alphabetically instead, which keeps the widget stable when several devices sit at the same charge. You may send at most two keys and may not repeat a field.
+Keys apply in order and the first one that separates two devices wins, so a second key is a tie-break. With one key, devices sharing a level keep the order you sent them in; add `{ "field": "name" }` after the level key and those ties resolve alphabetically instead. The same field may not appear in both keys.
 
 Lowest battery first, then alphabetical 
 
@@ -3017,13 +2900,7 @@ Lowest battery first, then alphabetical
 }
 ```
 
-The server stores the sorted array, so the response to that request - and every later `GET` - lists `Doorbell`, `Front lock`, `Vacuum`, `Sensor hub`, in that order. Because the reordering happens on write rather than on the device, it works on every version of the app already installed.
-
-ℹ Info
-
-The `devices` array is replaced wholesale by a merge patch, not merged element by element. Send the full roster on every update, including devices whose level has not changed - a patch carrying one device leaves the widget showing exactly that one device.
-
-Add and reorder devices interactively on the [playground](https://pushward.app/playground) to see how many rings each widget size shows.
+The server stores the sorted array, so every response and later `GET` return it reordered - and because the reordering happens on write rather than on the device, it works on every version of the app already installed.
 
 ---
 
@@ -3035,14 +2912,12 @@ A timeline of upcoming periods - tariff prices, delivery windows, shifts - with 
 
 _Requires PushWard iOS app 1.6 or later._
 
-The `schedule` template draws a bar per period across a timeline and highlights whichever period contains the current time. Energy spot prices are the motivating case, but the shape fits any series of timed values: delivery windows, on-call shifts, pollen forecasts, court bookings.
-
 ## Fields
 
 | Field | Type | Notes |
 | --- | --- | --- |
 | `template` | string | **Required.** Must be `"schedule"` |
-| `periods` | object\[\] | **Required.** Between 1 and 48 periods (two days of hourly data), in strictly increasing `start` order |
+| `periods` | object\[\] | **Required.** Between 1 and 48 periods (two days of hourly data), in strictly increasing `start` order. Replaced wholesale on PATCH - re-send the whole window you want drawn (typically today plus tomorrow), never append period by period ([why](https://pushward.app/docs/api/activities#merge-patch)) |
 | `periods[].start` | string | **Required.** RFC 3339 timestamp the period begins. Must be strictly after the previous period's start, after 2000-01-01, and no more than 366 days ahead |
 | `periods[].value` | float | **Required.** The value for that period - price, load, headcount. Must be finite. Unit-agnostic; label it with the content-level `unit` |
 | `periods[].level` | string | `low` / `medium` / `high`. Sets the band color for that bar. Absent means the client derives bands from the posted range |
@@ -3080,15 +2955,9 @@ PATCH /widgets/tariff
 
 ## Behavior
 
-A period runs until the next period's `start`, which is why starts must strictly increase - two equal starts would render a zero-width band, and a reversed pair an inverted one. The last period has no successor, so it extends to the edge of the chart. The widget finds the period containing the current time and highlights it, re-evaluating on device as the clock moves, so an hourly tariff needs one push per publish rather than one per hour.
+A period runs until the next period's `start`; the last one has no successor, so it extends to the edge of the chart. The widget finds the period containing the current time and highlights it, re-evaluating on device as the clock moves, so an hourly tariff needs one push per publish rather than one per hour.
 
-`level` is optional per period. When you omit it everywhere, the widget splits the posted range into terciles and colors each bar by which third its value falls in - good enough for a price curve and free of any tuning. Set it explicitly when the bands mean something specific (a supplier's own off-peak / peak definition, a staffing threshold). Mixing the two within one payload is allowed but reads inconsistently, so prefer all or nothing.
-
-ℹ Info
-
-Like every array in widget content, `periods` is replaced wholesale by a merge patch. Publish the whole window you want drawn - typically today plus tomorrow once tomorrow's prices land - rather than appending period by period.
-
-Build a curve and scrub through the day on the [playground](https://pushward.app/playground) to see how the current-period highlight behaves.
+`level` is optional per period. When you omit it everywhere, the widget splits the posted range into terciles and colors each bar by which third its value falls in. Set it explicitly when the bands mean something specific (a supplier's own off-peak / peak definition, a staffing threshold). Mixing the two within one payload is allowed but reads inconsistently, so prefer all or nothing.
 
 ---
 
@@ -3100,7 +2969,7 @@ Energy, water, or data moving between sources, storage, and consumers, with a li
 
 _Requires PushWard iOS app 1.6 or later._
 
-The `flow` template describes something moving through a system, in four generic slots: what comes in (`inputs`), what buffers it (`storage`), what is traded with the outside (`exchange`), and what consumes it (`output`). Home energy is the obvious case - solar in, battery buffering, grid import and export, house draw - but water, data and money map onto the same four slots.
+The `flow` template describes something moving through a system, in four generic slots: what comes in (`inputs`), what buffers it (`storage`), what is traded with the outside (`exchange`), and what consumes it (`output`).
 
 ## Fields
 
@@ -3108,7 +2977,7 @@ The `flow` template describes something moving through a system, in four generic
 | --- | --- | --- |
 | `template` | string | **Required.** Must be `"flow"` |
 | `flow` | object | **Required.** At least one of `inputs`, `output`, `storage`, `exchange` must be present |
-| `flow.inputs` | object\[\] | Production sources (solar, wind, well). Up to 3 nodes |
+| `flow.inputs` | object\[\] | Production sources (solar, wind, well). Up to 3 nodes. Replaced wholesale on PATCH - re-send every input each time you send any ([why](https://pushward.app/docs/api/activities#merge-patch)) |
 | `flow.output` | object | The consumption endpoint - the house, the cluster, the tap |
 | `flow.storage` | object | The buffer. The only slot that renders `level` |
 | `flow.exchange` | object | Two-way link with the outside - grid, mains, upstream provider |
@@ -3148,13 +3017,7 @@ PATCH /widgets/power
 
 The sign of `rate` is what makes the two-way slots readable, and it means different things per slot. On `exchange`, positive is **inbound** (importing from the grid) and negative is **outbound** (exporting to it) - the example above is exporting 1400 W. On `storage`, positive is **filling** and negative is **draining**. Inputs and the output are one-directional, so their rates are plain magnitudes.
 
-Only the slots you send are drawn, so the same template covers a solar array with no battery, a water main with no local source, or a bare consumption meter. `storage` additionally shows its `level` as a fill indicator; `level` on any other slot is ignored. `total` is the running figure for the day and renders under the rate where the widget family has room.
-
-ℹ Info
-
-Merge-patch semantics run deep on objects and shallow on arrays. Patching `{"content": {"flow": {"exchange": {"rate": -900}}}}` updates just that one rate and leaves the exchange node's name and icon - and the other three slots - untouched. `flow.inputs` is an array, so it is replaced wholesale: send every input each time you send any of them. Clear a slot with an explicit `null`.
-
-Wire up slots and flip the signs on the [playground](https://pushward.app/playground) to see how each direction renders.
+Only the slots you send are drawn, so the same template covers a solar array with no battery, a water main with no local source, or a bare consumption meter. `total` renders under the rate where the widget family has room. Patching a single nested field like `flow.exchange.rate` leaves everything else untouched; clear a slot with an explicit `null`.
 
 ---
 
@@ -3164,9 +3027,7 @@ Wire up slots and flip the signs on the [playground](https://pushward.app/playgr
 
 Send transactional email to addresses your account has verified, using the same integration key that drives your push notifications. Recipients confirm with a double opt-in link before they can receive mail.
 
-ℹ Info
-
-PushWard's email channel is a **verified-recipient transactional email relay**: you can only send mail to addresses your account has explicitly confirmed through a double opt-in link. There is no way to send unsolicited mail through it - which is what keeps deliverability high. Messages are handed to a third-party email delivery provider; bounces and spam complaints are processed automatically.
+PushWard's email channel is a **verified-recipient transactional email relay**: you can only send mail to addresses your account has explicitly confirmed through a double opt-in link. Messages are handed to a third-party email delivery provider; bounces and spam complaints are processed automatically.
 
 ## How it works
 
@@ -3176,13 +3037,7 @@ PushWard's email channel is a **verified-recipient transactional email relay**: 
 
 ## Authentication
 
-ℹ Info
-
-Sending email needs the dedicated **emails** capability. Your auto-created **default integration key** already has it enabled - so you can call `POST /emails` right away without making a new key. To use a scoped key instead, enable its `emails` flag per-key in the iOS app's integration-keys screen. The flag is independent of `notifications`, so a key can send email without being able to send push (and vice versa). See [Authentication](https://pushward.app/docs/api/authentication).
-
-ℹ Info
-
-**Managing recipients** - registering, confirming, listing, and removing addresses - happens in the **PushWard app**, not through the API. Integration keys deliberately cannot touch the recipient list: you decide in the app which addresses your integrations are allowed to email, and your keys can only send to those confirmed addresses.
+Sending email needs the dedicated **emails** capability. Your auto-created **default integration key** already has it enabled. To use a scoped key instead, enable its `emails` flag per-key in the iOS app's integration-keys screen. The flag is independent of `notifications`, so a key can send email without being able to send push (and vice versa). See [Authentication](https://pushward.app/docs/api/authentication).
 
 ℹ Info
 
@@ -3203,9 +3058,7 @@ Send a transactional email to a verified, non-unsubscribed recipient of the call
 | `html_body` | string | No\* | HTML body (up to 256 KB). |
 | `text_body` | string | No\* | Plain-text body (up to 64 KB). |
 
-ℹ Info
-
-\* Provide `html_body`, `text_body`, or both - at least one is required. Sending both lets the recipient's client pick the best representation.
+\* Provide `html_body`, `text_body`, or both - at least one is required.
 
 Send a deploy summary 
 
@@ -3256,7 +3109,7 @@ Your **send history** - every email this account has sent or attempted - is like
 
 -   **Double opt-in.** Confirmation links are single-use and expire after **48 hours**; the app can resend a fresh one to a still-pending address.
 -   **One-click unsubscribe.** Every email automatically carries the [RFC 8058](https://www.rfc-editor.org/rfc/rfc8058) one-click unsubscribe headers and a link - you don't add anything. An unsubscribe is per-account: it stops mail from your account to that address, and you can re-register the address (with a new confirmation) later.
--   **Automatic suppression.** A hard bounce or spam complaint suppresses the address globally and immediately - subsequent sends are silently skipped and logged as `suppressed`. This protects sender reputation for everyone on the relay.
+-   **Automatic suppression.** A hard bounce or spam complaint suppresses the address globally and immediately - subsequent sends are silently skipped and logged as `suppressed`.
 -   **Recipient cap.** Each account can keep up to **50** verified recipients. See [Limits](https://pushward.app/docs/limits).
 
 ## Errors
@@ -3297,8 +3150,6 @@ Share a Live Activity with other PushWard users through time-limited codes. Reci
 
 ## Who needs Premium
 
-Sharing splits cleanly along the create/join line: **creating** any kind of share requires an active subscription, while **joining as a viewer is free**.
-
 | Action | Subscription needed? |
 | --- | --- |
 | Create a share code (any role) or grant access directly | Yes - the owner needs an active subscription |
@@ -3307,7 +3158,7 @@ Sharing splits cleanly along the create/join line: **creating** any kind of shar
 | Redeem a **pattern** share code | Yes - the recipient needs their own subscription |
 | Be upgraded from viewer to editor by the owner | Yes - the recipient needs their own subscription |
 
-The free-recipient allowance is per owner: each owner can have up to **5** distinct free recipients across all of their shared activities at any one time. Recipients with an active subscription of their own never count against it, and removing a free recipient frees the slot immediately. Free accounts also have a cap on how many shared activities they can hold at once from all owners combined - it's set well above typical household use, so in practice only the per-owner free-recipient limit matters.
+The free-recipient allowance is per owner: each owner can have up to **5** distinct free recipients across all of their shared activities at any one time. Recipients with an active subscription of their own never count against it, and removing a free recipient frees the slot immediately. Free accounts also have a cap, set well above typical household use, on how many shared activities they can hold at once from all owners combined.
 
 ## Share code options
 
@@ -3436,7 +3287,7 @@ Forward Unraid notifications and watch parity checks, backups, mover, and UPS ev
 
 # Relay
 
-The easiest way to connect your services to PushWard. Point webhooks at `relay.pushward.app` - no Docker containers, no self-hosting, no per-user configuration needed.
+Point your services' webhooks at `relay.pushward.app` and get push notifications without Docker, self-hosting, or per-user configuration.
 
 ## Supported Providers
 
@@ -3459,7 +3310,7 @@ notification
 
 ## Public Relay
 
-PushWard hosts a public relay at `relay.pushward.app` - no deployment required. Just point your services at it with your integration key.
+PushWard hosts a public relay at `relay.pushward.app` - no deployment required. Just point your services at it with your integration key. It supports all 19 providers listed above; if you prefer to self-host, see the [self-hosted setup](#self-hosted) further down.
 
 Example: Grafana webhook 
 
@@ -3471,18 +3322,14 @@ https://relay.pushward.app/grafana
 Authorization: Bearer hlk_YOUR_INTEGRATION_KEY
 ```
 
-💡 Tip
-
-The public relay supports all 19 providers listed above. If you prefer to self-host, see the [self-hosted setup](#self-hosted) further down.
-
 ## How It Works
-
-`pushward-relay` extracts the `hlk_` integration key from each incoming webhook request. The relay infrastructure scales horizontally - one instance can serve many users concurrently. Per-user usage is bounded by your account's plan (free tier monthly quotas; unlimited on paid).
 
 1.  **Receive** - external services send webhooks to provider-specific routes
 2.  **Authenticate** - the integration key is extracted from the `Authorization: Bearer hlk_...` header (or Basic Auth password for Radarr/Sonarr/Prowlarr/Bazarr/Komodo, or GenieKey for TrueNAS)
 3.  **Transform** - the provider handler maps the webhook payload to a **push notification** or **Live Activity** update depending on the event type
 4.  **Forward** - the request is sent to PushWard using the caller's integration key
+
+Per-user usage is bounded by your account's plan (free tier monthly quotas; unlimited on paid).
 
 ### Push Notifications vs Live Activities
 
@@ -3504,7 +3351,7 @@ _Requires PushWard iOS app 1.7.0 or later._
 
 Four providers carry artwork through to the Live Activity with no configuration on your side. **Jellyfin**, **Radarr**, **Sonarr** and **Overseerr** all know which film or episode an event is about, so the relay resolves its poster and attaches both the image URL and a [ThumbHash](https://pushward.app/docs/live-activities/generic#artwork) to the activity it creates. The Lock Screen shows cover art instead of a generic download glyph.
 
-The ThumbHash matters more than it sounds. Jellyfin in particular is usually reachable only on your own network, and the phone refuses to download an image from a private host -- so the ~25-byte blurred version travelling on the push is the only thing that renders. The relay fetches the artwork once to build that hash, which is the whole reason this works for a self-hosted media server at all.
+Jellyfin in particular is usually reachable only on your own network, and the phone refuses to download an image from a private host -- so the ~25-byte blurred version travelling on the push is the only thing that renders. The relay fetches the artwork once to build that hash, which is the whole reason this works for a self-hosted media server at all.
 
 The webhook waits at most 600ms for a hash it does not already have, then answers without one. The fetch is not cancelled: it carries on under its own ~3s budget and fills the relay-wide cache, so the very first event for a film you have never seen before arrives bare and the next update picks the artwork up. If a poster cannot be resolved at all -- an untagged file, an unreachable image endpoint -- the activity falls back to its icon exactly as before.
 
@@ -3535,7 +3382,7 @@ The ThumbHash encoder decodes JPEG, PNG and GIF. Artwork served as WebP or AVIF 
 
 ## Per-request overrides
 
-Append query parameters to any provider webhook URL to override that provider's delivery behavior for a single request. This is handy when one source should behave differently from the provider default - for example forcing a noisy alert to a plain notification, or bumping a deploy's priority. An explicit parameter always wins over the provider-computed value and your static config; omitting a parameter leaves today's behavior unchanged.
+Append query parameters to any provider webhook URL to override that provider's delivery behavior for a single request. An explicit parameter always wins over the provider-computed value and your static config; omitting a parameter leaves today's behavior unchanged.
 
 | Parameter | Values | Effect |
 | --- | --- | --- |
@@ -3557,7 +3404,7 @@ An invalid value is rejected with `400` before the webhook is processed - an unk
 
 ### 1\. Get Your Integration Key
 
-Copy your default integration key from the PushWard app under **Settings -> Integration Key**; it is created automatically when you sign in. To restrict a key to this integration, see [creating scoped keys](https://pushward.app/docs/api/authentication#scoped-keys).
+Use your default integration key from the PushWard app under **Settings -> Integration Key**, or [create a scoped key](https://pushward.app/docs/api/authentication#scoped-keys) for this integration.
 
 ### 2\. Self-Hosted (Optional)
 
@@ -3589,10 +3436,6 @@ volumes:
   relay-data:
 ```
 
-💡 Tip
-
-For Radarr, Sonarr, and Prowlarr, use Basic Auth with the `hlk_` key as the password (username is ignored), since their webhook settings only support Basic Auth.
-
 ## Authentication
 
 Three patterns depending on the provider:
@@ -3600,7 +3443,7 @@ Three patterns depending on the provider:
 | Method | Providers | Format |
 | --- | --- | --- |
 | Bearer token | Most providers | `Authorization: Bearer hlk_...` |
-| Basic Auth | Radarr, Sonarr, Prowlarr, Bazarr, Komodo | `hlk_...` as password |
+| Basic Auth | Radarr, Sonarr, Prowlarr, Bazarr, Komodo (their webhook settings only support Basic Auth) | `hlk_...` as password, username ignored |
 | GenieKey | TrueNAS | `Authorization: GenieKey hlk_...` |
 
 ## Configuration
@@ -3623,21 +3466,19 @@ Turn Grafana alerts into a timeline Live Activity on your iPhone Lock Screen. Se
 
 ![Live Activity demonstration](https://pushward.app/_app/immutable/assets/timeline-poster.CNIwLB3x.webp)
 
-ℹ Info
-
 Two ways to bring Grafana into PushWard. The **app plugin** below is the recommended path - it runs the timeline bridge and a widget engine _inside_ Grafana, with one-click setup. For simple alert-style notifications (firing/resolved, no history), the [Relay](https://pushward.app/docs/integrations/relay) integration needs no plugin or container at all.
 
 ## Get Your Integration Key
 
-Copy your default integration key from the PushWard app under **Settings -> Integration Key**; it is created automatically when you sign in. To restrict a key to this integration, see [creating scoped keys](https://pushward.app/docs/api/authentication#scoped-keys).
+Use your default integration key from the PushWard app under **Settings -> Integration Key**, or [create a scoped key](https://pushward.app/docs/api/authentication#scoped-keys) for this integration.
 
 ## Grafana App Plugin (Recommended)
 
-The PushWard app plugin is the in-Grafana setup and management layer. One click wires up the webhook contact point, validates your key, and renders the live timeline sparkline **inside Grafana** using your existing datasource - no separate container and no extra Prometheus config. It can also poll PromQL on a schedule and publish the results as iOS Home and Lock Screen widgets, so it fully replaces the standalone container described further down.
+The PushWard app plugin is the in-Grafana setup and management layer. One click wires up the webhook contact point, validates your key, and renders the live timeline sparkline **inside Grafana** using your existing datasource - no separate container and no extra Prometheus config. It can also poll PromQL on a schedule and publish the results as iOS Home and Lock Screen widgets.
 
 ℹ Info
 
-Grafana hardcodes its native contact-point types in core, so no third party can add one - every integration (including Grafana's own OnCall) delivers through a **webhook** contact point. This plugin makes that setup first-class and one-click; it doesn't replace the webhook.
+Grafana doesn't let third parties add native contact-point types - every integration (including Grafana's own OnCall) delivers through a **webhook** contact point. The plugin makes that setup one-click; it doesn't replace the webhook.
 
 ### Requirements
 
@@ -3796,10 +3637,6 @@ A native HACS integration that bridges Home Assistant entity state changes to Pu
 
 Unlike other PushWard integrations, Home Assistant uses a custom HACS component - no Docker container required.
 
-## How It Works
-
-The integration listens for state changes on entities you configure. When an entity enters a **start state** (e.g., a washer turns `on`), a Live Activity appears on your Lock Screen. As the entity's state or attributes change, the activity updates in real time. When the entity reaches an **end state** (e.g., turns `off`), the activity is dismissed.
-
 ## Requirements
 
 -   Home Assistant 2025.7.0 or newer
@@ -3829,9 +3666,7 @@ Go to **Settings > Devices & Services > Add Integration > PushWard**.
 | --- | --- |
 | Integration Key | Your `hlk_` integration key (the default key works) |
 
-💡 Tip
-
-Copy your default integration key from the PushWard app under **Settings -> Integration Key**; it is created automatically when you sign in. To restrict a key to this integration, see [creating scoped keys](https://pushward.app/docs/api/authentication#scoped-keys).
+Use your default integration key from the PushWard app under **Settings -> Integration Key**, or [create a scoped key](https://pushward.app/docs/api/authentication#scoped-keys) for this integration.
 
 ## Adding Entities
 
@@ -3852,7 +3687,7 @@ After setup, click "Add tracked entity" on the integration card. Each entity bec
 | Remaining Time Entity / Attribute | - | Remaining seconds, from the tracked entity or a separate one (auto-parses timestamp, duration, `H:MM:SS`, or plain seconds) |
 | Accent Color | Blue | Color for the Live Activity accent |
 
-Each value (remaining time, progress, subtitle, gauge value, current step, fired-at) can read from a **separate entity** instead of the tracked entity. Leave the source entity empty to use the tracked entity; set it to read that entity's state, or pair it with an attribute to read an attribute off it. This means an appliance with one sensor for its state and another for the time remaining works without a template helper.
+Each value (remaining time, progress, subtitle, gauge value, current step, fired-at) can read from a **separate entity** or attribute, so an appliance with separate state and time-remaining sensors needs no template helper.
 
 The `board` and `log` templates compose several entities into one activity. A **board** shows 1-4 tiles, each reading from a separate entity; a **log** shows a newest-first list of up to 20 lines, with optional extra columns (an attribute or another entity's value) and a per-line severity level.
 
@@ -3876,11 +3711,11 @@ Start/end states and icons are pre-filled based on the entity's domain. The defa
 
 ### Start
 
-When an entity enters a start state, the integration creates the activity on PushWard (if it doesn't exist) and sends a push-to-start notification. The Live Activity appears on your iPhone.
+The integration listens for state changes on the entities you configure. When an entity enters a **start state** (e.g., a washer turns `on`), it creates the activity on PushWard (if it doesn't exist) and a Live Activity appears on your Lock Screen via push-to-start.
 
 ### Updates
 
-While active, any state or attribute change - on the tracked entity or any configured companion entity - triggers a throttled update. Rapid changes are coalesced - only the latest state is sent when the cooldown expires. If a progress source is configured (an attribute or a separate entity), the progress bar reflects its value.
+While active, any state or attribute change - on the tracked entity or any configured companion entity - triggers a throttled update. Rapid changes are coalesced - only the latest state is sent when the cooldown expires. The integration is entirely event-driven, so the update interval is a rate-limiter, not a polling period.
 
 ### End
 
@@ -3894,10 +3729,6 @@ If the entity starts again during the 5-second window, the end is cancelled.
 ### HA Restart
 
 On Home Assistant restart, any tracked entity already in a start state automatically resumes its Live Activity.
-
-ℹ Info
-
-The integration is entirely event-driven - it listens for HA state changes, not polling. The `update_interval` setting is a rate-limiter, not a polling period.
 
 ## Notifications, Widgets & Email
 
@@ -3919,8 +3750,6 @@ The integration also creates five sensors that track your PushWard usage against
 -   `sensor.pushward_emails_used`
 -   `sensor.pushward_subscription_tier` - `free` or `premium`
 
-Use them in automations to warn before you hit a quota, or just to keep an eye on consumption.
-
 ## Example: Washing Machine
 
 Track a washing machine using a sensor entity with a progress attribute:
@@ -3934,8 +3763,6 @@ Track a washing machine using a sensor entity with a progress attribute:
 | End States | `off, complete, idle` |
 | Progress Attribute | `progress_percent` |
 | Accent Color | Blue |
-
-When the washer starts, a Live Activity appears showing "Washing" with a progress bar. As `progress_percent` increases, the bar fills. When the cycle completes, a green "Complete" notification appears before the activity dismisses.
 
 ---
 
@@ -3959,7 +3786,7 @@ The `pushward-github` bridge container polls the GitHub Actions API for in-progr
 
 ### 1\. Get Your Integration Key
 
-Copy your default integration key from the PushWard app under **Settings -> Integration Key**; it is created automatically when you sign in. To restrict a key to this integration, see [creating scoped keys](https://pushward.app/docs/api/authentication#scoped-keys).
+Use your default integration key from the PushWard app under **Settings -> Integration Key**, or [create a scoped key](https://pushward.app/docs/api/authentication#scoped-keys) for this integration.
 
 ### 2\. Create a GitHub Personal Access Token
 
@@ -4028,7 +3855,7 @@ The `pushward-sabnzbd` bridge container runs an HTTP server that receives webhoo
 
 ### 1\. Get Your Integration Key
 
-Copy your default integration key from the PushWard app under **Settings -> Integration Key**; it is created automatically when you sign in. To restrict a key to this integration, see [creating scoped keys](https://pushward.app/docs/api/authentication#scoped-keys).
+Use your default integration key from the PushWard app under **Settings -> Integration Key**, or [create a scoped key](https://pushward.app/docs/api/authentication#scoped-keys) for this integration.
 
 ### 2\. Deploy the Bridge
 
@@ -4098,7 +3925,7 @@ The secret is defined on the bridge container (the `PUSHWARD_SABNZBD_WEBHOOK_SEC
 
 💡 Tip
 
-The bridge automatically resumes tracking if it detects active downloads on startup, so it recovers gracefully from restarts.
+The bridge automatically resumes tracking if it detects active downloads on startup.
 
 ## Templates
 
@@ -4144,7 +3971,7 @@ Read the 8-character access code from the printer's screen. The exact location d
 
 ### 3\. Get Your Integration Key
 
-Copy your default integration key from the PushWard app under **Settings -> Integration Key**; it is created automatically when you sign in. To restrict a key to this integration, see [creating scoped keys](https://pushward.app/docs/api/authentication#scoped-keys).
+Use your default integration key from the PushWard app under **Settings -> Integration Key**, or [create a scoped key](https://pushward.app/docs/api/authentication#scoped-keys) for this integration.
 
 ### 4\. Deploy the Bridge
 
@@ -4182,8 +4009,6 @@ No ports need to be exposed -- the bridge connects outbound to both the printer 
 | `PUSHWARD_CLEANUP_DELAY` | How long the activity stays after ending | `15m` |
 | `PUSHWARD_STALE_TIMEOUT` | Ends activity if no updates received | `60m` |
 
-ℹ Info
-
 To pin explicitly up front (recommended for hardened setups), extract the printer's SHA-256 fingerprint from a trusted network and set `PUSHWARD_BAMBULAB_CERT_FINGERPRINT`:
 
 ```
@@ -4205,7 +4030,7 @@ Run this on a network you trust - TOFU (auto-pin on first connect) and ad-hoc fi
 
 💡 Tip
 
-The bridge automatically resumes tracking if it starts while a print is already in progress, so it recovers gracefully from restarts.
+The bridge automatically resumes tracking if it starts while a print is already in progress.
 
 ## Activity Slug Format
 
@@ -4244,7 +4069,7 @@ The monitor only reads status - it never touches Unraid or the source plugins - 
 
 ### 1\. Get Your PushWard Integration Key
 
-Copy your default integration key from the PushWard app under **Settings -> Integration Key**; it is created automatically when you sign in. To restrict a key to this integration, see [creating scoped keys](https://pushward.app/docs/api/authentication#scoped-keys).
+Use your default integration key from the PushWard app under **Settings -> Integration Key**, or [create a scoped key](https://pushward.app/docs/api/authentication#scoped-keys) for this integration.
 
 One `hlk_` key covers both features. Notifications need the `notifications` capability and work on any plan; Live Activities need the `activity:manage` scope and an active PushWard subscription.
 
@@ -4304,7 +4129,7 @@ ArgoCD delivers through the hosted [Relay](https://pushward.app/docs/integration
 
 ## Get Your Integration Key
 
-Copy your default integration key from the PushWard app under **Settings -> Integration Key**; it is created automatically when you sign in. To restrict a key to this integration, see [creating scoped keys](https://pushward.app/docs/api/authentication#scoped-keys).
+Use your default integration key from the PushWard app under **Settings -> Integration Key**, or [create a scoped key](https://pushward.app/docs/api/authentication#scoped-keys) for this integration.
 
 ## How It Works
 
@@ -4447,7 +4272,7 @@ All endpoints (except `/health`) require a Bearer token in the `Authorization` h
 Authorization: Bearer hlk_aBcDeFgHiJkLmNoPqRsTuVwXyZ012345
 ```
 
-Tokens use the `hlk_` prefix (integration keys). Create them in the iOS app's settings screen and copy the value once - only the SHA-256 hash is stored server-side, so tokens cannot be recovered if lost. See [Authentication](https://pushward.app/docs/api/authentication) for scopes and slug-restriction rules.
+Tokens are `hlk_` integration keys created in the iOS app's settings screen - see [Authentication](https://pushward.app/docs/api/authentication) for the key format, scopes, and slug-restriction rules.
 
 ## Activity State Machine
 
@@ -4472,27 +4297,7 @@ Transitions are triggered via `PATCH /activities/{slug}`:
 
 Activities may also enter an internal `preempted` state when the server evicts the lowest-priority activity to stay under the ongoing limit. Clients cannot set `preempted` directly - patch the activity back to `ongoing` to restart it.
 
-## Priority and Eviction
-
-Each activity has a `priority` (0-10, default 0). When the `ongoing` activity limit (default 5) is exceeded, the server evicts the lowest-priority, oldest activity. Evicted activities transition to `preempted` and can be restarted.
-
-## Rate Limiting
-
-All API endpoints are rate-limited per IP address:
-
-| Endpoint | Limit |
-| --- | --- |
-| Auth endpoints (`POST /auth/*`) | 10 requests per minute |
-| All other endpoints | 200 requests per minute |
-
-⚠ Warning
-
-HTTP `429 Too Many Requests` is returned in two cases - distinguish them via the `code` field on the `application/problem+json` body:
-
--   `code: "rate_limit.exceeded"` - per-IP request rate limit (the table above). Transient; back off using `Retry-After` (typically a few seconds) and retry.
--   `code: "quota.exceeded"` - authenticated user's free-tier monthly allowance is exhausted (500 notifications, 250 Live Activity updates, 50 widget updates, and 50 emails per month, calendar-month UTC reset - see [Limits](https://pushward.app/docs/limits)). The body includes `kind`, `used`, `limit`, and `reset_at`; `Retry-After` is the seconds until the quota resets. Retrying before `reset_at` on the free tier will keep failing - surface an upgrade prompt instead.
-
-See [Errors](https://pushward.app/docs/api/activities#errors) for the full Problem Details shape and a `quota.exceeded` example response.
+Rate limits, quotas, and the eviction rule live on the [Limits](https://pushward.app/docs/limits) page.
 
 ## Endpoints
 
@@ -4510,23 +4315,15 @@ See [Errors](https://pushward.app/docs/api/activities#errors) for the full Probl
 
 # Authentication
 
-PushWard uses Bearer token authentication. When you sign in with Apple ID, a **default integration key** (`hlk_`) is automatically created -- copy it from the app's settings to start using the API immediately. You can also create additional scoped integration keys for individual services.
+Bearer authentication with integration keys (`hlk_`): signing in with Apple ID creates a default key, and you can add scoped keys per service.
 
 ## Token Format
 
-Integration keys use the `hlk_` prefix followed by 32 base62 characters (~36 characters total). Only the SHA-256 hash is stored server-side -- tokens cannot be recovered if lost.
+A key is `hlk_` followed by 32 base62 characters (~36 characters total). Only the SHA-256 hash is stored server-side, so a lost key cannot be recovered.
 
 ```
 Authorization: Bearer hlk_aBcDeFgHiJkLmNoPqRsTuVwXyZ012345
 ```
-
-⚠ Warning
-
-Integration keys are shown only once when created. Store them securely -- they cannot be recovered if lost.
-
-## Managing Keys
-
-Create and revoke integration keys in the iOS app's settings screen. A default `activity:manage` key is created automatically on first sign-in.
 
 ## Scopes
 
@@ -4534,8 +4331,6 @@ Create and revoke integration keys in the iOS app's settings screen. A default `
 | --- | --- |
 | `activity:update` (default) | Update existing activities and read state. Cannot create or delete activities. |
 | `activity:manage` | Everything `activity:update` can do, plus create and delete activities. |
-
-If your integration creates its own activities, use `activity:manage`; use `activity:update` for keys that should only push updates to activities created elsewhere.
 
 Each key can additionally restrict access to specific activity slugs or prefix patterns (trailing `*`) and toggle three independent permission flags:
 
@@ -4545,12 +4340,12 @@ Each key can additionally restrict access to specific activity slugs or prefix p
 
 ## Creating scoped keys
 
-The default key has full management access with every capability enabled, which is all most integrations need. To limit a service to just its own activities, create a dedicated key restricted to a scope and slug pattern:
+The default key is `activity:manage` with every capability enabled, which is all most integrations need. To limit a service to just its own activities, create a dedicated key restricted to a scope and slug pattern:
 
-1.  Open **Settings -> Manage Keys** in the iOS app.
+1.  Open **Settings -> Manage Keys** in the iOS app - the same screen revokes existing keys.
 2.  Tap **+**.
 3.  Set a name, pick a scope (`activity:update` or `activity:manage`), toggle the capability flags the service needs, and optionally restrict the key to a slug pattern such as `grafana-*`.
-4.  Copy the generated `hlk_` key -- it is shown only once.
+4.  Copy the generated `hlk_` key and store it securely -- it is shown only once.
 
 ## Endpoints
 
@@ -4614,7 +4409,7 @@ Integration keys read their own live usage here - the iOS app polls `/auth/me` f
 
 # Activities
 
-Activities are the core resource in PushWard. Each activity represents a trackable item that can be displayed as a Live Activity on subscribed devices.
+Create, update, and end the activities behind every Live Activity with plain REST calls: POST to start, PATCH to update, DELETE to end.
 
 ℹ Info
 
@@ -4673,12 +4468,7 @@ curl -X POST https://api.pushward.app/activities \
 
 ℹ Info
 
-Re-POSTing the same `slug` is idempotent: the server upserts the existing activity and still returns **201 Created** rather than `409 Conflict`. The `X-Resource-Action` response header distinguishes the two cases:
-
--   `X-Resource-Action: created` - a fresh row was inserted
--   `X-Resource-Action: updated` - an existing slug was refreshed (name / priority / TTLs)
-
-This lets integration bridges retry safely on network errors.
+Re-POSTing the same `slug` is idempotent: the server refreshes the existing activity's `name` / `priority` / TTLs (state and content are preserved) and still returns **201 Created**, never `409`. The `X-Resource-Action` response header says which happened - `created` (fresh row) or `updated` (existing slug) - so integration bridges can retry safely on network errors.
 
 ## List Activities
 
@@ -4753,9 +4543,7 @@ curl "https://api.pushward.app/activities?limit=50" \
 
 ℹ Info
 
-Iterate by passing `next_cursor` as the `after` parameter on the next request, until `next_cursor` is `null` or empty (the last page). The cursor encodes a stable `(slug, id)` pair, so paging stays consistent even if items are added or removed between requests.
-
-**Treat `next_cursor` as opaque** - don't parse or construct it. Pass it back unchanged, and keep `limit` (and any future filter params) identical across pages of the same traversal.
+Pass `next_cursor` back as `after` until it comes back `null` or empty. Treat the cursor as opaque - don't parse or construct it - and keep `limit` (and any filter params) identical across pages. It encodes a stable `(slug, id)` pair, so paging stays consistent even if items are added or removed between requests.
 
 ```
 # Fetch the next page
@@ -4791,21 +4579,13 @@ curl -X DELETE https://api.pushward.app/activities/dishwasher \
 
 **Response:** `204 No Content`
 
-ℹ Info
-
-If the activity is still `ongoing` at the time of `DELETE`, the Live Activity is force-dismissed from the Lock Screen and Dynamic Island **immediately** - the server sends a push-end with a dismissal date in the past, so iOS removes it as soon as the call completes. This is independent of `ended_ttl` (which only applies to natural `ongoing -> ended` transitions).
-
-Deleting an activity that has already transitioned to `ended` only cleans up the database row. The on-screen lifetime is already governed by the dismissal date that was sent when the activity ended, so subsequent `DELETE`s cannot shorten it.
+Deleting an `ongoing` activity force-dismisses the Live Activity from the Lock Screen and Dynamic Island immediately - the push-end carries a dismissal date in the past - regardless of `ended_ttl`, which only applies to natural `ongoing -> ended` transitions. Deleting an already-`ended` activity only cleans up the database row; the on-screen lifetime was fixed by the dismissal date sent when it ended, so a later `DELETE` cannot shorten it.
 
 ## Update Activity (Primary Integration Endpoint)
 
 PATCH `/activities/{slug}`
 
 Partial update using RFC 7396 JSON Merge Patch semantics. State transitions automatically trigger push notifications to subscribed devices.
-
-ℹ Info
-
-This is the main endpoint for integrations. Absent fields are preserved; explicit `null` clears the field; present values overwrite. Server-owned fields (`warning_pushed`, `snoozed_until`) are stripped from incoming patches.
 
 ### Request Body
 
@@ -4816,16 +4596,13 @@ This is the main endpoint for integrations. Absent fields are preserved; explici
 | `priority` | integer | No | Update eviction priority (0-10). Also drives APNs `relevance-score`, so higher-priority activities are ordered ahead of others on the iOS Lock Screen and Dynamic Island. |
 | `sound` | string | No | Optional Live Activity alert sound. Plays on Lock Screen and Dynamic Island and marks the push `time-sensitive` so it breaks through Focus modes. Request-scoped (not persisted) and ignored on `ended` transitions. One of `default`, `chime`, `alert`, `success`, `warning`, `bell`, `ding`, `buzz`, `notification`. |
 
-ℹ Info
+### Merge-patch semantics
 
-**Merge-patch rules** (per [RFC 7396](https://www.rfc-editor.org/rfc/rfc7396)):
+Updates follow [RFC 7396 JSON Merge Patch](https://www.rfc-editor.org/rfc/rfc7396): absent fields are preserved, explicit `null` clears a field, present values overwrite, and arrays are replaced wholesale - re-send the full array, not a delta. The canonical request `Content-Type` is `application/merge-patch+json`; `application/json` is also accepted.
 
--   The canonical request `Content-Type` is `application/merge-patch+json`; `application/json` is also accepted.
 -   Once set, `alarm` and `warning_threshold` persist across updates until explicitly cleared with `null`.
--   If both `end_date` and `duration` are sent, `end_date` wins.
--   `duration` accepts integer seconds (`60`) or a string (`"60s"`, `"5m"`, `"1h30m"`).
--   Transitioning to `ended` clears `alarm`, `snoozed_until`, and `warning_pushed` on the server.
--   Semantic validation failures (e.g. arming `alarm: true` without `end_date`) return `422 Unprocessable Entity`; `400` is reserved for malformed JSON or wrong shape.
+-   If both `end_date` and `duration` are sent, `end_date` wins. `duration` accepts integer seconds (`60`) or a string (`"60s"`, `"5m"`, `"1h30m"`).
+-   Transitioning to `ended` clears `alarm`, `snoozed_until`, and `warning_pushed` on the server. Server-owned fields (`warning_pushed`, `snoozed_until`) are stripped from incoming patches.
 
 ### Query Parameters
 
@@ -4835,11 +4612,7 @@ This is the main endpoint for integrations. Absent fields are preserved; explici
 
 ℹ Info
 
-**Create-on-missing with `?upsert=true`.** A plain `PATCH` to a slug that doesn't exist returns `404`. Add `?upsert=true` to create the activity on the fly and patch it in a single round-trip:
-
--   New slug -> the activity is created (`name` = the slug), the patch is applied, and the response is `201 Created` with `X-Resource-Action: created`.
--   Existing slug -> behaves like a normal patch and returns `200 OK`.
--   Creation requires a key with the `activity:manage` [scope](https://pushward.app/docs/api/authentication#scopes) (or full access). An `activity:update` key gets `403` (`activity.upsert_forbidden`) for a missing slug when the flag is set, because it isn't allowed to create activities. Without the flag, a missing slug is a plain `404`.
+An upsert-created slug returns `201 Created` with `X-Resource-Action: created`; an existing slug behaves like a normal patch (`200 OK`). Creation requires the `activity:manage` [scope](https://pushward.app/docs/api/authentication#scopes) - an `activity:update` key gets `403` (`activity.upsert_forbidden`) for a missing slug. Alternatively, `POST /activities` is itself an idempotent upsert, so **POST then PATCH** achieves the same in two requests without the flag.
 
 Create-and-update in one call 
 
@@ -4858,10 +4631,6 @@ curl -X PATCH "https://api.pushward.app/activities/dishwasher?upsert=true" \
     }
   }'
 ```
-
-💡 Tip
-
-If you'd rather not depend on the query flag, `POST /activities` is itself an idempotent upsert (re-posting a slug refreshes its `name` / `priority` / TTLs and preserves state and content). So **POST then PATCH** is the zero-flag way to guarantee the activity exists before you push content: the `POST` creates or refreshes the shell, the `PATCH` starts and updates it. Use `?upsert=true` when you want to collapse those two requests into one.
 
 ### State Transitions
 
@@ -4891,63 +4660,17 @@ curl -X PATCH https://api.pushward.app/activities/dishwasher \
   }'
 ```
 
-Example: Update with an alert sound 
-
-```
-curl -X PATCH https://api.pushward.app/activities/dishwasher \
-  -H "Authorization: Bearer hlk_YOUR_TOKEN" \
-  -H "Content-Type: application/merge-patch+json" \
-  -d '{
-    "state": "ongoing",
-    "sound": "chime",
-    "content": {
-      "template": "generic",
-      "progress": 1.0,
-      "state": "Done",
-      "icon": "washer",
-      "accent_color": "green"
-    }
-  }'
-```
-
 **Response (200):**
 
 The response is the unified `Activity` object - the same shape returned by GET, list, and POST. The sharing fields (`share_role`, `owner_id`, `owner_nickname`, `share_count`) use `omitempty`: they are omitted when they don't apply, not sent as `null`. Integration (`hlk_`) keys never receive shared activities, so these fields don't appear in their responses and aren't listed in the [API reference](https://pushward.app/api).
 
-```
-{
-  "id": "550e8400-e29b-41d4-a716-446655440000",
-  "kind": "owned",
-  "slug": "dishwasher",
-  "name": "Dishwasher",
-  "state": "ongoing",
-  "priority": 3,
-  "content": {
-    "template": "generic",
-    "progress": 0.65,
-    "state": "Washing",
-    "icon": "washer",
-    "remaining_time": 1800,
-    "subtitle": "Cycle 2 of 3",
-    "accent_color": "blue"
-  },
-  "ended_ttl": null,
-  "stale_ttl": null,
-  "dismissal_ttl": null,
-  "delete_at": null,
-  "created_at": "2025-06-15T10:30:00Z",
-  "updated_at": "2025-06-15T11:00:00Z",
-  "ended_at": null
-}
-```
-
 ## Content Object
 
-The `content` object is shared across all templates. Only `template` is required; each template adds its own required fields on top.
+Shared fields on `content`; each template adds its own required fields on top (see [Live Activities](https://pushward.app/docs/live-activities)):
 
 | Field | Type | Description |
 | --- | --- | --- |
-| `template` | string | **Required.** One of: `generic`, `countdown`, `steps`, `alert`, `gauge`, `timeline`, `board`, `log`, `media` |
+| `template` | string | **Required.** One of: `generic`, `countdown`, `steps`, `alert`, `gauge`, `timeline`, `board`, `log`, `media`, `approval` |
 | `progress` | float | Optional. Value between `0.0` and `1.0`. Computed automatically for `gauge` from `value`/`min_value`/`max_value`. |
 | `alarm` | boolean | Optional. Opt-in iOS AlarmKit alarm at `end_date`. Rings through silent mode and Focus. Requires `end_date`; iOS 26+ only. See [Alarms](#alarm). |
 | `snooze_seconds` | integer | Optional. How many seconds `POST /activities/{slug}/snooze` extends `end_date`, and the iOS AlarmKit snooze window. `60`-`3600`; defaults to `300` (5 min) when omitted. Only meaningful with `alarm: true`. |
@@ -4957,8 +4680,11 @@ The `content` object is shared across all templates. Only `template` is required
 | `log_backlog` | array | Read-only (`log` template). Server-kept scroll-back history, returned only on `GET /activities/{slug}?include=log_backlog`. Never sent by clients. |
 | `media_title`, `playback_state`, `position_seconds`, `duration_seconds`, `position_at`, `volume`, `favorite` | mixed | `media` template only; `422` on any other. The track, its playback state (`playing` / `paused` / `stopped` / `buffering`), the sampled position and when it was sampled, the length, and the volume/favorite indicators. See [Media](https://pushward.app/docs/live-activities/media). |
 | `controls` | object | `media` template only. Named transport slots (`previous`, `play_pause`, `play`, `pause`, `next`, `stop`, `favorite`, `volume_down`, `volume_up`) plus up to 3 `extra` buttons, each an [Action](#tap-actions) object. `http(s)` URLs are silent webhooks (`method` defaults to `POST`, `foreground: true` is a `422`). Deep-merges on `PATCH`; `{"stop": null}` removes a slot. See [Media controls](https://pushward.app/docs/live-activities/media#controls). |
-
-See the [Live Activities](https://pushward.app/docs/live-activities) section for template-specific fields.
+| `options` | array | **Required** for the `approval` template; `422` on any other. 2-4 answer buttons (`id`, `title`, optional `style` / `icon` / `url` / `method` / `headers` / `body`); an option without a `url` is server-recorded via a signed answer URL. Replaces wholesale on `PATCH` and clears the stored `answer`. See [Approval](https://pushward.app/docs/live-activities/approval). |
+| `source` | string | `approval` template only. Who is asking - a badge in the card header. Max 24 characters. |
+| `details` | array | `approval` template only. Up to 2 label/value context rows between the header and the buttons; `label` max 24, `value` max 64 characters. Replaces wholesale on `PATCH`. |
+| `on_expire` | string | `approval` template only. Option id the server records when nobody has answered by `end_date`, or `none` to just expire. Requires `end_date`. |
+| `answer` | object | Read-only (`approval` template). `{"option", "at", "by"}` - the recorded answer. Ignored on write; cleared when a patch re-sends `options`. See [Approval](https://pushward.app/docs/live-activities/approval). |
 
 ## Tap actions
 
@@ -4984,7 +4710,7 @@ All three accept the same **Action** object:
 
 ### Dispatch modes
 
-iOS decides what to do with the tap by inspecting the action object:
+iOS picks a mode from the object's shape:
 
 1.  **Custom scheme** (e.g. `homeassistant://`, `youtube://`) -> calls `openURL` to launch the target app. `foreground`, `method`, `headers`, and `body` are ignored.
 2.  **`http(s)` with `foreground: true`** -> opens the URL in Safari / the in-app browser. The app is brought to the foreground.
@@ -4994,6 +4720,10 @@ iOS decides what to do with the tap by inspecting the action object:
 ℹ Info
 
 **Silent webhooks are best-effort.** They run inside the iOS widget extension under tight time and memory limits. Treat them as fire-and-forget acknowledgements - the device discards the response. For anything that needs reliable delivery or a return value, use `foreground: true` so your own app or backend handles the work.
+
+### Silent-only buttons
+
+The button-bearing templates - `media.controls` and `approval.options` - treat an `http(s)` URL as a silent webhook _always_: the app stays in the background, the response is discarded, and `method` defaults to `POST`. Sending `foreground: true` there returns `422`; a custom-scheme URL opens that app instead.
 
 ### Back-compat with string `url` / `secondary_url`
 
@@ -5040,8 +4770,6 @@ Alert with primary, secondary, and background tap actions
 
 ## Server-Side TTL
 
-Activities support optional server-side time-to-live (TTL) for automatic lifecycle management:
-
 | Field | Set On | Behavior |
 | --- | --- | --- |
 | `stale_ttl` | Create / PATCH | If an `ongoing` activity receives no updates for this many seconds, the server auto-ends it |
@@ -5050,11 +4778,7 @@ Activities support optional server-side time-to-live (TTL) for automatic lifecyc
 | `delete_at` | Auto | Computed timestamp (read-only). Set automatically from `ended_ttl` when state becomes `ended` |
 | `ended_at` | Auto | Server-stamped timestamp (read-only). Set the first time state transitions to `ended` and preserved across later transitions, so callers can tell when the most recent end happened independently of `updated_at`. `null` until the activity has ended at least once. |
 
-ℹ Info
-
-When `stale_ttl` expires, the server auto-ends the activity with a distinct visual state: it sets `content.state` to **"Stale (auto-ended)"**, `accent_color` to `#8E8E93` (system gray), and `icon` to `clock.badge.xmark`. The activity then transitions to `ended` and a push-end notification is sent to all subscribed devices. If `ended_ttl` is also set, the auto-delete timer starts from that point.
-
-The same expiration is sent to iOS as the APNs `stale-date`, so the Lock Screen presentation is marked stale at the same moment the server auto-ends the activity.
+When `stale_ttl` expires, the server auto-ends the activity with a distinct visual state - `content.state` becomes **"Stale (auto-ended)"**, `accent_color` `#8E8E93` (system gray), `icon` `clock.badge.xmark` - and sends the push-end to all subscribed devices. The same expiration is sent to iOS as the APNs `stale-date`, so the Lock Screen presentation is marked stale at the same moment; if `ended_ttl` is also set, its auto-delete timer starts from that point.
 
 ### Lock Screen dismissal & linger
 
@@ -5068,7 +4792,7 @@ This is PushWard's answer to Apple's `ActivityUIDismissalPolicy`: **yes, it's su
 -   **Neither set** - the ended card lingers for the full iOS maximum of **4 hours**, then iOS removes it. The database row is kept for 30 days after its last change and then auto-deleted.
 -   **Preemption is exempt** - when the server evicts an activity to free a Live Activity slot, the preempted card keeps the `ended_ttl`\-derived linger even if `dismissal_ttl` is `0`. A preempted activity can be restarted, so its card stays glanceable.
 
-`dismissal_ttl` is settable on `POST /activities` (re-POSTing an existing slug refreshes it) and on `PATCH /activities/{slug}`, where it follows merge-patch semantics: omit to keep, `null` to clear, a number to set. Sending it together with the end transition applies it to that end:
+`dismissal_ttl` is settable on `POST /activities` (re-POSTing an existing slug refreshes it) and on `PATCH /activities/{slug}`, where the usual [merge-patch semantics](#merge-patch) apply. Sending it together with the end transition applies it to that end:
 
 End and dismiss immediately 
 
@@ -5081,15 +4805,11 @@ curl -X PATCH https://api.pushward.app/activities/backup \
 
 💡 Tip
 
-Use `dismissal_ttl: 0` for activities whose ended state has no glance value - a resolved alert, a finished sync - so the card doesn't sit dimmed on the user's Lock Screen for hours. Keep it unset (or set `ended_ttl`) when the final state is the payoff: a download that completed, a score, a delivered package. `ended_ttl` still handles database cleanup either way; an activity that reaches `ended` without one is deleted 30 days after its last change.
+Use `dismissal_ttl: 0` for activities whose ended state has no glance value - a resolved alert, a finished sync. Keep it unset (or set `ended_ttl`) when the final state is the payoff: a completed download, a score, a delivered package. `ended_ttl` still handles database cleanup either way.
 
 ## Alarms (iOS 26+ AlarmKit)
 
-Setting `content.alarm: true` schedules a native iOS alarm at `content.end_date` using Apple's **AlarmKit** framework. The alarm rings like a Clock app alarm - breaking through silent mode and Focus - in addition to the Live Activity countdown.
-
-ℹ Info
-
-**iOS 26 or later.** On older iOS versions the field is silently ignored. The user is prompted to authorize alarms the first time one is scheduled; if denied, the alarm is skipped and the Live Activity still updates normally.
+Setting `content.alarm: true` schedules a native iOS alarm at `content.end_date` using Apple's **AlarmKit** framework (iOS 26 or later; silently ignored on older versions). The alarm rings like a Clock app alarm - breaking through silent mode and Focus - in addition to the Live Activity countdown. The user is prompted to authorize alarms the first time one is scheduled; if denied, the alarm is skipped and the Live Activity still updates normally.
 
 ### Rules
 
@@ -5135,8 +4855,6 @@ curl -X PATCH https://api.pushward.app/activities/oven-timer \
   -d '{"content": {"alarm": null}}'
 ```
 
-💡 Tip
-
 AlarmKit complements the existing `sound` field: `sound` plays once when a push arrives, while `alarm` rings continuously at `end_date` until the user dismisses it - even if the device was locked and silent the whole time.
 
 ## Error Responses
@@ -5160,7 +4878,7 @@ All errors follow [RFC 9457 Problem Details](https://www.rfc-editor.org/rfc/rfc9
 
 💡 Tip
 
-Prefer matching on the stable `code` field over the human-readable `detail` string - `detail` messages may be reworded between releases, but `code` is contract-level. `errors` is an array of per-field messages, populated for shape-validation failures.
+Match on the stable `code` field - not the human-readable `detail` string (reworded between releases) and not the HTTP status alone: the same `429` is transient for `rate_limit.exceeded` but sticky until `reset_at` (or an upgrade) for `quota.exceeded`, where an upgrade prompt beats a blind retry loop. `errors` is an array of per-field messages, populated for shape-validation failures.
 
 ### Status Codes
 
@@ -5208,10 +4926,6 @@ Retry-After: 1209600
 }
 ```
 
-💡 Tip
-
-Pin clients to the `code` field, not the HTTP status - the same `429` means very different things for `rate_limit.exceeded` (transient, retry after a few seconds) versus `quota.exceeded` (sticky until the start of next month, or until the user upgrades). For `quota.exceeded`, surface an upgrade prompt rather than a blind retry loop.
-
 ---
 
 <!-- source: https://pushward.app/docs/api/mcp -->
@@ -5220,11 +4934,9 @@ Pin clients to the `code` field, not the HTTP status - the same `429` means very
 
 Drive PushWard from Claude and other AI agents over the Model Context Protocol. The hosted MCP server lets an agent create Live Activities, send notifications, and manage widgets through your integration key.
 
-PushWard runs a remote [Model Context Protocol](https://modelcontextprotocol.io) (MCP) server, so AI agents like Claude can drive your account in natural language - create and update Live Activities, send notifications, manage Home Screen widgets, send email, and run health checks. It's a hosted server with nothing to install: your client connects over OAuth and you authorize it once with your integration key.
-
 ℹ Info
 
-The MCP server is the same PushWard REST API behind a tool interface for AI agents. It uses your `hlk_` integration key, so an agent can only do what that key's scopes and capabilities allow.
+The [MCP](https://modelcontextprotocol.io) server is the same PushWard REST API behind a tool interface for AI agents. It uses your `hlk_` integration key, so an agent can only do what that key's scopes and capabilities allow.
 
 ## Connect from Claude Code
 
@@ -5277,12 +4989,6 @@ Relay webhook-simulation tools (Grafana, Sonarr, ArgoCD, and the rest) are only 
 | Endpoint | `https://mcp.pushward.app/mcp` |
 | Transport | Streamable HTTP |
 | Authentication | OAuth 2.1, authorized with an `hlk_` integration key |
-
-## Next steps
-
--   [API Reference](https://pushward.app/docs/api) - every endpoint the MCP tools map to
--   [Authentication](https://pushward.app/docs/api/authentication) - integration keys, scopes, and capability flags
--   [Getting Started](https://pushward.app/docs/getting-started) - create your first Live Activity
 
 ---
 
@@ -5628,11 +5334,9 @@ Understanding the limits of Live Activities, Apple Push Notification service, an
 
 ℹ Info
 
-Most limits on this page are enforced by **iOS and APNs**, not by PushWard. PushWard works within Apple's constraints and is designed to maximize what's possible within them.
+Most limits on this page are enforced by **iOS and APNs**, not by PushWard.
 
 ## iOS Live Activity Limits
-
-These limits are enforced by iOS on the device. PushWard cannot override them.
 
 ### Concurrent Activities
 
@@ -5641,7 +5345,7 @@ These limits are enforced by iOS on the device. PushWard cannot override them.
 | Per app | **5** | iOS throws `targetMaximumExceeded` if exceeded |
 | System-wide (all apps) | Undisclosed | iOS throws `globalMaximumExceeded` if exceeded |
 
-PushWard's server enforces the same 5-activity limit proactively. When a new activity goes `ongoing` and the limit is reached, the lowest-priority activity is automatically preempted (ended via push) to make room.
+PushWard's server enforces the same 5-activity limit proactively by preempting the lowest-priority activity - see Priority-Based Eviction below.
 
 ### Duration
 
@@ -5708,7 +5412,7 @@ Ended activities are automatically deleted 30 days after they last changed, and 
 
 ### Free Tier Quotas
 
-The Free tier includes a generous monthly allowance that resets on the 1st of each calendar month (UTC):
+Free tier quotas reset on the 1st of each calendar month (UTC):
 
 | Quota | Limit (Free) | Limit (Paid) |
 | --- | --- | --- |
@@ -5716,10 +5420,6 @@ The Free tier includes a generous monthly allowance that resets on the 1st of ea
 | Live Activity updates | **250** / month | Unlimited |
 | [Widget](https://pushward.app/docs/widgets) updates | **50** / month | Unlimited |
 | Emails | **50** / month | **200** / month |
-
-ℹ Info
-
-Email is the only resource with a **monthly** cap on paid plans - **200** messages per month - because every email carries a real per-message delivery cost, so paid plans bundle a fixed monthly allowance rather than an open-ended one. It resets on the 1st of the month alongside every other quota. Live Activity and widget updates are completely uncapped. Push notifications have no monthly cap either; they carry only a **5,000** per-UTC-day circuit breaker (≈150,000/month) that exists purely to contain a runaway automation loop - normal use never reaches it.
 
 Once a quota is exhausted, further requests return `429 Too Many Requests` with `code: "quota.exceeded"` and a `reset_at` timestamp indicating when the quota resets. See [API errors](https://pushward.app/docs/api/activities#errors) for the full response shape.
 
@@ -6351,6 +6051,7 @@ Each provider block accepts these keys (defaults vary per provider - see [`confi
 | `stale_timeout` | State-store stale TTL. Must be `> 0` for any enabled provider - a non-positive TTL writes rows that are never cleaned up (config load fails). | varies (`24h` / `1h` / `30m`) |
 | `end_delay` | Delay before the final `ONGOING` (phase-1) update; `ENDED` then follows `end_display_time` later. Unused by grafana/changedetection. | `5s` |
 | `end_display_time` | How long the final completion content shows before `ENDED`. Unused by grafana/changedetection. | `4s` |
+| `dismissal_delay` | Maps to `dismissal_ttl`: how long an ended card stays on the Lock Screen, which `cleanup_delay` (deletion) otherwise decides. `0` removes it the moment it ends; `null` drops a shipped default and takes the server's. Rejected outside `0`-`4h`. | `2m` on starr/paperless/unmanic/overseerr. Read by those four only; the rest accept the key and ignore it |
 
 Provider-specific extras: `argocd.url`, `argocd.sync_grace_period`, `starr.mode`, `jellyfin.progress_debounce` (default `10s`), `jellyfin.pause_timeout` (default `5m`).
 
@@ -7122,7 +6823,7 @@ Grafana POSTs a firing alert to `POST /webhook`. The bridge resolves the series'
 - **Auto query extraction** - when a Grafana service-account token is set, PromQL is pulled straight from the alert rule definition, so no per-rule annotations are needed.
 - **Missed-resolve recovery** - an optional background goroutine polls Grafana's alertmanager API on `alert_check_interval` to close out activities whose `resolved` webhook was dropped.
 - **Severity styling** - `critical` / `warning` / `info` drive the activity icon and accent color; resolved alerts switch to a green checkmark before dismissal.
-- **Widgets** - `value` / `progress` / `status` / `gauge` / `stat_list` widgets polled from PromQL, with multi-series fan-out via `query_all` + `slug_template`.
+- **Widgets** - `value` / `progress` / `status` / `gauge` / `stat_list` / `trend` / `countdown` widgets polled from PromQL, with multi-series fan-out via `query_all` + `slug_template`.
 - **Self-protecting** - webhooks are answered immediately and processed asynchronously (30s budget); in-memory tracking is capped at 500 active alerts and swept for stale entries.
 
 ## Prerequisites
@@ -7203,6 +6904,7 @@ Settings come from a YAML config file **or** environment variables. **Env vars o
 | `PUSHWARD_LOG_LEVEL` | _(env only)_ | `debug`, `info`, `warn` or `error` (default `info`). Read before the config file, so it works even when config loading is what failed | No |
 | `PUSHWARD_PRIORITY` | `pushward.priority` | Activity priority, validated to `0`-`10` (default `5`) | No |
 | `PUSHWARD_CLEANUP_DELAY` | `pushward.cleanup_delay` | Sent to the server as `ended_ttl`: grace period after resolve before the activity row is deleted and the iOS Lock Screen entry is dismissed (default `15m`; Apple caps Lock Screen dismissal at 4h) | No |
+| `PUSHWARD_DISMISSAL_DELAY` | `pushward.dismissal_delay` | Server `dismissal_ttl`: how long the ended card stays on the Lock Screen, independent of `cleanup_delay`, which governs deletion. `0` removes it the moment it ends; unset leaves the server default (follows `ended_ttl`, capped at 4h). | No |
 | `PUSHWARD_STALE_TIMEOUT` | `pushward.stale_timeout` | Time before the in-memory sweeper drops an unresolved alert; also passed to the server (default `24h`; sweeper ticks every `stale_timeout/2`) | No |
 | `PUSHWARD_HISTORY_WINDOW` | `timeline.history_window` | How far back to backfill series history on initial firing (default `30m`) | No |
 | `PUSHWARD_POLL_INTERVAL` | `timeline.poll_interval` | How often the per-alert poller refreshes data points (default `30s`) | No |
@@ -7250,10 +6952,20 @@ Widgets are **independent of alerts**. Each entry in the `widgets:` list (or `PU
 | `progress` | `query` | Scalar; requires `content.min_value` + `content.max_value`. |
 | `gauge` | `query` | Scalar; requires `content.min_value` + `content.max_value`. |
 | `stat_list` | per-row `query` | 1-6 `stat_rows`, each with its own `query` + `value_template`. |
+| `trend` | `query` | Scalar plus a sparkline built from this bridge's own rolling buffer of the last 48 polls, so it needs no range query and appears after the second poll. No `query_all`: there is one buffer per widget. Under the default `update_mode: on_change` the sparkline only advances when the scalar changes, because the heartbeat re-sends the stored content unchanged; a continuously scrolling sparkline needs `update_mode: always`. |
+| `countdown` | none | Renders from `content.end_date` on device; published once, so `query`, `query_all` and `stat_rows` are all rejected. |
+
+`battery`, `schedule` and `flow` are server widget templates this bridge does not offer: each needs several independent readings in one push, and the poller runs one query per widget.
 
 Multi-series fan-out: set `query_all` instead of `query` plus a required `slug_template` to publish one widget per result series.
 
 Server-mirrored validation runs at config load: `interval` defaults to `60s` and must be `>= 5s`; `update_mode` is `on_change` (default) or `always`; slug must match `^[a-z0-9_-]{1,128}$`; `stat_list` allows at most 6 rows, with row label <= 32 chars and row unit <= 16 chars. The per-user widget cap on the server is 50.
+
+`stale_after` (60-604800 seconds) is how long iOS waits before dimming a widget as out of date. Setting it also arms a heartbeat that re-sends the stored content every `max(30s, stale_after/2)`; the server records an unchanged re-send as a touch rather than a push, so a flat metric costs no notifications and the widget still looks alive. It must be at least three times the poll interval, because the heartbeat rides the poll ticker.
+
+`content.subtitle_timer` renders the subtitle as a live timer on any template, and `stat_rows[].timer` does the same for one stat_list row's trailing text. Both take `date` (RFC 3339, required) and `style` (`timer`, the default, or `relative`); the static `subtitle` / `value_template` stays as the fallback for clients that do not render a timer.
+
+Any widget can carry tap targets: `content.tap_action` retargets the whole widget, while `content.url_action` and `content.secondary_url_action` draw buttons, which iOS renders on the Home Screen families only. Tap-action URLs are validated at config load against the same rules the server applies - a scheme is required, `javascript:`/`data:`/`file:`/`vbscript:` are rejected, http(s) needs a host, and `method`/`headers`/`body` are only valid on an http(s) URL - so a typo fails at startup rather than on the first push.
 
 ```yaml
 widgets:
@@ -7405,10 +7117,10 @@ GitHub Actions API --poll--> pushward-github --POST/PATCH /activities--> PushWar
 ## Features
 
 - **Repo auto-discovery** - set `github.owner` and all of that account's non-archived, non-disabled repos are monitored automatically, refreshed every 5 minutes.
-- **Stable step total** - GitHub creates jobs lazily (behind `needs:`/`if:`), so a fresh scan can't know the final count. The `X/N` denominator is seeded from a prior finished run of the same workflow + branch (last success preferred), giving a steady total from the first frame; falls back to a live scan when there is no prior run.
+- **Stable step total** - GitHub creates jobs lazily (behind `needs:`/`if:`), so a fresh scan can't know the final count. The `X/N` denominator is seeded from a finished run of the same workflow, giving a steady total from the first frame: the last run this bridge watched to completion, else the last run on the same branch (success preferred), else the workflow's last run on any branch, so a tag build or a fresh branch seeds from the branch it came from; falls back to a live scan when there is no prior run at all.
 - **Matrix & reusable-workflow grouping** - parallel matrix jobs (`Build (ubuntu, node-16)`) collapse into one step with per-shard `step_rows`; reusable caller prefixes (`ci-cd / Build` -> `Build`) are stripped for clean labels.
-- **Duration-sized, color-coded pills (opt-in)** - both off by default, and independent of each other. `PUSHWARD_GITHUB_STEP_WEIGHTS=true` sizes each pill (`step_weights`) by how long that group took in the previous run (the longest job, for a matrix group), so a long build reads wider than a quick lint; widths stay equal when there is no prior run. `PUSHWARD_GITHUB_STEP_COLORS=true` tints pills (`step_colors`) by job type (tests, lint, build, docker, deploy, security). With both off, the bridge sends the plain `step_rows` / `step_labels` layout.
-- **Self-filling step with a live ETA (on by default)** - the running step's pill fills on the phone between polls and its ETA counts down there, so a ten-minute build reads as motion instead of a frozen bar. The window runs from when the job actually started to that plus however long the same job took in the previous run, so a poll landing mid-step picks the bar up where it already is. A step with no measurement of its own (a job added since the last run) counts down toward the average of the run instead, the same estimate its pill is drawn at; only a first run on a branch, with nothing measured anywhere, keeps the static bar and the `X/N` counter. A step that outlasts its estimate stops at full rather than racing ahead. Set `PUSHWARD_GITHUB_LIVE_PROGRESS=false` to send the plain static bar instead.
+- **Duration-sized, color-coded pills (opt-in)** - both off by default, and independent of each other. `PUSHWARD_GITHUB_STEP_WEIGHTS=true` sizes each pill (`step_weights`) by how long that group held the previous run up (first shard start to last shard end, for a matrix group, so shards that queue behind each other count in full), so a long build reads wider than a quick lint; widths stay equal when there is no prior run. `PUSHWARD_GITHUB_STEP_COLORS=true` tints pills (`step_colors`) by job type (tests, lint, build, docker, deploy, security). With both off, the bridge sends the plain `step_rows` / `step_labels` layout.
+- **Self-filling step with a live ETA (on by default)** - the running step's pill fills on the phone between polls and its ETA counts down there, so a ten-minute build reads as motion instead of a frozen bar. The window runs from when the step's first shard started to that plus however long the same group took in the previous run, so a poll landing mid-step picks the bar up where it already is. A step with no measurement of its own (a job added since the last run) counts down toward the average of the run instead, the same estimate its pill is drawn at; only the very first run of a workflow, with nothing measured anywhere on any branch, keeps the static bar and the `X/N` counter. A step that outlasts its estimate stops at full rather than racing ahead. Set `PUSHWARD_GITHUB_LIVE_PROGRESS=false` to send the plain static bar instead.
 - **Monotonic progress** - the total step count only ever clamps upward across polls; it never decreases mid-run.
 - **Two-phase end** - a final result frame is held for `end_display_time` before the activity is dismissed; the last frame forces `N/N` so an over-counted seed self-heals to a full bar.
 - **Accent colors & deep links** - green while running, red on failure; each update carries the workflow-run URL and a secondary link to the repository.
@@ -7504,6 +7216,7 @@ render:
 | `PUSHWARD_API_KEY` | `pushward.api_key` | PushWard integration key (`hlk_` prefix). | Yes | - |
 | `PUSHWARD_PRIORITY` | `pushward.priority` | Activity priority sent to the server (validated 0-10). | No | `1` |
 | `PUSHWARD_CLEANUP_DELAY` | `pushward.cleanup_delay` | Passed as `ended_ttl`: how long the server keeps an activity after it ends. | No | `15m` |
+| `PUSHWARD_DISMISSAL_DELAY` | `pushward.dismissal_delay` | Server `dismissal_ttl`: how long the ended card stays on the Lock Screen, independent of `cleanup_delay`, which governs deletion. `0` removes it the moment it ends; unset leaves the server default (follows `ended_ttl`, capped at 4h). | No | unset |
 | `PUSHWARD_STALE_TIMEOUT` | `pushward.stale_timeout` | Passed as `stale_ttl`; also drives the heartbeat interval (`/2`) and the stale-run eviction guard (`+30s`). | No | `30m` |
 | `PUSHWARD_END_DELAY` | `pushward.end_delay` | Wait after run completion before the final `ONGOING` frame (two-phase end, phase 1). | No | `5s` |
 | `PUSHWARD_END_DISPLAY_TIME` | `pushward.end_display_time` | How long the final frame shows before `ENDED` dismisses the activity (phase 2). | No | `4s` |
@@ -7516,7 +7229,7 @@ render:
 
 Turning `live_progress` off stops the bridge sending the field at all, which keeps the payload identical to one from before the feature existed. Updates are merge-patches, so an activity that is mid-animation when you switch it off keeps animating until it ends or `stale_timeout` reaps it; the next run starts clean.
 
-When a step's pill is not animating, run with `PUSHWARD_LOG_LEVEL=debug`. The bridge then logs `live progress not anchored` with the reason: no step running, no measured duration for this step group (the usual one - no prior finished run of that workflow on that branch), the forge has not stamped a start, or the estimate is already spent. A group that finishes in under five seconds never animates by design.
+When a step's pill is not animating, look for the `live progress not anchored` line the bridge logs once per step, with the reason: no step running, no measured duration for this step group (no prior finished run of that workflow anywhere), the forge has not stamped a start, or the estimate is already spent. A group that finishes in under five seconds never animates by design. The `seeded steps from prior run` line says where the seed came from (`source`: the bridge's own memory of the last run, the same branch, or any branch).
 
 [1] Required at the config layer; effectively optional when running the official image, which sets `PUSHWARD_URL` to the public API.
 
@@ -7747,6 +7460,7 @@ Settings come from a YAML file (`-config`) and/or environment variables. **Env v
 | `PUSHWARD_SERVER_ADDRESS` | `server.address` | HTTP listen address for `/webhook`, `/health`, `/ready`. | No (`:8090`) |
 | `PUSHWARD_PRIORITY` | `pushward.priority` | Activity priority, validated 0-10. | No (`1`) |
 | `PUSHWARD_CLEANUP_DELAY` | `pushward.cleanup_delay` | Server `ended_ttl`: how long the finished activity lingers before the server deletes the row and iOS drops the Lock Screen card. Apple caps dismissal at 4h. `0` sends nothing and lets the server decide, so it does not mean "dismiss immediately". | No (`15m`) |
+| `PUSHWARD_DISMISSAL_DELAY` | `pushward.dismissal_delay` | Server `dismissal_ttl`: how long the ended card stays on the Lock Screen, independent of `cleanup_delay`, which governs deletion. `0` removes it the moment it ends. Unset leaves the server default (removal follows `ended_ttl`, capped at 4h). Rejected outside `0`-`4h`. | No (unset) |
 | `PUSHWARD_STALE_TIMEOUT` | `pushward.stale_timeout` | Server-side stale TTL (`staleTTL`) for the activity; 30s heartbeats keep it from auto-ending mid-download. | No (`30m`) |
 | `PUSHWARD_END_DELAY` | `pushward.end_delay` | Delay before phase 1 of the two-phase end (ONGOING with final content). | No (`5s`) |
 | `PUSHWARD_END_DISPLAY_TIME` | `pushward.end_display_time` | How long the completion frame shows before phase 2 (ENDED dismiss). | No (`4s`) |
@@ -7981,6 +7695,7 @@ All settings come from a YAML config file and/or environment variables. **Enviro
 | `PUSHWARD_API_KEY` | `pushward.api_key` | Integration key (`hlk_`) with `activity:manage` scope; sent as `Authorization: Bearer`. | Yes |
 | `PUSHWARD_PRIORITY` | `pushward.priority` | Live Activity priority; must be `0`-`10`. | No (default: `1`) |
 | `PUSHWARD_CLEANUP_DELAY` | `pushward.cleanup_delay` | Server-side `ended_ttl`: how long ended activities linger before cleanup (Go duration). | No (default: `15m`) |
+| `PUSHWARD_DISMISSAL_DELAY` | `pushward.dismissal_delay` | Server `dismissal_ttl`: how long the ended card stays on the Lock Screen, independent of `cleanup_delay`, which governs deletion. `0` removes it the moment it ends; unset leaves the server default (follows `ended_ttl`, capped at 4h). | No (unset) |
 | `PUSHWARD_STALE_TIMEOUT` | `pushward.stale_timeout` | Server-side `stale_ttl`: auto-expiry for stuck/abandoned activities (Go duration). | No (default: `60m`) |
 | `PUSHWARD_END_DELAY` | `pushward.end_delay` | Delay before phase 1 (terminal `ONGOING` frame) of the two-phase end (Go duration). | No (default: `5s`) |
 | `PUSHWARD_END_DISPLAY_TIME` | `pushward.end_display_time` | How long the terminal frame shows before the `ENDED` frame is sent (Go duration). | No (default: `4s`) |
@@ -8187,7 +7902,7 @@ The two surfaces are independent (separate config, managers, and caches) and sha
 ## Features
 
 - **Track any HA entity** as a PushWard Live Activity (Dynamic Island + Lock Screen)
-- **9 activity templates**: generic, countdown, alert, steps, gauge, timeline, board, log, media
+- **10 activity templates**: generic, countdown, alert, steps, gauge, timeline, board, log, media, approval
 - **10 widget templates**: value, progress, gauge, status, stat_list, trend, countdown, battery, schedule, flow
 - **Two widget trigger modes**: `event` (state-change) or `poll` (10-3600 s interval), plus an optional
   staleness heartbeat that keeps a rarely-changing widget from greying out
@@ -8572,7 +8287,7 @@ On premium, uncapped resources report `limit: unlimited`, and the notifications 
 
 ## Services
 
-All services live in the `pushward` domain. There are 18 in total: the nine below plus a per-template `update_activity_<template>` for each of the 9 activity templates (and the deprecated `update_activity` alias).
+All services live in the `pushward` domain. There are 19 in total: the nine below plus a per-template `update_activity_<template>` for each of the 10 activity templates (and the deprecated `update_activity` alias).
 
 ### `pushward.create_activity`
 
@@ -8592,7 +8307,8 @@ Create a new activity.
 Push a content update to an existing activity. There is **one action per template**:
 `update_activity_generic`, `update_activity_countdown`, `update_activity_steps`,
 `update_activity_alert`, `update_activity_gauge`, `update_activity_timeline`,
-`update_activity_board`, `update_activity_log`, `update_activity_media`, so the UI shows only
+`update_activity_board`, `update_activity_log`, `update_activity_media`,
+`update_activity_approval`, so the UI shows only
 the fields that template supports (Home Assistant cannot hide service fields based on another field's value, so a single
 action with collapsed sections would always surface every template's fields). The template is
 implied by the action name; you no longer pass a `template` field.
@@ -8639,15 +8355,17 @@ implied by the action name; you no longer pass a `template` field.
 | `update_activity_board` | `tiles` |
 | `update_activity_log` | `lines` |
 | `update_activity_media` | `media_title` (max 128), `playback_state`, `position_seconds`, `duration_seconds`, `position_at`, `volume`, `favorite`, `controls`, `image_url`, `image_shape`, `image_thumbhash` |
+| `update_activity_approval` | `options` (2-4 answer buttons), `source` (max 24), `details` (up to 2 label/value rows), `on_expire`, `end_date` |
 
-> **`board` / `log` / `media` use a lean schema.** They render no progress bar and no
-> whole-activity button slots, so `update_activity_board`, `update_activity_log` and
-> `update_activity_media` accept only the labels (`state_text`, `subtitle`, `icon`), appearance
+> **`board` / `log` / `media` / `approval` use a lean schema.** They render no progress bar and no
+> whole-activity button slots, so `update_activity_board`, `update_activity_log`,
+> `update_activity_media` and `update_activity_approval` accept only the labels (`state_text`, `subtitle`, `icon`), appearance
 > (`completion_message`, the colors, `sound`, `priority`, the TTLs
 > `ended_ttl`/`stale_ttl`/`dismissal_ttl`), the whole-activity `tap_action`, and their template
-> fields (`tiles` / `lines` / the media fields), **not** `progress`, `remaining_time`, `url`,
-> `secondary_url`, `url_action`, or `secondary_url_action` (board tap targets are per-tile via
-> each tile's `url_action`; media buttons live in `controls`). `tiles` is a list of 1-4 objects
+> fields (`tiles` / `lines` / the media fields / the approval fields), **not** `progress`,
+> `remaining_time`, `url`, `secondary_url`, `url_action`, or `secondary_url_action` (board tap
+> targets are per-tile via each tile's `url_action`; media buttons live in `controls`; approval
+> buttons live in `options`). `tiles` is a list of 1-4 objects
 > `{ label, value, unit?, icon?, color?, trend?, url_action? }` (`value` is a string max 16
 > chars). `lines` is a list of 1-20 newest-first objects `{ text, at?, level? }` where `level`
 > is `info`/`warn`/`error`.
@@ -8694,6 +8412,65 @@ implied by the action name; you no longer pass a `template` field.
 >       previous: { url: "https://ha.example.com/api/webhook/pw-prev" }
 >       play_pause: { url: "https://ha.example.com/api/webhook/pw-toggle" }
 >       next: { url: "https://ha.example.com/api/webhook/pw-next" }
+> ```
+
+> **`approval`** is a question card driven entirely by this action (the config flow does not
+> offer the template): the question rides `state_text`, `source` (max 24) names
+> the producer in the card header, and `details` adds up to 2 `{ label, value }` rows (label
+> max 24, value max 64; `[]` clears them). `options` is a list of 2-4 answer buttons
+> `{ id, title, style?, icon?, url?, method?, headers?, body? }`: `id` (slug shape, max 64) and
+> `title` (max 24) are required, `style` is `primary` / `secondary` / `destructive` (default:
+> first primary, rest secondary), and `icon` is required once there are 3 or more buttons (they
+> render icon-only then). An option with an `http(s)` `url` is always a silent webhook, exactly
+> like a media control (`POST` when no `method` is given, no `foreground`); a custom-scheme
+> `url` opens that app. An option **without** a `url` is server-recorded: the server signs an
+> answer URL into the button, the first tap lands in the read-only `answer` field
+> (`{ option, at, by }`), is pushed to every device, and the activity ends shortly after. The
+> recorded answer shows on the card, but this integration never reads an activity back, so to
+> react from Home Assistant give each option a `url` pointing at a webhook trigger instead, as
+> in the example below. `on_expire` names the option to record
+> (`by: "expired"`) when `end_date` passes, or `none` to disarm; it needs `end_date` (already
+> stored or sent along). Recording is all it does: the expiry sweep never fires the option's
+> webhook, so an automation behind a `url` option runs only on a real tap. Options
+> and details replace wholesale on update, and re-sending `options` starts a new round (the
+> stored answer is cleared) - so a plain update leaves them out.
+>
+> ```yaml
+> - action: pushward.update_activity_approval
+>   data:
+>     slug: gate-request
+>     state: ongoing
+>     state_text: Open the gate?
+>     source: Home Assistant
+>     details:
+>       - label: Requested by
+>         value: Front gate keypad
+>     on_expire: deny
+>     end_date: "{{ (now().timestamp() + 600) | int }}"
+>     options:
+>       - id: approve
+>         title: Approve
+>         style: primary
+>         url: https://ha.example.com/api/webhook/approve-gate
+>       - id: deny
+>         title: Deny
+>         style: destructive
+>         url: https://ha.example.com/api/webhook/deny-gate
+> ```
+>
+> Each tapped option POSTs to its webhook from the phone, outside your LAN, so the matching
+> automation must allow remote requests:
+>
+> ```yaml
+> - triggers:
+>     - trigger: webhook
+>       webhook_id: approve-gate
+>       allowed_methods: [POST]
+>       local_only: false
+>   actions:
+>     - action: cover.open_cover
+>       target:
+>         entity_id: cover.front_gate
 > ```
 
 #### Activity images
@@ -9118,11 +8895,13 @@ Apache-2.0.
 
 > Beta: expect rough edges, and please report issues.
 
-A self-contained Unraid plugin that connects your server to [PushWard](https://pushward.app). It does two things.
+A self-contained Unraid plugin that connects your server to [PushWard](https://pushward.app). It does three things.
 
 **Notifications.** Every Unraid notification is forwarded to your iPhone.
 
 **Live Activities.** Long-running jobs (parity check/rebuild, appdata backup, mover, VM backup, UPS on battery) show real-time progress on the Lock Screen and Dynamic Island, with a dashboard page to view and end them.
+
+**Home Screen widgets.** Optional: array fill, free space per disk and pool, and a status list. Off by default.
 
 It installs a native notification agent plus a small monitor that reads Unraid's own state. There is no downloaded binary and no Unraid API key to manage; everything talks to the PushWard REST API over HTTPS.
 
@@ -9145,19 +8924,24 @@ Open Settings > PushWard (in the User Utilities row) and, on the Settings tab, f
 | PushWard server URL | Defaults to `https://api.pushward.app` |
 | PushWard API key | An `hlk_...` key (permissions below) |
 | Server display name | Shown under notifications and used to name activities, e.g. "Tower" |
+| Alert notification level | Which PushWard level an Unraid Alert becomes: Normal, Time Sensitive (default) or Critical |
 | Live Activities | Master switch for progress activities |
 | Track parity / appdata backup / mover / VM backup / UPS | Per-source toggles |
 | Poll interval | How often the monitor checks state (default 15s) |
 | Activity priority | 0-10, used when PushWard evicts to make room for higher-priority activities |
+| Unraid web UI URL | Where the Open button on an activity points. Blank auto-detects the same address Unraid puts in its own alert emails |
+| Home Screen widgets | Off by default; the key needs an extra permission (below) |
+| Widget refresh interval | How often the widgets are recomputed (default 300s) |
 
 Click Apply, then use the test buttons to confirm each path. The Settings tab shows live status: whether the key is valid, whether the subscription is active, and whether the monitor is running.
 
 ### API key permissions
 
-One `hlk_` key can carry both features:
+One `hlk_` key can carry all three:
 
 - Notifications need the `notifications` capability.
 - Live Activities need `activity:manage` scope and an active PushWard subscription.
+- Home Screen widgets need the `widgets` capability. Without it the widget calls come back 403 and the log says so; nothing else is affected.
 
 Notifications work without a subscription; creating and updating Live Activities does not.
 
@@ -9165,7 +8949,11 @@ Notifications work without a subscription; creating and updating Live Activities
 
 ### Notifications
 
-The agent lives at `/boot/config/plugins/dynamix/notifications/agents/PushWard`. Unraid invokes it for every notification whose importance has the Agent method enabled (Warning and Alert by default; enable Info too under Settings > Notifications). `ALERT`/`WARNING` map to active push notifications, everything else to passive. The full message body is forwarded, not just the subject.
+The agent lives at `/boot/config/plugins/dynamix/notifications/agents/PushWard`. Unraid invokes it for every notification whose importance has the Agent method enabled (Warning and Alert by default; enable Info too under Settings > Notifications). The full message body is forwarded, not just the subject.
+
+Unraid has three importances. An `ALERT` becomes whatever "Alert notification level" is set to, Time Sensitive out of the box; a `WARNING` becomes a Normal push; anything else stays passive. A subject starting `Alert [` or `Warning [` raises the level to match whatever importance it arrived with, and never lowers it - Unraid sends a parity check that finished *with* errors as `Notice [...]` at Warning importance. Critical is the level that breaks through Do Not Disturb and the silent switch, so it is opt-in, and it needs the critical-alert permission granted to the PushWard app.
+
+Repeats of the same event replace the previous banner rather than stacking, keyed on the server name and the event, so a SMART warning that repeats every hour leaves one banner. The app's notification list still holds every one of them. A notification about a job the monitor is already tracking carries a link to that Live Activity.
 
 ### Live Activities
 
@@ -9179,12 +8967,24 @@ A background monitor, started by an array-event hook and kept alive by a 1-minut
 | VM backup | `vmbackup` plugin log | steps | per-VM step progress, sized by vdisk (needs a VM list in vmbackup; "all" shows an indeterminate bar) |
 | UPS on battery | `apcaccess` (apcupsd) | generic | battery charge + runtime countdown |
 
-Activities appear via push-to-start (no app interaction needed), update as the job runs, and end automatically when it finishes. View and end the current ones on the Activities tab of Settings > PushWard.
+Activities appear via push-to-start (no app interaction needed), update as the job runs, and end automatically when it finishes. Each card carries an Open button that goes to the matching page in the web UI. View and end the current ones on the Activities tab of Settings > PushWard.
 
 The monitor only reads status; it never touches Unraid or the source plugins. It also stays under PushWard's update quota by pushing only on a meaningful change.
 
 A few notes on the newer sources. Mover lists the files as they move, read from the lines Unraid writes to syslog when "Mover logging" is on (Settings > Scheduler > Mover Settings); with that setting off there are no per-file lines and it shows a progress bar with bytes moved and speed instead. The percent is a fraction of the data the run will move: at the start the monitor measures, once, the size of each share set to move cache to array (Use cache = Yes) on its assigned pool, and uses that as the denominator. It reads only the cache pools, so the array stays spun down. Bytes moved come from how much the pools drain. Both are estimates, since mover skips open or in-use files and new writes refill the cache during a run, so the bar can stall short of full; the run finishing is what marks it complete. When nothing movable is found the bar is indeterminate. VM backup tracks the `vmbackup` plugin's own scheduled or manual run, and a backup launched through the User Scripts plugin under a custom name is not detected. The UPS source reads `apcaccess` and only appears while the UPS is on battery; NUT is not supported.
 
+### Home Screen widgets
+
+Off by default, because they need an extra permission on your key (see above) and they occupy space in your iPhone's widget picker whether or not you place them. Switch them on under Settings and the monitor publishes three:
+
+| Widget | Template | Shows |
+|---|---|---|
+| `<server>-array-fill` | gauge | How full the array is, with used and total underneath |
+| `<server>-storage` | battery | A ring per mounted disk and pool, plus the UPS, showing free space rather than used. A disk with a SMART fault or a read error goes red whatever its level. Eight rings is the server's limit, so a box with more devices than that shows the unhealthy ones first, then whichever have least room left |
+| `<server>-status` | stat_list | Array state, used and free, the last parity result with how long ago it ran, mover, and how many disks are healthy |
+
+Everything comes from the status files Unraid already keeps up to date, so a refresh never spins a disk up to read it. Widgets refresh on their own interval (default 300s) rather than the activity poll, and re-send unchanged content twice an hour so iOS does not grey them out as stale; the server counts that as a touch, not a push, so it costs nothing against your quota. Switching them back off removes them from your account.
+
 ## Uninstall
 
-Plugins > PushWard > Remove. The agent, monitor, settings/dashboard pages and cron are removed, and any active Live Activities are ended. Your config under `/boot/config/plugins/pushward-unraid/` stays put, so reinstalling restores your API key.
+Plugins > PushWard > Remove. The agent, monitor, settings/dashboard pages and cron are removed, any active Live Activities are ended, and any published widgets are deleted. Your config under `/boot/config/plugins/pushward-unraid/` stays put, so reinstalling restores your API key.
