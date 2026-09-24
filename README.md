@@ -64,6 +64,29 @@ The `http` transport (OAuth, multi-tenant) is what backs the hosted endpoint abo
 a signing key and a few more variables and is meant to run behind a proxy. See
 `internal/config` and `internal/oauth` if you want to host your own.
 
+## Single-user http (for a headless agent)
+
+An agent that runs as a service can't click through an OAuth consent screen. For that case
+the `http` transport can skip caller auth and act as one key:
+
+```bash
+PUSHWARD_MCP_TRANSPORT=http \
+PUSHWARD_MCP_HTTP_AUTH=none \
+PUSHWARD_API_TOKEN=hlk_your_key \
+./pushward-mcp
+```
+
+It serves `/mcp`, `/health` and `/ready` on `127.0.0.1:8080`. Every request acts as
+`PUSHWARD_API_TOKEN`, and any `Authorization` header the caller sends is ignored. Nothing
+checks who is calling, so only the agent should be able to reach the port. To serve it to
+a container or pod, set `PUSHWARD_MCP_LISTEN_ADDR=:8080` and put a network policy in front,
+never the open internet. Requests with an `Origin` header get a 403, so a web page in your
+browser can't use the key. Relay tools stay off unless `PUSHWARD_MCP_RELAY_ENABLED=true`,
+which also needs `PUSHWARD_RELAY_TOKEN`.
+
+Give the agent a dedicated integration key with only what it needs, for example
+notifications on and activity slugs limited to a prefix like `agent-*`.
+
 ## Generated code
 
 `internal/tools/api_gen.go` and `internal/tools/relay_gen.go` are generated from the OpenAPI

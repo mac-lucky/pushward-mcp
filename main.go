@@ -32,16 +32,20 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Redact upstream error detail from caller-facing errors when exposed to a
-	// network (http mode).
-	client.SetRemoteMode(cfg.IsRemote())
+	client.SetRemoteMode(cfg.RedactUpstreamErrors())
 
 	log := observability.NewLogger(slog.LevelInfo)
 	if cfg.IsRemote() {
-		log.Info("pushward-mcp starting", "version", version, "commit", commit, "buildDate", buildDate, "transport", string(cfg.Transport))
+		log.Info("pushward-mcp starting", "version", version, "commit", commit, "buildDate", buildDate, "transport", string(cfg.Transport), "httpAuth", string(cfg.HTTPAuth))
 	}
 
-	apiClient := client.NewAPIClient(cfg.APIURL, cfg.APIToken)
+	// In http mode the Authenticator is the only source of identity: it puts
+	// the key in the request context, so the client carries no fallback token.
+	apiToken := cfg.APIToken
+	if cfg.IsRemote() {
+		apiToken = ""
+	}
+	apiClient := client.NewAPIClient(cfg.APIURL, apiToken)
 	// relayClient stays nil when relay tools are disabled (http/remote default),
 	// so a multi-tenant endpoint never carries the shared relay credential.
 	var relayClient *client.RelayClient
@@ -85,6 +89,11 @@ func main() {
 func runHTTP(cfg *config.Config, s *server.MCPServer, log *slog.Logger) error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+
+	if cfg.SingleUser() {
+		log.Warn("http auth disabled: every caller acts as PUSHWARD_API_TOKEN; keep this listener behind a network policy")
+		return httpserve.Run(ctx, cfg, s, httpserve.SingleUser{Token: cfg.APIToken}, log)
+	}
 
 	oauthCfg, err := oauth.LoadConfig(cfg.APIURL)
 	if err != nil {

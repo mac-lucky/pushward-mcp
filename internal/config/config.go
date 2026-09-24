@@ -16,8 +16,23 @@ const (
 	// TransportStdio serves a single local client over stdin/stdout. This is
 	// the default and is used for local development (the .mcp.json launch).
 	TransportStdio Transport = "stdio"
-	// TransportHTTP serves remote clients over Streamable HTTP behind OAuth.
+	// TransportHTTP serves remote clients over Streamable HTTP, behind OAuth
+	// unless PUSHWARD_MCP_HTTP_AUTH=none.
 	TransportHTTP Transport = "http"
+)
+
+// HTTPAuth selects how http mode authenticates its callers.
+type HTTPAuth string
+
+const (
+	// HTTPAuthOAuth is the multi-tenant default: every caller signs in through
+	// OAuth 2.1 and acts as the PushWard key they entered on the consent page.
+	HTTPAuthOAuth HTTPAuth = "oauth"
+	// HTTPAuthNone is single-user mode: no caller login, every request acts as
+	// PUSHWARD_API_TOKEN. For an agent that can't run an interactive OAuth
+	// flow, reachable only through a network policy or loopback; never expose
+	// it publicly.
+	HTTPAuthNone HTTPAuth = "none"
 )
 
 // Config holds the MCP server configuration, loaded from environment variables.
@@ -29,6 +44,9 @@ type Config struct {
 
 	// Transport selects stdio (default) or http.
 	Transport Transport
+	// HTTPAuth selects OAuth (default) or no caller auth in http mode. Unset
+	// in stdio mode.
+	HTTPAuth HTTPAuth
 	// ListenAddr is the HTTP listen address in http mode (default ":8080").
 	ListenAddr string
 	// MetricsAddr, when non-empty, serves Prometheus metrics on a separate,
@@ -44,12 +62,27 @@ type Config struct {
 // IsRemote reports whether the server runs in network-exposed (http) mode.
 func (c *Config) IsRemote() bool { return c.Transport == TransportHTTP }
 
+// SingleUser reports whether http mode serves one fixed identity
+// (PUSHWARD_MCP_HTTP_AUTH=none) instead of per-user OAuth.
+func (c *Config) SingleUser() bool {
+	return c.Transport == TransportHTTP && c.HTTPAuth == HTTPAuthNone
+}
+
+// RedactUpstreamErrors reports whether caller-facing errors must hide upstream
+// Problem detail. Only OAuth http mode redacts: its callers are other users of
+// a public endpoint. Single-user and stdio callers act as the key owner and
+// would see the same detail calling the API directly.
+func (c *Config) RedactUpstreamErrors() bool {
+	return c.IsRemote() && !c.SingleUser()
+}
+
 // Load reads configuration from environment variables.
 //
 // stdio mode (default): PUSHWARD_API_TOKEN and PUSHWARD_RELAY_TOKEN are
 // required (single shared identity, local use). http mode: tokens arrive per
-// request via OAuth, so PUSHWARD_API_TOKEN is optional and PUSHWARD_RELAY_TOKEN
-// is required only when relay tools are enabled.
+// request via OAuth, so PUSHWARD_API_TOKEN is ignored and PUSHWARD_RELAY_TOKEN
+// is required only when relay tools are enabled. http mode with
+// PUSHWARD_MCP_HTTP_AUTH=none keeps PUSHWARD_API_TOKEN and requires it.
 //
 // PUSHWARD_API_URL defaults to https://api.pushward.app and
 // PUSHWARD_RELAY_URL to https://relay.pushward.app. Upstream URLs must be https
@@ -97,14 +130,39 @@ func Load() (*Config, error) {
 	}
 
 	if cfg.Transport == TransportHTTP {
-		// http mode is multi-tenant: per-user tokens arrive via OAuth and ride in
-		// the request context. Drop any process-wide PUSHWARD_API_TOKEN so it can
-		// never become a silent shared fallback credential used as every user's
-		// identity (an env copy-paste foot-gun) if a request ever reaches the API
-		// client without a context token.
-		cfg.APIToken = ""
+		switch a := strings.ToLower(strings.TrimSpace(os.Getenv("PUSHWARD_MCP_HTTP_AUTH"))); a {
+		case "", string(HTTPAuthOAuth):
+			cfg.HTTPAuth = HTTPAuthOAuth
+		case string(HTTPAuthNone):
+			cfg.HTTPAuth = HTTPAuthNone
+		default:
+			return nil, fmt.Errorf("invalid PUSHWARD_MCP_HTTP_AUTH %q (want oauth or none)", a)
+		}
+		if cfg.HTTPAuth == HTTPAuthNone {
+			// A deployment carrying OAuth settings is a hosted one; turning its
+			// auth off must be loud, not a silent open endpoint.
+			for _, k := range []string{"PUSHWARD_MCP_ISSUER", "PUSHWARD_MCP_SIGNING_KEY", "PUSHWARD_MCP_DB_DSN"} {
+				if os.Getenv(k) != "" {
+					return nil, fmt.Errorf("PUSHWARD_MCP_HTTP_AUTH=none refuses to start with %s set", k)
+				}
+			}
+		}
+		if cfg.HTTPAuth == HTTPAuthOAuth {
+			// OAuth mode is multi-tenant: per-user tokens arrive via OAuth and
+			// ride in the request context. Drop any process-wide
+			// PUSHWARD_API_TOKEN so it can never become a silent shared fallback
+			// credential used as every user's identity (an env copy-paste
+			// foot-gun) if a request ever reaches the API client without a
+			// context token.
+			cfg.APIToken = ""
+		}
 		if cfg.ListenAddr == "" {
 			cfg.ListenAddr = ":8080"
+			if cfg.HTTPAuth == HTTPAuthNone {
+				// Nothing checks the caller, so only listen beyond loopback
+				// when asked to.
+				cfg.ListenAddr = "127.0.0.1:8080"
+			}
 		}
 		if err := validateHostPort("PUSHWARD_MCP_LISTEN_ADDR", cfg.ListenAddr); err != nil {
 			return nil, err
@@ -119,6 +177,9 @@ func Load() (*Config, error) {
 	// Token requirements depend on mode.
 	if cfg.Transport == TransportStdio && cfg.APIToken == "" {
 		return nil, fmt.Errorf("PUSHWARD_API_TOKEN is required in stdio mode")
+	}
+	if cfg.SingleUser() && cfg.APIToken == "" {
+		return nil, fmt.Errorf("PUSHWARD_API_TOKEN is required when PUSHWARD_MCP_HTTP_AUTH=none")
 	}
 	if cfg.RelayEnabled && cfg.RelayToken == "" {
 		return nil, fmt.Errorf("PUSHWARD_RELAY_TOKEN is required when relay tools are enabled")

@@ -1,8 +1,9 @@
 // Package httpserve runs the MCP server over Streamable HTTP for remote
 // (http transport) mode. It owns the listener, health/readiness endpoints,
 // optional private metrics listener, CORS, and graceful shutdown; the
-// authentication (OAuth 2.1 Resource Server + Authorization Server) is provided
-// by an Authenticator so this package stays auth-agnostic and testable.
+// authentication (OAuth 2.1 Resource Server + Authorization Server, or
+// SingleUser) is provided by an Authenticator so this package stays
+// auth-agnostic and testable.
 package httpserve
 
 import (
@@ -33,11 +34,12 @@ const (
 	maxConns = 1024
 )
 
-// Authenticator mounts the OAuth discovery/authorize/token routes and guards
-// the MCP endpoint. WrapMCP must, for each authorized request, inject the
-// per-user upstream token (and user id) into the request context before
-// calling next; for unauthorized requests it must write a 401 with an
-// appropriate WWW-Authenticate challenge and not call next.
+// Authenticator mounts its login routes (OAuth discovery/authorize/token; none
+// for SingleUser) and guards the MCP endpoint. WrapMCP must, for each
+// authorized request, inject the upstream token (and user id) into the request
+// context before calling next; for a rejected request it must write the error
+// response itself (401 with a WWW-Authenticate challenge under OAuth) and not
+// call next.
 type Authenticator interface {
 	RegisterRoutes(mux *http.ServeMux)
 	WrapMCP(next http.Handler) http.Handler

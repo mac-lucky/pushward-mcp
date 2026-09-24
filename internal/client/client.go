@@ -18,7 +18,7 @@ const maxRespBytes = 1 << 20 // 1MB
 // remoteMode, when true, makes extractErrorMessage redact upstream Problem
 // detail/title/raw bodies from the caller-facing error so an internet-exposed
 // MCP endpoint does not leak upstream implementation detail to clients. It is
-// set once at startup (HTTP transport) before any request is served, so it is
+// set once at startup (OAuth http mode) before any request is served, so it is
 // safe to read without synchronization.
 var remoteMode bool
 
