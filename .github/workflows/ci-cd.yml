@@ -44,7 +44,6 @@ jobs:
       # key + hlk encryption key, which would require secrets in CI.
       enable_container_tests: false
       enable_kubernetes_tests: false
-    secrets: inherit
 
   # The MCP server mirrors the app's activity contract, so the release notes
   # open with the app release they target. The version comes from the newest
