@@ -2,7 +2,7 @@
 
 > Full Markdown bundle of every PushWard docs page, auto-generated from the prerendered HTML at build time. Source: https://pushward.app
 
-> Generated: 2026-09-09T22:29:22.117Z
+> Generated: 2026-09-27T23:44:04.656Z
 
 ---
 <!-- source: https://pushward.app/docs/getting-started -->
@@ -259,6 +259,7 @@ A flexible progress-based template suitable for builds, downloads, deployments, 
 | `image_url` | string | https URL of an image shown in place of the icon -- cover art, a poster, an album sleeve. Max 2048 characters, no username or password in the URL. The _device_ downloads it, not the server. See [Artwork](#artwork). |
 | `image_shape` | string | How the image is framed: `poster` (2:3), `square`, or `circle`. Defaults to `square`. |
 | `image_thumbhash` | string | A [ThumbHash](https://evanw.github.io/thumbhash/) of the image, as padded standard-alphabet base64 (about 28 characters). Renders as a blurred stand-in until the download lands, and is the only thing that shows for an image the phone cannot reach. |
+| `compact_label` | string | Optional, max 4 characters. Replaces the icon in the Dynamic Island compact leading ear. The minimal presentation ignores it. |
 
 Renders `url_action` and `secondary_url_action` as buttons beneath the progress bar, and treats taps on the rest of the card as `tap_action` -- see [Tap actions](https://pushward.app/docs/api/activities#tap-actions).
 
@@ -389,6 +390,7 @@ A timer with server-managed lifecycle: send one start push and the server fires 
 | `text_color` | string | Text color override |
 | `alarm` | boolean | Opt-in: schedule an iOS AlarmKit alarm at `end_date` that rings through silent mode and Focus, with built-in Dismiss and Snooze. iOS 26+ only. Persists across partial updates until cleared with `alarm: null` or a transition to `ended` - see [Alarms](https://pushward.app/docs/api/activities#alarm). |
 | `snooze_seconds` | integer | How long the alarm's **Snooze** button defers the alarm, in seconds (60-3600). Defaults to `300` (5 minutes). |
+| `compact_label` | string | Optional, max 4 characters. Replaces the icon in the Dynamic Island compact leading ear. The minimal presentation ignores it. |
 
 Accepts `url_action`, `secondary_url_action`, and `tap_action` - `tap_action` is useful for deep-linking back into the timer's source app while it runs. See [Tap actions](https://pushward.app/docs/api/activities#tap-actions).
 
@@ -461,6 +463,7 @@ A step-based template designed for CI/CD pipelines and multi-stage workflows. Vi
 | `image_url` | string | https URL of an image shown in place of the icon. Max 2048 characters, no username or password in the URL. The _device_ downloads it, not the server, so the host has to be public. See [Artwork](#artwork). |
 | `image_shape` | string | How the image is framed: `poster` (2:3), `square`, or `circle`. Defaults to `square`. |
 | `image_thumbhash` | string | A ThumbHash of the image, as padded standard-alphabet base64 (about 28 characters). Rides on the push itself and renders as a blurred stand-in until the download lands. |
+| `compact_label` | string | Optional, max 4 characters. Replaces the ring in the Dynamic Island compact leading ear. The minimal presentation ignores it. |
 
 _Requires PushWard iOS app 1.9.2 or later._
 
@@ -658,6 +661,7 @@ A severity-based template for monitoring alerts. Displays firing alerts with dee
 | `accent_color` | string | Named color or hex (typically `"red"` for firing, `"green"` for resolved) |
 | `background_color` | string | Background color override |
 | `text_color` | string | Text color override |
+| `compact_label` | string | Optional, max 4 characters. Replaces the icon in the Dynamic Island compact leading ear. The minimal presentation ignores it. |
 
 For one-tap acknowledgements, set `url_action` to a silent webhook, `secondary_url_action` with `foreground: true` to open the dashboard in Safari, and `tap_action` to a custom scheme to deep-link into your alerting tool's iOS app; the legacy `url` / `secondary_url` strings render as buttons that open in Safari. See [Tap actions](https://pushward.app/docs/api/activities#tap-actions).
 
@@ -731,6 +735,7 @@ Monitor a numeric value within a range: the current reading with unit, min/max e
 | `accent_color` | string | Named color or hex. Default: `orange` |
 | `background_color` | string | Background color override |
 | `text_color` | string | Text color override |
+| `compact_label` | string | Optional, max 4 characters. Replaces the icon in the Dynamic Island compact leading ear. The minimal presentation ignores it. |
 
 On Lock Screen surfaces `url_action` and `secondary_url_action` render as buttons; the circular Dynamic Island variant has no inline buttons, so `tap_action` is the most useful field there. See [Tap actions](https://pushward.app/docs/api/activities#tap-actions).
 
@@ -807,6 +812,7 @@ A real-time sparkline chart for tracking values over time. Each push sends a dat
 | `icon` | string | SF Symbol name (e.g. `"chart.xyaxis.line"`) or MDI icon with `mdi:` prefix |
 | `accent_color` | string | Named color or hex. Default: `teal` |
 | `primary_series` | string | Names which series drives the headline value and the compact high/low range on iOS. Max 32 chars, and must match one of the `value` keys to take effect. When omitted (or naming an unknown key), the alphabetically-first series is used. |
+| `compact_label` | string | Optional, max 4 characters. Replaces the high/low stack in the Dynamic Island compact leading ear. The minimal presentation ignores it. |
 
 Each push appends a timestamped data point to the **server-managed** `history`, which never needs to be sent: a seed on the first update is honored, but once any history exists a client-supplied `history` is ignored. Up to 300 points per series are stored; APNs payloads are dynamically downsampled via LTTB to fit 4KB while preserving peaks and visual shape.
 
@@ -896,6 +902,7 @@ A compact dashboard of up to four labeled tiles - each with a value, icon, trend
 | `accent_color` | string | Named color or hex used for the heading icon and tile values. Default: `teal` |
 | `background_color` | string | Background color override |
 | `text_color` | string | Text color override |
+| `compact_label` | string | Optional, max 4 characters. Replaces the icon in the Dynamic Island compact leading ear. The minimal presentation ignores it. |
 
 ## Tile object
 
@@ -973,6 +980,7 @@ A streaming feed of up to 20 newest-first lines, each with optional timestamp an
 | `accent_color` | string | Named color or hex used for the heading icon. Default: `green` |
 | `background_color` | string | Background color override |
 | `text_color` | string | Text color override |
+| `compact_label` | string | Optional, max 4 characters. Replaces the icon and line count in the Dynamic Island compact leading ear. The minimal presentation ignores it. |
 
 ℹ Info
 
@@ -1061,6 +1069,7 @@ The activity `name` is the _source_ ("Living Room", "Kitchen TV") and stays on t
 | `icon` | string | SF Symbol drawn where the art would be when there is none. Default: `music.note` |
 | `accent_color` | string | Named color or hex for the icon and the filled heart. Default: `pink` |
 | `background_color`, `text_color` | string | Color overrides |
+| `compact_label` | string | Optional, max 4 characters. Replaces the artwork (or the icon when there is none) in the Dynamic Island compact leading ear. The minimal presentation ignores it. |
 
 Sending any media field on another template is rejected with `422` rather than ignored, and switching an activity from `media` to another template clears them, so no card ends up carrying controls it cannot draw. `url_action` and `secondary_url_action` are accepted for compatibility but **not rendered** on the media card -- the transport row takes the button space; `tap_action` (tapping the card background) still works.
 
@@ -1117,6 +1126,10 @@ The full example below is about 1.3 KB; eight controls each carrying a 40-charac
 -   **Dynamic Island, expanded** -- art leading, title and subtitle centred, elapsed trailing, scrubber and a compact transport row below. Buttons work here.
 -   **Dynamic Island, compact** -- art or icon leading; while playing the elapsed clock ticks trailing, otherwise a state glyph. Tap to open.
 -   **Apple Watch** -- art, title and one play/pause button. Mac and the in-app cards use the same layout as the Lock Screen.
+
+_Requires PushWard iOS app 1.14.0 or later._
+
+With `compact_label` set, the compact leading slot shows that text instead of the art or icon; the expanded and minimal presentations are unchanged.
 
 ## Example: A Home Assistant player
 
@@ -1231,6 +1244,7 @@ The activity `name` is the card title and stays short; `state` is the question, 
 | `icon` | string | SF Symbol drawn in the accent-tinted square at the head of the card |
 | `accent_color` | string | Named color or hex for the icon, the badges and the primary button |
 | `background_color`, `text_color` | string | Color overrides |
+| `compact_label` | string | Optional, max 4 characters. Replaces the icon in the Dynamic Island compact leading ear. The minimal presentation ignores it. |
 
 Sending an approval field on another template is rejected with `422` rather than ignored, and so is the reverse: `url_action`, `secondary_url_action`, `alarm` and `snooze_seconds` are rejected on this template -- the options row _is_ the button row. `tap_action` (tapping the card background) still works.
 
@@ -1258,7 +1272,7 @@ Taps follow the [standard tap rules](https://pushward.app/docs/api/activities#si
 Poll for the answer 
 
 ```
-curl https://api.pushward.app/activities/approval-request \
+curl "https://api.pushward.app/activities/approval-request?wait=25" \
   -H "Authorization: Bearer hlk_YOUR_TOKEN"
 
 {
@@ -1277,7 +1291,7 @@ curl https://api.pushward.app/activities/approval-request \
 }
 ```
 
-Poll `GET /activities/{slug}` until `content.answer` is set (a few seconds between requests is plenty). Each option comes back carrying the signed answer `url` the server filled in when it stored the url-less options (the token is shortened to `...` here) and `method: "POST"`. The two forms mix freely: a "More info" option can carry a webhook while "Approve" and "Deny" stay server-recorded.
+Read `GET /activities/{slug}` until `content.answer` is set. With `?wait=N` (up to 25 seconds) the request is held open while the approval waits for its answer and returns as soon as it is answered or ends; when the time runs out it returns the activity unchanged, so repeat it to wait longer. Without `wait`, a few seconds between requests is plenty. Too many waits open at once return `429` with code `answer_wait.limit_exceeded`. Agents on the [MCP server](https://pushward.app/docs/api/mcp) can call `wait_for_answer` with the slug instead. Each option comes back carrying the signed answer `url` the server filled in when it stored the url-less options (the token is shortened to `...` here) and `method: "POST"`. The two forms mix freely: a "More info" option can carry a webhook while "Approve" and "Deny" stay server-recorded.
 
 ## Example: An agent asking before it acts
 
@@ -1561,14 +1575,14 @@ Each entry in the `actions` array is one button. Labels, icons, and URLs travel 
 | `id` | string | Yes | Stable identifier returned to the app when the user taps. Max 64 chars. |
 | `title` | string | Yes | Button label shown to the user. Max 64 chars. |
 | `icon` | string | No | SF Symbol name (iOS 15+), e.g. `checkmark.circle`, `lock.open`. |
-| `url` | string | No | URL opened or dispatched when tapped. Any URL scheme is accepted except `javascript:`, `data:`, `file:`, and `vbscript:`. Use `http(s)://` for webhooks (fired silently from inside the app), `homeassistant://`, `shortcuts://`, `things://`, `tel:`, `mailto:`, etc. for deep links into other iOS apps, or your own app's custom scheme. Max 2048 chars. |
+| `url` | string | No | URL opened or dispatched when tapped. Any URL scheme is accepted except `javascript:`, `data:`, `file:`, and `vbscript:`. Use `http(s)://` for webhooks (fired silently from inside the app), `homeassistant://`, `shortcuts://`, `things://`, `tel:`, `mailto:`, etc. for deep links into other iOS apps, or your own app's custom scheme. Max 2048 chars. Leave it out on a silent action and PushWard records the tap for you to read back; see [Notification Answers](https://pushward.app/docs/notifications/answers). |
 | `method` | string | No | HTTP method for `http`/`https` actions: `GET` (default), `POST`, `PUT`, `PATCH`, `DELETE`, `HEAD`. Ignored for custom-scheme URLs. |
 | `headers` | object | No | Map of header name -> value for `http`/`https` actions. Example: `{"Authorization": "Bearer ..."}`. Total <= 1 KB. Ignored for custom-scheme URLs. |
 | `body` | string | No | Request body for `http`/`https` actions. <= 1 KB. If set without an explicit `Content-Type` header, defaults to `application/json`. Ignored for custom-scheme URLs. |
 | `foreground` | boolean | No | When `false` (default), tapping fires the URL silently from inside the PushWard iOS app - the user stays on the lock screen, no browser opens. For `http`/`https` URLs this is a background `URLSession` request using the action's `method`/`headers`/`body`; for custom schemes (e.g. `homeassistant://`) the target app is opened directly. When `true`, PushWard is brought to the foreground and the URL is opened from the app - only `https://` URLs are honored on this path, so use `foreground: false` for deep links into other apps. |
 | `destructive` | boolean | No | Render the label in red. Use for "Delete", "Deny", "Ignore" style actions. |
 | `authentication_required` | boolean | No | Require Face ID / Touch ID / passcode before firing the action. |
-| `text_input` | boolean | No | Show an inline reply field when the action is tapped. Requires a silent (`foreground: false`) `http`/`https` action. The typed text replaces `{{input}}` in `body`; if `body` has no placeholder, the reply is sent as `{"text": "..."}`. See [Reply with text](#reply-with-text) below. |
+| `text_input` | boolean | No | Show an inline reply field when the action is tapped. Requires a silent (`foreground: false`) action with an `http`/`https` `url` or no `url`. The typed text replaces `{{input}}` in `body`; if `body` has no placeholder, the reply is sent as `{"text": "..."}`. Without a `url`, PushWard records the reply. See [Reply with text](#reply-with-text) below. |
 | `text_input_placeholder` | string | No | Placeholder shown in the reply field. Requires `text_input`. Max 64 chars. |
 | `text_input_button_title` | string | No | Label of the send button next to the reply field. Defaults to the action `title`. Requires `text_input`. Max 64 chars. |
 
@@ -1580,6 +1594,8 @@ A silent `http`/`https` action can prompt for a typed reply instead of firing ri
 
 -   If `body` contains `{{input}}`, that placeholder is replaced with the typed text.
 -   Otherwise the reply is sent as `{"text": "..."}`.
+
+Leave out `url` and there is no webhook to host: PushWard records the reply and you read it back from the API. See [Notification Answers](https://pushward.app/docs/notifications/answers).
 
 Reply to a message from the notification 
 
@@ -1738,6 +1754,107 @@ curl -X POST https://api.pushward.app/notifications \
     ]
   }'
 ```
+
+---
+
+<!-- source: https://pushward.app/docs/notifications/answers -->
+
+# Notification Answers
+
+Ask a question in a notification and read the answer from the API. PushWard records which button the user tapped, or the reply they typed, so you do not need a webhook of your own.
+
+Send an [action](https://pushward.app/docs/notifications/actions) without a `url`, and without `foreground`, and PushWard records the tap itself: which action the user chose, and when. Add `text_input: true` to the same kind of action and the user can type a reply, which is recorded with it. Your code then reads the answer from `GET /notifications/answers/{id}`.
+
+Ask for a decision 
+
+```
+curl -X POST https://api.pushward.app/notifications \
+  -H "Authorization: Bearer hlk_YOUR_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "title": "Deploy to production?",
+    "body": "Build 1.11.0 passed staging.",
+    "source": "ci",
+    "actions": [
+      { "id": "deploy", "title": "Deploy", "icon": "checkmark.circle" },
+      { "id": "hold", "title": "Hold", "icon": "pause.circle", "destructive": true },
+      {
+        "id": "note",
+        "title": "Reply",
+        "icon": "arrowshape.turn.up.left",
+        "text_input": true,
+        "text_input_placeholder": "Why hold?"
+      }
+    ]
+  }'
+```
+
+The response is the notification, with `answerable: true` when the server will record the answer. Keep its `id`:
+
+```
+{
+  "id": 1234,
+  "title": "Deploy to production?",
+  "body": "Build 1.11.0 passed staging.",
+  "source": "ci",
+  "actions": [
+    { "id": "deploy", "title": "Deploy", "icon": "checkmark.circle" },
+    ...
+  ],
+  "answerable": true,
+  "pushed": true,
+  "created_at": "2026-09-28T12:00:00Z",
+  "delivery": "all"
+}
+```
+
+The `actions` in the response are the ones you sent. The links PushWard adds to record the answer go only to your devices.
+
+## Read the answer
+
+Wait for the answer 
+
+```
+curl "https://api.pushward.app/notifications/answers/1234?wait=25" \
+  -H "Authorization: Bearer hlk_YOUR_TOKEN"
+```
+
+```
+{
+  "notification_id": 1234,
+  "status": "answered",
+  "action_id": "note",
+  "text": "Waiting for the database migration.",
+  "answered_at": "2026-09-28T12:03:41Z"
+}
+```
+
+| Field | Description |
+| --- | --- |
+| `notification_id` | The notification the answer belongs to. |
+| `status` | `pending` until the user answers, then `answered`. |
+| `action_id` | The `id` of the action the user tapped. Set once answered. |
+| `text` | What the user typed, for a `text_input` action. |
+| `answered_at` | When the answer was recorded (RFC 3339, UTC). |
+
+Without `wait` the request returns right away. With `?wait=N` (0-25 seconds) it is held open while the answer is `pending` and returns as soon as it lands; if the time runs out first it returns with `status: "pending"`. Repeat the request to wait longer. Agents on the [MCP server](https://pushward.app/docs/api/mcp) can call `wait_for_answer` with the `notification_id`, which does this for them.
+
+## Rules
+
+-   Only actions with no `url` and no `foreground` are recorded. A url-less `foreground` action still just opens the app, and an action with a `url` keeps calling that URL and is never recorded. One notification can mix all three.
+-   The first answer wins. Once one device has answered, later taps on any device change nothing.
+-   Answers are kept for 30 days.
+-   An integration key can read only answers to notifications it sent. Reading an answer needs the `notifications` capability, like sending the notification did.
+-   A notification with nothing to record (none of its actions was url-less and silent), an unknown `id` and an answer past its 30 days all return `404` with code `notification_answer.not_found`.
+-   Too many `wait` requests open at once for your account return `429` with code `answer_wait.limit_exceeded`. Retry shortly, or read without `wait`.
+-   The recording links count toward the 4 KB push payload. If a long notification leaves no room for them, plain url-less actions go out unrecorded and the response has no `answerable`; a url-less `text_input` action fails with `400` instead.
+-   [Scheduled notifications](https://pushward.app/docs/notifications/scheduled) are recorded the same way. Read the answer with the `notification_id` a sent schedule reports; each send of a repeating schedule is its own notification with its own answer.
+
+ℹ Info
+
+Versions of the PushWard iOS app before 1.5 show a `text_input` action as a plain button. The tap is still recorded, without `text`.
+
+For a question that should stay on the Lock Screen until someone answers it, use an [approval Live Activity](https://pushward.app/docs/live-activities/approval). Its url-less options are recorded the same way, and `GET /activities/{slug}?wait=25` waits for the answer.
 
 ---
 
@@ -1922,6 +2039,152 @@ curl -X POST https://api.pushward.app/notifications \
 
 ---
 
+<!-- source: https://pushward.app/docs/notifications/scheduled -->
+
+# Scheduled Notifications
+
+Queue a notification for later with send\_at, or repeat it on a cron schedule. PushWard holds it and sends it when it is due, so nothing on your side has to stay running until then.
+
+Post the same body you would send to [`POST /notifications`](https://pushward.app/docs/notifications/api), plus a `send_at` time, to `POST /notifications/scheduled`. PushWard stores it and sends it when `send_at` arrives, usually within a few seconds. Nothing reaches your devices or the in-app inbox before then. To send it again and again, add a [`recurrence`](#repeating) rule.
+
+Schedule a reminder 
+
+```
+curl -X POST https://api.pushward.app/notifications/scheduled \
+  -H "Authorization: Bearer hlk_YOUR_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "title": "Bins go out tonight",
+    "body": "Collection is at 7:00 tomorrow.",
+    "source": "home",
+    "send_at": "2026-10-01T18:00:00+02:00"
+  }'
+```
+
+The response is the schedule, with an `id` you can use to check on it or cancel it:
+
+```
+{
+  "id": 42,
+  "status": "scheduled",
+  "send_at": "2026-10-01T16:00:00Z",
+  "title": "Bins go out tonight",
+  "body": "Collection is at 7:00 tomorrow.",
+  "level": "active",
+  "source": "home",
+  "created_at": "2026-09-27T12:00:00Z"
+}
+```
+
+## Rules
+
+-   `send_at` is an RFC 3339 timestamp. It must be in the future and at most 30 days ahead; otherwise the request fails with `400` and code `scheduled_notification.invalid`. Leaving it out fails the same way, unless the schedule has a `recurrence`. Any UTC offset works, and the response always reports it in UTC.
+-   The rest of the body is checked exactly like `POST /notifications`, when you schedule it, so a bad media URL or an unknown `activity_slug` fails right away rather than at send time.
+-   Up to 25 scheduled notifications can be waiting per account. One more returns `409` with code `scheduled_notification.limit_exceeded`. A repeating schedule takes one of those slots for its whole series.
+-   Scheduling is free. The send counts toward your notification quota at the moment it goes out, like any other notification. If the quota is used up by then, the notification is not sent and its status becomes `failed` with `failure_reason` `quota_exceeded`. If your quota is already used up when you schedule, the request fails with the same `429` (`quota.exceeded`) as `POST /notifications`.
+-   If the activity named in `activity_slug` was deleted before the send, the notification still goes out, without the link.
+-   Revoking the integration key that created a scheduled notification cancels it, and so does removing the key's `notifications` capability (the schedule then fails with `key_revoked`).
+-   An integration key can list, read and cancel only the scheduled notifications it created.
+
+ℹ Info
+
+Scheduled notifications need the `notifications` capability on your integration key, the same as `POST /notifications`. Your default key already has it.
+
+## Status
+
+| Status | Meaning |
+| --- | --- |
+| `scheduled` | Waiting for `send_at`. A repeating schedule comes back to this status after each send. |
+| `sending` | Being sent right now. It can no longer be canceled. |
+| `sent` | Delivered. `notification_id` is the notification it became, `sent_at` when it went out, and `delivery` / `reason` report the push outcome as on `POST /notifications`. A repeating schedule ends here once its `until` or `count` runs out. |
+| `failed` | Not sent. `failure_reason` is `quota_exceeded`, `key_revoked` or `internal_error`. For a repeating schedule, `key_revoked` ends the series; the other two skip one send and the series carries on. |
+
+Sent and failed schedules stay readable for 7 days, then they are removed.
+
+## Repeating notifications
+
+Add a `recurrence` object to send the same notification on a cron schedule. The schedule keeps one `id` for the whole series and holds one pending slot: after each send it goes back to `scheduled` with the next `send_at`, and deleting it stops the series.
+
+Every weekday at 08:00 in Warsaw 
+
+```
+curl -X POST https://api.pushward.app/notifications/scheduled \
+  -H "Authorization: Bearer hlk_YOUR_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "title": "Daily stand-up",
+    "body": "Stand-up starts at 08:15.",
+    "source": "calendar",
+    "recurrence": {
+      "cron": "0 8 * * 1-5",
+      "timezone": "Europe/Warsaw"
+    }
+  }'
+```
+
+Created on a Monday afternoon, the first send is Tuesday at 08:00 in Warsaw:
+
+```
+{
+  "id": 43,
+  "status": "scheduled",
+  "send_at": "2026-09-29T06:00:00Z",
+  "title": "Daily stand-up",
+  "body": "Stand-up starts at 08:15.",
+  "level": "active",
+  "source": "calendar",
+  "recurrence": {
+    "cron": "0 8 * * 1-5",
+    "timezone": "Europe/Warsaw"
+  },
+  "occurrence": 0,
+  "created_at": "2026-09-28T12:00:00Z"
+}
+```
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| `cron` | string | Yes | A standard 5-field cron expression (minute, hour, day of month, month, day of week) or one of `@hourly`, `@daily`, `@weekly`, `@monthly`, `@yearly`. Sends must be at least 15 minutes apart. `@every` and a `TZ=` prefix are rejected; the zone goes in `timezone`. |
+| `timezone` | string | Yes | IANA time zone name, such as `Europe/Warsaw` or `America/New_York`. The cron expression runs on local wall-clock time there, so 08:00 stays 08:00 across daylight saving changes. |
+| `until` | string | No | RFC 3339 timestamp of the last allowed send (inclusive). |
+| `count` | integer | No | Number of sends, 1-1000. Only real sends count: one skipped because the quota was used up does not. |
+
+Set `until` or `count`, not both. With neither, the series runs until you cancel it.
+
+| `cron` | Sends |
+| --- | --- |
+| `0 8 * * 1-5` | Weekdays at 08:00 |
+| `30 7 * * *` | Every day at 07:30 |
+| `0 10 * * 6,0` | Saturdays and Sundays at 10:00 |
+| `0 9 * * 1` | Mondays at 09:00 |
+| `0 18 1 * *` | The 1st of every month at 18:00 |
+| `0 */4 * * *` | Every 4 hours, on the hour |
+| `*/15 9-17 * * 1-5` | Every 15 minutes from 09:00 to 17:45 on weekdays |
+| `@daily` | Every day at midnight (same as `0 0 * * *`) |
+
+-   `send_at` is optional with a `recurrence`. It marks where the series starts: the first send is the first cron match at or after it, and it defaults to now. If you pass it, the rules above apply to it.
+-   The first send must be at most 30 days ahead, so a rule whose first match is further out (a `@yearly` rule created in March, say) fails with `400` `scheduled_notification.invalid`. Later sends have no such limit.
+-   Every send counts toward your notification quota when it goes out, like any other notification.
+-   If sends fall due during an outage, the pending one goes out when service returns and the rest are skipped, never sent in a burst.
+-   Daylight saving time: on the day the clocks go back, a time inside the repeated hour sends once. On the day they go forward, a time inside the skipped hour sends just after it (02:30 becomes 03:30), so the day is not lost.
+
+A repeating schedule's response also carries `recurrence`, `occurrence` (sends so far) and `last_sent_at`. `send_at` is the next send. `notification_id`, `delivery` and `reason` describe the latest send, and `failure_reason` is set when the latest one due was skipped, until the next send goes out.
+
+## List, check and cancel
+
+`GET /notifications/scheduled` lists your schedules. By default (`?status=scheduled`) it returns the ones still waiting, soonest first; pass `sent`, `failed` or `all` for the others, latest first. `limit` (1-100, default 50) caps a page. When more remain, the response has a `next_cursor`: pass it back as `?cursor=` with the same `status` for the next page. The last page has no `next_cursor`, and a cursor only works with the status it came from. `GET /notifications/scheduled/{id}` returns one.
+
+Cancel a scheduled notification 
+
+```
+curl -X DELETE https://api.pushward.app/notifications/scheduled/42 \
+  -H "Authorization: Bearer hlk_YOUR_TOKEN"
+```
+
+A cancel returns `204`. While the notification is being sent it returns `409` with code `scheduled_notification.in_flight`. Deleting a repeating schedule stops the series. Deleting one that was already sent or failed only removes its record.
+
+---
+
 <!-- source: https://pushward.app/docs/notifications/api -->
 
 # Notifications API
@@ -1949,7 +2212,7 @@ Create an in-app notification and optionally push it to all user devices. No sub
 | `source_display_name` | string | No | Human-readable source name shown in notification settings and inbox grouping |
 | `url` | string | No | Action URL (max 2048 chars). Any URL scheme except `javascript:`, `data:`, `file:`, or `vbscript:`; `http(s)` URLs also require a host. |
 | `media` | object | No | Rich media attachment. `url` (HTTPS, max 2048 chars) plus `type` (`image`, `video`, or `audio`). iOS renders inline. Apple size caps: image 10 MB, audio 5 MB, video 50 MB. |
-| `actions` | array | No | Up to 10 dynamic action buttons. Each: `id` (string, max 64), `title` (string, max 64), optional `url`, `foreground` (bool), `destructive` (bool), `authentication_required` (bool), `icon` (SF Symbol name). |
+| `actions` | array | No | Up to 10 dynamic action buttons. Each: `id` (string, max 64), `title` (string, max 64), optional `url`, `foreground` (bool), `destructive` (bool), `authentication_required` (bool), `icon` (SF Symbol name). Full field list on [Actions](https://pushward.app/docs/notifications/actions). An action with no `url` and no `foreground` is recorded by the server; see [Notification Answers](https://pushward.app/docs/notifications/answers). |
 | `icon_url` | string | No | Per-notification source avatar, shown as the Communication Notification avatar on iOS. Accepts `http` or `https` (max 2048 chars, recommended <=256x256 and <=100 KB; the iOS extension rejects responses larger than 512 KB). |
 | `metadata` | object | No | Key-value string pairs (max 20 keys, key max 64 chars, value max 4096 chars, and 8 KB total across all keys and values) |
 | `activity_slug` | string | No | Optional link to an existing activity. An unknown slug is rejected with `422` before the notification is persisted. |
@@ -1997,12 +2260,41 @@ curl -X POST https://api.pushward.app/notifications \
 }
 ```
 
-On `POST /notifications` only, the response also includes two read-only fields describing the APNs fan-out outcome (omitted from `GET` responses):
+On `POST /notifications` only, the response also includes these read-only fields (omitted from `GET` responses):
 
 | Field | Values | Meaning |
 | --- | --- | --- |
 | `delivery` | `all`, `partial`, `none` | Whether every, some, or no devices accepted the push. |
 | `reason` | `no_apns_token`, `apns_rejected`, `push_disabled` | Failure mode when `delivery` is not `all` -- for a `push: false` create it is `push_disabled` with `delivery` `none`. Omitted on a fully successful push. |
+| `answerable` | `true` | The server records the answer to this notification (at least one action was sent without a `url`). Read it with `GET /notifications/answers/{id}`. Omitted otherwise. |
+
+## Scheduled Notifications
+
+Queue a notification for a later `send_at`, or repeat it on a cron schedule. The body, rules and statuses are on the [Scheduled Notifications](https://pushward.app/docs/notifications/scheduled) page.
+
+POST `/notifications/scheduled`
+
+Schedule a notification: a POST /notifications body plus send\_at (RFC 3339, in the future, at most 30 days ahead), or a recurrence (cron, timezone, until, count) that repeats it, with send\_at then optional as the start point. Returns 201 with the schedule. At most 25 pending per account (409 scheduled\_notification.limit\_exceeded); a repeating schedule holds one slot for its whole series. Each send counts toward the notification quota when it goes out; an account already out of quota gets 429 quota.exceeded.
+
+GET `/notifications/scheduled`
+
+List schedules. ?status=scheduled (default) lists pending ones soonest first; sent, failed or all list latest first. ?limit=1-100 (default 50) per page; pass next\_cursor back as ?cursor= with the same status for the next page. A key sees only the schedules it created.
+
+GET `/notifications/scheduled/{id}`
+
+Get one schedule, including notification\_id, sent\_at and the push outcome once it has been sent, or failure\_reason if it failed. A repeating schedule also reports recurrence, occurrence and last\_sent\_at.
+
+DELETE `/notifications/scheduled/{id}`
+
+Cancel a pending schedule (204); for a repeating schedule this stops the series. Returns 409 scheduled\_notification.in\_flight while it is being sent.
+
+## Notification Answers
+
+Read what the user answered to a notification sent with url-less actions. How recording works is on the [Notification Answers](https://pushward.app/docs/notifications/answers) page.
+
+GET `/notifications/answers/{id}`
+
+Get the answer to a notification: notification\_id, status (pending or answered), action\_id, text and answered\_at. id is the notification id from POST /notifications, or the notification\_id of a sent scheduled notification. ?wait=0-25 holds the request open until the answer lands (long-poll). The first answer wins; answers are kept 30 days. A key reads only answers to notifications it sent. Returns 404 notification\_answer.not\_found when none of the actions was url-less, and 429 answer\_wait.limit\_exceeded when too many waits are open.
 
 ## Error Responses
 
@@ -4555,7 +4847,7 @@ curl "https://api.pushward.app/activities?limit=50&after=eyJzIjoib3Zlbi10aW1lciI
 
 GET `/activities/{slug}`
 
-Get a single activity by slug.
+Get a single activity by slug. For an approval activity still waiting for its answer, ?wait=N (up to 25 seconds) holds the request open until it is answered or ends (long-poll), and returns it unchanged when the time runs out. Other activities ignore wait.
 
 Example 
 
@@ -4685,6 +4977,7 @@ Shared fields on `content`; each template adds its own required fields on top (s
 | `details` | array | `approval` template only. Up to 2 label/value context rows between the header and the buttons; `label` max 24, `value` max 64 characters. Replaces wholesale on `PATCH`. |
 | `on_expire` | string | `approval` template only. Option id the server records when nobody has answered by `end_date`, or `none` to just expire. Requires `end_date`. |
 | `answer` | object | Read-only (`approval` template). `{"option", "at", "by"}` - the recorded answer. Ignored on write; cleared when a patch re-sends `options`. See [Approval](https://pushward.app/docs/live-activities/approval). |
+| `compact_label` | string | Optional, max 4 characters. Replaces whatever the template draws in the Dynamic Island compact leading ear: the icon, the artwork, the steps ring, the timeline high/low stack. Applies to every template. The minimal presentation ignores it. |
 
 ## Tap actions
 
@@ -4890,7 +5183,7 @@ Match on the stable `code` field - not the human-readable `detail` string (rewor
 | `404` | Activity not found |
 | `409` | Conflict - e.g. activity limit reached or demo cooldown active. Pairs with a `Retry-After` response header and a `retry_after_ms` extension. |
 | `422` | Unprocessable: semantic validation failure (e.g. arming `alarm: true` without `end_date`, or `POST /notifications` referencing an unknown `activity_slug`). |
-| `429` | Two distinct cases - distinguish via the `code` field (`rate_limit.exceeded` or `quota.exceeded`). See the [code table below](#known-codes) for per-mode contracts and retry semantics. |
+| `429` | Distinguish the cases via the `code` field (`rate_limit.exceeded`, `quota.exceeded`, or `answer_wait.limit_exceeded` on a long-poll read). See the [code table below](#known-codes) for per-mode contracts and retry semantics. |
 
 ### Known `code` Values
 
@@ -4903,6 +5196,7 @@ Match on the stable `code` field - not the human-readable `detail` string (rewor
 | `permission.editor_requires_paid_recipient` | `403` | Editor access requires the recipient to have an active subscription - returned when granting editor rights to (or upgrading) a free recipient. |
 | `permission.free_share_limit_exceeded` | `403` | The free plan's concurrent shared-activity limit was reached - the recipient must leave another shared activity or upgrade to join more. |
 | `rate_limit.exceeded` | `429` | IP rate limit hit - back off using `Retry-After`. |
+| `answer_wait.limit_exceeded` | `429` | Too many long-poll reads (`?wait=` on `GET /activities/{slug}` or `GET /notifications/answers/{id}`) open at once for the account. Retry shortly, or read without `wait`. |
 | `quota.exceeded` | `429` | Free-tier monthly quota exhausted. The Problem Details body includes `kind` (`"notifications"`, `"live_activity_updates"`, `"widget_updates"`, or `"emails"`), `used`, `limit`, and `reset_at` (RFC 3339 UTC, the start of next calendar month). The `Retry-After` header gives seconds until `reset_at`. Upgrading the user's plan clears the quota immediately - retrying before `reset_at` on the free tier will keep failing. |
 
 #### Free-Tier Quota Response Example
@@ -4971,7 +5265,8 @@ Create a dedicated integration key for the MCP server instead of reusing your de
 The remote server exposes tools covering the full API surface:
 
 -   **Live Activities** - create, update, end, get, list, and delete activities, plus bulk-end by filter.
--   **Notifications** - send inbox notifications with optional push delivery.
+-   **Notifications** - send inbox notifications with optional push delivery, schedule them once or on a repeat, and read answers.
+-   **Answers** - `wait_for_answer` blocks until the user answers an approval Live Activity or a notification with url-less actions.
 -   **Widgets** - full CRUD for Home Screen widgets.
 -   **Email** - send transactional email to verified recipients.
 -   **Health** - liveness and readiness checks for the API.
@@ -5438,6 +5733,7 @@ Priority is an integer from **0 to 10** (0 = lowest, 10 = highest).
 | `content.state` | 256 characters |
 | `content.subtitle` | 256 characters |
 | `content.completion_message` | 512 characters |
+| `content.compact_label` | 4 characters |
 | `content.icon` | 128 characters |
 | `content.url` | 2,048 characters |
 | `tap_action.url` / `url_action.url` / `secondary_url_action.url` | 2,048 characters |
@@ -5580,14 +5876,7 @@ The `#` prefix is optional. Both `"#FF5733"` and `"FF5733"` are accepted.
 
 # PushWard Integrations
 
-[![CI/CD Backrest](https://github.com/mac-lucky/pushward-integrations/actions/workflows/backrest-ci-cd.yml/badge.svg)](https://github.com/mac-lucky/pushward-integrations/actions/workflows/backrest-ci-cd.yml)
-[![CI/CD Forgejo](https://github.com/mac-lucky/pushward-integrations/actions/workflows/forgejo-ci-cd.yml/badge.svg)](https://github.com/mac-lucky/pushward-integrations/actions/workflows/forgejo-ci-cd.yml)
-[![CI/CD GitHub](https://github.com/mac-lucky/pushward-integrations/actions/workflows/github-ci-cd.yml/badge.svg)](https://github.com/mac-lucky/pushward-integrations/actions/workflows/github-ci-cd.yml)
-[![CI/CD SABnzbd](https://github.com/mac-lucky/pushward-integrations/actions/workflows/sabnzbd-ci-cd.yml/badge.svg)](https://github.com/mac-lucky/pushward-integrations/actions/workflows/sabnzbd-ci-cd.yml)
-[![CI/CD BambuLab](https://github.com/mac-lucky/pushward-integrations/actions/workflows/bambulab-ci-cd.yml/badge.svg)](https://github.com/mac-lucky/pushward-integrations/actions/workflows/bambulab-ci-cd.yml)
-[![CI/CD Grafana](https://github.com/mac-lucky/pushward-integrations/actions/workflows/grafana-ci-cd.yml/badge.svg)](https://github.com/mac-lucky/pushward-integrations/actions/workflows/grafana-ci-cd.yml)
-[![CI/CD Relay](https://github.com/mac-lucky/pushward-integrations/actions/workflows/relay-ci-cd.yml/badge.svg)](https://github.com/mac-lucky/pushward-integrations/actions/workflows/relay-ci-cd.yml)
-[![golangci-lint](https://github.com/mac-lucky/pushward-integrations/actions/workflows/golangci-lint.yml/badge.svg)](https://github.com/mac-lucky/pushward-integrations/actions/workflows/golangci-lint.yml)
+[![CI](https://github.com/mac-lucky/pushward-integrations/actions/workflows/ci.yml/badge.svg)](https://github.com/mac-lucky/pushward-integrations/actions/workflows/ci.yml)
 
 Turn events from the services you already run - GitHub Actions, Forgejo Actions, SABnzbd, a Bambu Lab printer, Grafana, and ~19 self-hosted apps behind the relay - into real-time **PushWard Live Activities, widgets, and push notifications** on your iPhone (Dynamic Island + Lock Screen). This is a Go [workspace](https://go.dev/ref/mod#workspaces) of small "bridge" programs, each shipped as its own Docker image.
 
@@ -5687,7 +5976,7 @@ docker run \
   ghcr.io/mac-lucky/pushward-github:latest
 ```
 
-The relay additionally needs a PostgreSQL DSN and exposes a second (internal-only) metrics port:
+The relay also needs a PostgreSQL DSN and exposes a second (internal-only) metrics port:
 
 ```bash
 docker run -p 8090:8090 -p 9090:9090 \
@@ -5805,7 +6094,7 @@ PUSHWARD_DATABASE_DSN='postgres://USER:PASS@HOST:5432/DB?sslmode=disable' \
 # Tests (CI runs Go tests with -race -count=1 -v)
 go test ./shared/... ./github/... ./forgejo/... ./sabnzbd/... ./bambulab/... ./grafana/... ./backrest/... ./relay/... -race -count=1 -v
 
-# Lint, one module at a time (matches CI: golangci-lint v2.11.4)
+# Lint, one module at a time (matches CI)
 for m in shared github forgejo sabnzbd bambulab grafana backrest relay; do
   (cd "$m" && golangci-lint run ./...)
 done
@@ -5831,10 +6120,10 @@ Each image builds from a `golang:<ver>-alpine` builder into an `alpine:3.23` run
 
 ## CI/CD & Releases
 
-Every per-bridge CI and the release workflow call the reusable `mac-lucky/actions-shared-workflows/.github/workflows/go-cicd-reusable.yml@master`; the lint workflow calls `golangci-lint-reusable.yml@master`.
+CI and the release workflow both build bridges with the reusable `mac-lucky/actions-shared-workflows/.github/workflows/go-cicd-reusable.yml@master`; lint uses `golangci-lint-reusable.yml@master`.
 
-- **Per-bridge CI** (`<bridge>-ci-cd.yml`) is path-filtered to `<bridge>/**` and `shared/**`, so a change to `shared/` triggers all seven.
-- **Lint** (`golangci-lint.yml`) reads the `use` entries out of `go.work` and fans out to one `golangci-lint` v2.11.4 job per module, so every module is linted on its own and one failure does not mask the rest.
+- **CI** (`ci.yml`) runs on every pull request and every push to `main`. It diffs the change and builds only the bridges whose directory changed; a change to `shared/`, `go.work` or `ci.yml` itself builds all seven and runs the shared module's tests. Its last job, `All checks passed`, is the required check on `main` and counts skipped legs as passing.
+- **Lint** (the `lint` job in `ci.yml`) reads the `use` entries out of `go.work` and fans out to one `golangci-lint` job per module, so every module is linted on its own and one failure does not mask the rest.
 - **Release** (`release.yml`) fires on per-bridge tags `<bridge>/v*`, parses the bridge + version, builds that one bridge, and creates a per-bridge GitHub Release with auto-generated, categorized notes (`.github/release.yml`).
 
 Bridges are versioned **independently**.
@@ -5872,7 +6161,7 @@ Bridges call the public pushward-server REST surface - `POST`/`PATCH /activities
 3. **Reuse `shared`.** Load config with `shared/config`, talk to the server with `shared/pushward`, and (for webhook bridges) serve `/health` + `/ready` via `shared/server.NewMux`.
 4. **Add a `config.example.yml`** with the `pushward.*` block and your bridge-specific keys, and a `<bridge>/README.md`.
 5. **Add a `Dockerfile`** that builds from the repo root and `COPY`s `shared/` (copy an existing bridge's Dockerfile).
-6. **Wire CI/CD.** Add `.github/workflows/<bridge>-ci-cd.yml` (path-filtered to `<bridge>/**` and `shared/**`) and a `<bridge>` job + tag pattern `<bridge>/v*` in `release.yml`.
+6. **Wire CI/CD.** Add the bridge to the loop in the `changes` job of `.github/workflows/ci.yml`, and a `<bridge>` job + tag pattern `<bridge>/v*` in `release.yml`.
 
 To add a **provider to the relay** instead, see the "Adding a New Relay Provider" guide in [`CLAUDE.md`](./CLAUDE.md) and the [relay README](./relay/).
 
@@ -5903,7 +6192,7 @@ Bridges log structured JSON to stdout - `docker logs -f <container>` (or `kubect
 [![App Store](https://img.shields.io/badge/App_Store-Download-0D96F6?style=for-the-badge&logo=apple&logoColor=white)](https://apps.apple.com/app/id6759689999)
 [![Docs](https://img.shields.io/badge/Docs-API_Reference-5B4FE5?style=for-the-badge&logo=readthedocs&logoColor=white)](https://pushward.app)
 
-[![CI/CD Relay](https://github.com/mac-lucky/pushward-integrations/actions/workflows/relay-ci-cd.yml/badge.svg)](https://github.com/mac-lucky/pushward-integrations/actions/workflows/relay-ci-cd.yml)
+[![CI](https://github.com/mac-lucky/pushward-integrations/actions/workflows/ci.yml/badge.svg)](https://github.com/mac-lucky/pushward-integrations/actions/workflows/ci.yml)
 [![Image](https://img.shields.io/badge/ghcr.io-pushward--relay-2496ED?logo=docker&logoColor=white)](https://github.com/mac-lucky/pushward-integrations/pkgs/container/pushward-relay)
 
 # PushWard Relay
@@ -6797,7 +7086,7 @@ Part of the public [`pushward-integrations`](https://github.com/mac-lucky/pushwa
 
 # PushWard for Grafana
 
-[![CI/CD Grafana](https://github.com/mac-lucky/pushward-integrations/actions/workflows/grafana-ci-cd.yml/badge.svg)](https://github.com/mac-lucky/pushward-integrations/actions/workflows/grafana-ci-cd.yml)
+[![CI](https://github.com/mac-lucky/pushward-integrations/actions/workflows/ci.yml/badge.svg)](https://github.com/mac-lucky/pushward-integrations/actions/workflows/ci.yml)
 [![Image](https://img.shields.io/badge/ghcr.io-pushward--grafana-2496ED?logo=docker&logoColor=white)](https://github.com/mac-lucky/pushward-integrations/pkgs/container/pushward-grafana)
 
 Turns Grafana alerts into [PushWard](https://pushward.app) **Live Activity timelines** on iPhone - a live sparkline of the firing metric on the Dynamic Island and Lock Screen, backfilled from Prometheus / VictoriaMetrics history and updated as the metric moves. It can also poll PromQL on a schedule and publish the results as PushWard **iOS Home / Lock Screen widgets**.
@@ -6829,7 +7118,7 @@ Grafana POSTs a firing alert to `POST /webhook`. The bridge resolves the series'
 ## Prerequisites
 
 - A running **PushWard server** (public production base: `https://api.pushward.app`).
-- A PushWard **integration key** (`hlk_` prefix). Publishing widgets additionally requires the key's **`widgets` scope** (the server returns `403` on the first widget create otherwise).
+- A PushWard **integration key** (`hlk_` prefix). Publishing widgets also requires the key's **`widgets` scope** (the server returns `403` on the first widget create otherwise).
 - A **Prometheus or VictoriaMetrics** endpoint reachable from the bridge - queried directly for series history and instant values.
 - A **Grafana** instance configured to send alert webhooks to this bridge.
 - *(Optional)* A **Grafana service-account token** (Editor role) to enable PromQL auto-extraction and missed-resolve recovery.
@@ -7043,7 +7332,7 @@ docker build -f grafana/Dockerfile --build-arg GO_VERSION=1.26.5 -t pushward-gra
 
 ## CI/CD & Releases
 
-CI runs via [`grafana-ci-cd.yml`](../.github/workflows/grafana-ci-cd.yml) on PRs and pushes to `main` (path-filtered to `grafana/**` and `shared/**`). Images publish to **GHCR only** - `ghcr.io/mac-lucky/pushward-grafana` (a Docker Hub name is configured but `push_to_dockerhub` is `false`).
+CI runs via [`ci.yml`](../.github/workflows/ci.yml) on PRs and pushes to `main`; the Grafana leg builds when `grafana/**` or `shared/**` changes. Images publish to **GHCR only** - `ghcr.io/mac-lucky/pushward-grafana` (a Docker Hub name is configured but `push_to_dockerhub` is `false`).
 
 | Trigger | GHCR tags | Purpose |
 |---|---|---|
@@ -7091,7 +7380,7 @@ Part of the public [pushward-integrations](https://github.com/mac-lucky/pushward
 
 [![Website](https://img.shields.io/badge/pushward.app-5B4FE5?style=for-the-badge&logo=safari&logoColor=white)](https://pushward.app)
 [![App Store](https://img.shields.io/badge/App_Store-Download-0D96F6?style=for-the-badge&logo=apple&logoColor=white)](https://apps.apple.com/app/id6759689999)
-[![CI/CD GitHub](https://github.com/mac-lucky/pushward-integrations/actions/workflows/github-ci-cd.yml/badge.svg)](https://github.com/mac-lucky/pushward-integrations/actions/workflows/github-ci-cd.yml)
+[![CI](https://github.com/mac-lucky/pushward-integrations/actions/workflows/ci.yml/badge.svg)](https://github.com/mac-lucky/pushward-integrations/actions/workflows/ci.yml)
 [![Image](https://img.shields.io/badge/ghcr.io-pushward--github-2496ED?logo=docker&logoColor=white)](https://github.com/mac-lucky/pushward-integrations/pkgs/container/pushward-github)
 
 # PushWard for GitHub Actions
@@ -7299,7 +7588,7 @@ docker build -f github/Dockerfile --build-arg GO_VERSION=1.26.5 -t pushward-gith
 
 ## CI/CD & Releases
 
-Bridges are versioned independently. The per-bridge workflow `.github/workflows/github-ci-cd.yml` runs on changes to `github/**` or `shared/**` and calls the shared `go-cicd-reusable.yml`. Images publish to **GHCR only** (`push_to_dockerhub: false`).
+Bridges are versioned independently. `.github/workflows/ci.yml` builds this bridge when `github/**` or `shared/**` changes and calls the shared `go-cicd-reusable.yml`. Images publish to **GHCR only** (`push_to_dockerhub: false`).
 
 | Trigger | GHCR tags published |
 |---|---|
@@ -7346,7 +7635,7 @@ Logs are structured JSON written to stdout at info level. View them with `docker
 
 [![Website](https://img.shields.io/badge/pushward.app-5B4FE5?style=for-the-badge&logo=safari&logoColor=white)](https://pushward.app)
 [![App Store](https://img.shields.io/badge/App_Store-Download-0D96F6?style=for-the-badge&logo=apple&logoColor=white)](https://apps.apple.com/app/id6759689999)
-[![CI/CD SABnzbd](https://github.com/mac-lucky/pushward-integrations/actions/workflows/sabnzbd-ci-cd.yml/badge.svg)](https://github.com/mac-lucky/pushward-integrations/actions/workflows/sabnzbd-ci-cd.yml)
+[![CI](https://github.com/mac-lucky/pushward-integrations/actions/workflows/ci.yml/badge.svg)](https://github.com/mac-lucky/pushward-integrations/actions/workflows/ci.yml)
 [![Image](https://img.shields.io/badge/ghcr.io-pushward--sabnzbd-2496ED?logo=docker&logoColor=white)](https://github.com/mac-lucky/pushward-integrations/pkgs/container/pushward-sabnzbd)
 
 # PushWard for SABnzbd
@@ -7587,7 +7876,7 @@ Part of the public [pushward-integrations](https://github.com/mac-lucky/pushward
 
 [![Website](https://img.shields.io/badge/pushward.app-5B4FE5?style=for-the-badge&logo=safari&logoColor=white)](https://pushward.app)
 [![App Store](https://img.shields.io/badge/App_Store-Download-0D96F6?style=for-the-badge&logo=apple&logoColor=white)](https://apps.apple.com/app/id6759689999)
-[![CI/CD BambuLab](https://github.com/mac-lucky/pushward-integrations/actions/workflows/bambulab-ci-cd.yml/badge.svg)](https://github.com/mac-lucky/pushward-integrations/actions/workflows/bambulab-ci-cd.yml)
+[![CI](https://github.com/mac-lucky/pushward-integrations/actions/workflows/ci.yml/badge.svg)](https://github.com/mac-lucky/pushward-integrations/actions/workflows/ci.yml)
 [![Image](https://img.shields.io/badge/ghcr.io-pushward--bambulab-2496ED?logo=docker&logoColor=white)](https://github.com/mac-lucky/pushward-integrations/pkgs/container/pushward-bambulab)
 
 # PushWard for Bambu Lab
@@ -8019,6 +8308,7 @@ A two-step flow. **Step 1** picks the entity and a template (a better template i
 | Favorite Script | Script the heart button runs; hidden when empty (media template) |
 | Subtitle Entity / Attribute | Subtitle text, optionally from a separate entity |
 | State Labels | Rows giving custom display text per state (a state and its label, e.g. `on` shows `Running`) |
+| Island Label | Up to 4 characters shown in the Dynamic Island compact leading ear in place of that template's default (the icon, the steps ring, or the timeline high/low stack). The minimal presentation ignores it |
 | Completion Message | Text shown at end (default: "Complete") |
 | Accent / Background / Text Color (+ Attribute) | Static hex / named color, or an entity attribute |
 | URL / Secondary URL | Deep-link URLs, http/https (steps/alert templates) |
@@ -8321,6 +8611,7 @@ implied by the action name; you no longer pass a `template` field.
 | `state` | Yes | `ongoing` or `ended` |
 | `state_text` | No | Display text |
 | `subtitle` | No | Subtitle text |
+| `compact_label` | No | Up to 4 characters shown in the Dynamic Island compact leading ear in place of that template's default (the icon, the steps ring, or the timeline high/low stack). The minimal presentation ignores it |
 | `icon` | No | SF Symbol or MDI icon |
 | `progress` | No | 0.0-1.0 |
 | `completion_message` | No | End display message |
@@ -8359,7 +8650,7 @@ implied by the action name; you no longer pass a `template` field.
 
 > **`board` / `log` / `media` / `approval` use a lean schema.** They render no progress bar and no
 > whole-activity button slots, so `update_activity_board`, `update_activity_log`,
-> `update_activity_media` and `update_activity_approval` accept only the labels (`state_text`, `subtitle`, `icon`), appearance
+> `update_activity_media` and `update_activity_approval` accept only the labels (`state_text`, `subtitle`, `compact_label`, `icon`), appearance
 > (`completion_message`, the colors, `sound`, `priority`, the TTLs
 > `ended_ttl`/`stale_ttl`/`dismissal_ttl`), the whole-activity `tap_action`, and their template
 > fields (`tiles` / `lines` / the media fields / the approval fields), **not** `progress`,
@@ -8428,10 +8719,14 @@ implied by the action name; you no longer pass a `template` field.
 > (`{ option, at, by }`), is pushed to every device, and the activity ends shortly after. The
 > recorded answer shows on the card, but this integration never reads an activity back, so to
 > react from Home Assistant give each option a `url` pointing at a webhook trigger instead, as
-> in the example below. `on_expire` names the option to record
-> (`by: "expired"`) when `end_date` passes, or `none` to disarm; it needs `end_date` (already
-> stored or sent along). Recording is all it does: the expiry sweep never fires the option's
-> webhook, so an automation behind a `url` option runs only on a real tap. Options
+> in the example below. `end_date` is a hard deadline: if nobody has answered by then, the
+> server records an expired answer (`by: "expired"`) and ends the card, whatever `on_expire`
+> says. `on_expire` only picks the option that answer names. `none` records no option, same as
+> leaving `on_expire` out, so it is for dropping a default set earlier, not for switching the
+> deadline off. `on_expire` needs `end_date` (already stored or sent along). Recording is all
+> the sweep does: it never fires the option's webhook, so an automation behind a `url` option
+> runs only on a real tap. This action can move a stored `end_date` but can't remove it; to
+> drop the deadline, `delete_activity` and create the card again without one. Options
 > and details replace wholesale on update, and re-sending `options` starts a new round (the
 > stored answer is cleared) - so a plain update leaves them out.
 >
@@ -8588,6 +8883,23 @@ Send a push notification.
 | `metadata` | No | Arbitrary key-value pairs for custom app handling |
 | `actions` | No | List of action buttons `{ id, title, url, foreground, destructive, authentication_required, icon }`. `url` may use a custom scheme, and `method`/`headers`/`body` make the button a silent HTTP webhook (http(s) only). A silent http(s) action can also set `text_input: true` (with optional `text_input_placeholder`, `text_input_button_title`) to prompt for a typed reply, delivered to your webhook as JSON `{ "text": ... }` or via the `{{input}}` body placeholder |
 | `push` | No | Send as APNs push (default: true); when false, inbox-only |
+| `send_at` | No | Send later instead of now, at most 30 days ahead. A time without a UTC offset is read in Home Assistant's time zone |
+
+With `send_at`, PushWard holds the notification and sends it at that time; it counts toward your notification quota when it is sent, not when you schedule it. Up to 20 can be waiting at once. Ask for a response to get the id you need to cancel it:
+
+```yaml
+- action: pushward.send_notification
+  data:
+    title: "Bins go out tonight"
+    body: "Collection is at 7:00 tomorrow."
+    send_at: "{{ today_at('18:00') }}"
+  response_variable: scheduled
+- action: pushward.cancel_scheduled_notification
+  data:
+    scheduled_notification_id: "{{ scheduled.scheduled_notification_id }}"
+```
+
+`pushward.list_scheduled_notifications` returns them (`status`: scheduled by default, or sent, failed, all) as `scheduled_notifications`; it covers the ones this integration's key scheduled. Scheduling while your notification quota is already used up fails right away. Without `send_at`, a requested response carries the created `notification_id`.
 
 ### `pushward.send_email`
 
@@ -8706,11 +9018,11 @@ Requires Python **3.13.2+**. CI also runs **HACS validation** and **hassfest** o
 ## CI/CD & Releases
 
 - **CI** (`.github/workflows/ci.yml`): HACS validation, hassfest, ruff lint+format, and pytest with coverage on every push/PR.
-- **Releases**: the integration version lives in `custom_components/pushward/manifest.json` (currently **0.43.0**). Bump it and push a matching **`v*`** git tag; CI builds the changelog and creates the GitHub release automatically. **Do not create releases manually.** HACS only sees GitHub releases, and `hide_default_branch: true` is set in `hacs.json`.
+- **Releases**: the integration version lives in `custom_components/pushward/manifest.json` (currently **0.47.0**). Bump it and push a matching **`v*`** git tag; CI builds the changelog and creates the GitHub release automatically. **Do not create releases manually.** HACS only sees GitHub releases, and `hide_default_branch: true` is set in `hacs.json`.
 
 ## Server compatibility
 
-This integration talks to the public PushWard REST API at **`https://api.pushward.app`**, authenticating with `Authorization: Bearer <integration_key>`. Endpoints used: `GET /auth/me`, `POST/PATCH/DELETE /activities`, `POST/PATCH/DELETE /widgets`, `POST /notifications`, `POST /emails`. The request/response contract, including the Live Activity `ContentState` shape and widget content caps, is owned by the PushWard server; this integration mirrors those caps in `const.py`. Widget endpoints require the key's `widgets` permission; `POST /emails` requires the `emails` capability plus a verified recipient. The client retries with exponential backoff (up to 5 attempts, max 5 concurrent) and honors `Retry-After` on 429.
+This integration talks to the public PushWard REST API at **`https://api.pushward.app`**, authenticating with `Authorization: Bearer <integration_key>`. Endpoints used: `GET /auth/me`, `POST/PATCH/DELETE /activities`, `POST/PATCH/DELETE /widgets`, `POST /notifications`, `POST /emails`. The request/response contract, including the Live Activity `ContentState` shape and widget content caps, is owned by the PushWard server; this integration mirrors those caps in `const.py`. Widget endpoints require the key's `widgets` permission; `POST /emails` requires the `emails` capability plus a verified recipient. The client retries with exponential backoff (up to 5 attempts, max 5 concurrent) and honors `Retry-After` on a rate-limit 429. A quota 429 (`code: quota.exceeded`, sent once a metered monthly allowance is used up) is not retried: the integration stops sending that kind of request until the server's `reset_at`, re-reads the account usage so the matching repair issue appears within seconds, and resumes on its own after the reset, re-sending whatever changed in the meantime. Downloaded diagnostics list the paused kinds under `quota_blocks`.
 
 ## Troubleshooting
 

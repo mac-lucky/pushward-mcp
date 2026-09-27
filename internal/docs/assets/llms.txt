@@ -34,8 +34,10 @@ A fully-expanded Markdown bundle of every docs page lives at [/llms-full.txt](ht
 - [Basics](https://pushward.app/docs/notifications/basics): Title, body, subtitle, and interruption level - the minimum payload for a push notification.
 - [Rich Media](https://pushward.app/docs/notifications/rich-media): Attach an image, video, or audio file. iOS downloads and renders the attachment inline when the user expands the notification.
 - [Actions](https://pushward.app/docs/notifications/actions): Add up to 10 buttons that appear when the user long-presses (or pulls down) the notification. Each button can foreground the app, require authentication, or be styled as destructive.
+- [Notification Answers](https://pushward.app/docs/notifications/answers): Ask a question in a notification and read the answer from the API. PushWard records which button the user tapped, or the reply they typed, so you do not need a webhook of your own.
 - [Communication Style](https://pushward.app/docs/notifications/communication): Set icon_url to render the notification with iOS Communication Notification styling - a round avatar on the side, like an iMessage. Combine with thread_id for grouping in Notification Center.
 - [Activity Link](https://pushward.app/docs/notifications/activity-link): Tie a notification to an existing Live Activity by setting activity_slug. Tapping the notification deep-links into that activity in the PushWard iOS app.
+- [Scheduled Notifications](https://pushward.app/docs/notifications/scheduled): Queue a notification for later with send_at, or repeat it on a cron schedule. PushWard holds it and sends it when it is due, so nothing on your side has to stay running until then.
 - [Notifications API](https://pushward.app/docs/notifications/api): Send a notification to a user's inbox, with optional APNs push delivery to their devices.
 
 ## Siri & Shortcuts
