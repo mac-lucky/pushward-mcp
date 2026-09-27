@@ -2776,8 +2776,11 @@ components:
           default: true
           description: Send as an APNs push to the user's devices. Defaults to true; set false to store in the inbox only.
           type: boolean
+        recurrence:
+          $ref: "#/components/schemas/Recurrence"
+          description: "Repeat the notification on a cron schedule: {cron, timezone, until, count}. cron is a 5-field expression (minute hour day-of-month month day-of-week, e.g. \"0 8 * * 1-5\" for weekdays at 08:00) or @daily/@weekly/@monthly, evaluated in timezone (IANA, required); sends must be at least 15 minutes apart. until (RFC 3339, inclusive) or count ends the series. The schedule keeps one id for the whole series and holds one pending slot; canceling it stops the series."
         send_at:
-          description: When to send the notification (RFC 3339). Must be in the future and at most 30 days ahead.
+          description: "When to send the notification (RFC 3339). Must be in the future and at most 30 days ahead. Required unless recurrence is set; with recurrence, the first send is the first cron match at or after send_at (default: now)."
           examples:
             - "2026-10-01T18:00:00Z"
           format: date-time
@@ -2814,7 +2817,6 @@ components:
           minimum: 0
           type: number
       required:
-        - send_at
         - title
         - body
       type: object
@@ -3025,6 +3027,9 @@ components:
           type:
             - array
             - "null"
+        next_cursor:
+          description: Pass as cursor to fetch the next page. Absent on the last page.
+          type: string
       required:
         - items
       type: object
@@ -3089,6 +3094,10 @@ components:
           examples:
             - deploy-prod
           type: string
+        answerable:
+          description: "The server records the answer to this notification: at least one action was sent without a url. Read it with GET /notifications/answers/{id}. Set on POST /notifications only."
+          readOnly: true
+          type: boolean
         body:
           examples:
             - Successfully deployed to production
@@ -3218,7 +3227,7 @@ components:
             - POST
           type: string
         text_input:
-          description: "Show an inline text field when the action is tapped (reply-with-text). Requires a silent (non-foreground) http(s) action. The typed text replaces {{input}} in body; without the placeholder it is sent as {\"text\": ...} (merged into a JSON-object body, replacing other body shapes)."
+          description: "Show an inline text field when the action is tapped (reply-with-text). Requires a silent (non-foreground) action with an http(s) url or no url. With a url, the typed text replaces {{input}} in body; without the placeholder it is sent as {\"text\": ...} (merged into a JSON-object body, replacing other body shapes). Without a url, the server records the reply (GET /notifications/answers/{id})."
           type: boolean
         text_input_button_title:
           description: Label of the send button next to the reply field (defaults to the action title on-device). Requires text_input.
@@ -3236,7 +3245,7 @@ components:
           minLength: 1
           type: string
         url:
-          description: URL opened/dispatched when the action is tapped. Any URL scheme is accepted except javascript:, data:, and file:. http(s) URLs require a host.
+          description: "URL opened/dispatched when the action is tapped. Any URL scheme is accepted except javascript:, data:, and file:. http(s) URLs require a host. Omit it on a silent (non-foreground) action to have the server record the tap, and any typed reply, instead: read it with GET /notifications/answers/{id}."
           examples:
             - https://example.com/approve/123
           maxLength: 2048
@@ -3244,6 +3253,33 @@ components:
       required:
         - id
         - title
+      type: object
+    NotificationAnswer:
+      additionalProperties: false
+      properties:
+        action_id:
+          description: ID of the action the user tapped.
+          type: string
+        answered_at:
+          description: When the answer was recorded.
+          format: date-time
+          type: string
+        notification_id:
+          description: The notification this answer belongs to.
+          format: int64
+          type: integer
+        status:
+          description: "pending: not answered yet. answered: action_id (and text for a reply) are set."
+          enum:
+            - pending
+            - answered
+          type: string
+        text:
+          description: Text the user typed, for a text_input action.
+          type: string
+      required:
+        - notification_id
+        - status
       type: object
     Problem:
       additionalProperties: false
@@ -3295,6 +3331,35 @@ components:
             - https://pushward.app/errors/too-many-requests
           format: uri
           type: string
+      type: object
+    Recurrence:
+      additionalProperties: false
+      properties:
+        count:
+          description: Total number of sends, max 1000; a skipped send (quota used up) does not count. Cannot be combined with until.
+          format: int64
+          maximum: 1000
+          minimum: 1
+          type: integer
+        cron:
+          description: Standard 5-field cron expression (minute hour day-of-month month day-of-week), or @daily, @weekly, @monthly, @yearly, @hourly. Evaluated in timezone. Sends must be at least 15 minutes apart.
+          examples:
+            - 0 8 * * 1-5
+          maxLength: 128
+          minLength: 1
+          type: string
+        timezone:
+          description: IANA time zone the cron expression is evaluated in; its times are local wall-clock times, kept across DST changes.
+          examples:
+            - Europe/Warsaw
+          type: string
+        until:
+          description: Last allowed send time (inclusive). Cannot be combined with count.
+          format: date-time
+          type: string
+      required:
+        - cron
+        - timezone
       type: object
     SchedulePeriod:
       additionalProperties: false
@@ -3348,7 +3413,7 @@ components:
           readOnly: true
           type: string
         delivery:
-          description: APNs fan-out outcome of the send, as on POST /notifications.
+          description: APNs fan-out outcome of the latest send, as on POST /notifications.
           enum:
             - none
             - partial
@@ -3356,7 +3421,7 @@ components:
           readOnly: true
           type: string
         failure_reason:
-          description: "Why the notification was not sent. Set when status is failed. key_revoked: the integration key that scheduled it was revoked or lost the notifications capability."
+          description: "Why the notification (for a repeating schedule: the latest occurrence) was not sent. key_revoked: the integration key that scheduled it was revoked or lost the notifications capability."
           enum:
             - quota_exceeded
             - key_revoked
@@ -3374,6 +3439,11 @@ components:
           format: int64
           readOnly: true
           type: integer
+        last_sent_at:
+          description: When the latest occurrence was sent. Set once one has been.
+          format: date-time
+          readOnly: true
+          type: string
         level:
           description: "Interruption level (default: active)"
           enum:
@@ -3390,7 +3460,12 @@ components:
             type: string
           type: object
         notification_id:
-          description: ID of the notification created at send time. Set when status is sent.
+          description: ID of the notification created by the latest send.
+          format: int64
+          readOnly: true
+          type: integer
+        occurrence:
+          description: "For a repeating schedule: how many sends have gone out so far (skipped ones not counted)."
           format: int64
           readOnly: true
           type: integer
@@ -3406,8 +3481,12 @@ components:
             - push_disabled
           readOnly: true
           type: string
+        recurrence:
+          $ref: "#/components/schemas/Recurrence"
+          description: The repeat rule, for a repeating schedule.
+          readOnly: true
         send_at:
-          description: When the notification is (or was) due.
+          description: When the notification is (or was) due. For a repeating schedule, the next occurrence.
           format: date-time
           type: string
         sent_at:
@@ -3424,7 +3503,7 @@ components:
           maxLength: 256
           type: string
         status:
-          description: "scheduled: waiting for send_at. sending: being sent right now. sent: delivered as notification_id. failed: not sent, see failure_reason."
+          description: "scheduled: waiting for send_at. sending: being sent right now. sent: delivered as notification_id. failed: not sent, see failure_reason. A repeating schedule goes back to scheduled after each occurrence until its rule runs out."
           enum:
             - scheduled
             - sending
@@ -3950,7 +4029,7 @@ info:
 
     - **`activity:update`** scope: `PATCH /activities/{slug}`, `GET /activities`, `GET /activities/{slug}`, `GET /auth/me`
     - **`activity:manage`** scope: All of the above, plus `POST /activities`, `DELETE /activities/{slug}`
-    - **`notifications`** capability: `POST /notifications` and the `/notifications/scheduled` endpoints
+    - **`notifications`** capability: `POST /notifications`, `GET /notifications/answers/{id}` and the `/notifications/scheduled` endpoints
     - **`widgets`** capability: the `/widgets` endpoints (`POST`, `GET`, `GET /{slug}`, `PATCH /{slug}`, `DELETE /{slug}`) for server-driven iOS widget content
     - **`emails`** capability: `POST /emails` (verified, opted-in recipients only)
 
@@ -4467,6 +4546,14 @@ paths:
           schema:
             description: Comma-separated extras to include in the response. Currently supports 'log_backlog' - the server-accumulated rolling log history for the log template (newest-first, up to 1000 lines / ~300 KiB). Omitted by default.
             type: string
+        - description: Seconds (up to 25) to hold the request open while an approval activity is waiting for its answer (long-poll). Returns as soon as it is answered or ends, or unchanged when the time runs out. Ignored for any other activity.
+          explode: false
+          in: query
+          name: wait
+          schema:
+            description: Seconds (up to 25) to hold the request open while an approval activity is waiting for its answer (long-poll). Returns as soon as it is answered or ends, or unchanged when the time runs out. Ignored for any other activity.
+            format: int64
+            type: integer
       responses:
         "200":
           content:
@@ -5186,6 +5273,15 @@ paths:
                     status: 422
                     title: Unprocessable Entity
                     type: https://pushward.app/errors/unprocessable-entity
+                answer_url_unavailable:
+                  summary: A url-less text_input action needs a server public base URL
+                  value:
+                    code: notification.answer_url_unavailable
+                    detail: text_input actions without a url need the server-recorded answer flow, but the server has no public base URL configured
+                    instance: /requests/9f86d081884c7d65
+                    status: 422
+                    title: Unprocessable Entity
+                    type: https://pushward.app/errors/unprocessable-entity
                 validation_failed:
                   summary: Request body failed schema validation
                   value:
@@ -5264,18 +5360,169 @@ paths:
       summary: Create notification
       tags:
         - Notifications
+  /notifications/answers/{id}:
+    get:
+      description: "Returns the answer to a notification sent with at least one action without a `url` (the create response has `answerable: true`): which action the user tapped and, for a `text_input` action, the text they typed. Pass `wait` (up to 25 seconds) to hold the request open until the answer arrives. The first answer wins; answers are kept 30 days. An integration key can read only answers to notifications it sent."
+      operationId: getNotificationAnswer
+      parameters:
+        - description: Notification ID, as returned by POST /notifications (or notification_id on a sent scheduled notification).
+          in: path
+          name: id
+          required: true
+          schema:
+            description: Notification ID, as returned by POST /notifications (or notification_id on a sent scheduled notification).
+            format: int64
+            type: integer
+        - description: Seconds to hold the request open while the answer is pending (long-poll). Returns as soon as the answer lands, or with status pending when the time runs out.
+          explode: false
+          in: query
+          name: wait
+          schema:
+            default: 0
+            description: Seconds to hold the request open while the answer is pending (long-poll). Returns as soon as the answer lands, or with status pending when the time runs out.
+            format: int64
+            maximum: 25
+            minimum: 0
+            type: integer
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NotificationAnswer"
+          description: OK
+        "401":
+          content:
+            application/problem+json:
+              examples:
+                token.invalid:
+                  value:
+                    code: token.invalid
+                    detail: invalid token
+                    instance: /requests/9f86d081884c7d65
+                    status: 401
+                    title: Unauthorized
+                    type: https://pushward.app/errors/unauthorized
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Unauthorized
+        "403":
+          content:
+            application/problem+json:
+              examples:
+                forbidden:
+                  value:
+                    detail: insufficient permissions
+                    instance: /requests/9f86d081884c7d65
+                    status: 403
+                    title: Forbidden
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Forbidden
+        "404":
+          content:
+            application/problem+json:
+              examples:
+                notification_answer.not_found:
+                  value:
+                    code: notification_answer.not_found
+                    detail: notification has no answer (none of its actions was sent without a url)
+                    instance: /requests/9f86d081884c7d65
+                    status: 404
+                    title: Not Found
+                    type: https://pushward.app/errors/not-found
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Not Found
+        "422":
+          content:
+            application/problem+json:
+              examples:
+                unprocessable_entity:
+                  value:
+                    detail: validation failed
+                    errors:
+                      - location: query.wait
+                        message: expected number <= 25
+                    instance: /requests/9f86d081884c7d65
+                    status: 422
+                    title: Unprocessable Entity
+                    type: https://pushward.app/errors/unprocessable-entity
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Unprocessable Entity
+        "429":
+          content:
+            application/problem+json:
+              examples:
+                rate_limit:
+                  summary: Per-client rate limit exceeded
+                  value:
+                    code: rate_limit.exceeded
+                    detail: rate limit exceeded
+                    instance: /requests/9f86d081884c7d65
+                    retry_after_ms: 60000
+                    status: 429
+                    title: Too Many Requests
+                    type: https://pushward.app/errors/too-many-requests
+                wait_limit:
+                  summary: Too many concurrent waits for this account
+                  value:
+                    code: answer_wait.limit_exceeded
+                    detail: too many concurrent waits; retry shortly
+                    instance: /requests/9f86d081884c7d65
+                    status: 429
+                    title: Too Many Requests
+                    type: https://pushward.app/errors/too-many-requests
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Too Many Requests
+        "500":
+          content:
+            application/problem+json:
+              examples:
+                internal_server_error:
+                  value:
+                    detail: failed to get notification answer
+                    instance: /requests/9f86d081884c7d65
+                    status: 500
+                    title: Internal Server Error
+                    type: https://pushward.app/errors/internal-server-error
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Internal Server Error
+        "503":
+          content:
+            application/problem+json:
+              examples:
+                service.unavailable:
+                  value:
+                    code: service.unavailable
+                    detail: service temporarily unavailable
+                    instance: /requests/9f86d081884c7d65
+                    status: 503
+                    title: Service Unavailable
+                    type: https://pushward.app/errors/service-unavailable
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Service Unavailable
+      security:
+        - bearer: []
+      summary: Get notification answer
+      tags:
+        - Notifications
   /notifications/scheduled:
     get:
-      description: Lists scheduled notifications, soonest first. An integration key sees only the ones it scheduled.
+      description: "Lists scheduled notifications: pending ones soonest first, sent and failed ones (kept 7 days) latest first. An integration key sees only the ones it scheduled."
       operationId: listScheduledNotifications
       parameters:
-        - description: Filter by status. scheduled (default) also includes notifications being sent right now; all returns every status.
+        - description: Filter by status. scheduled (default) also includes notifications being sent right now and lists soonest first; the other filters list latest first. all returns every status.
           explode: false
           in: query
           name: status
           schema:
             default: scheduled
-            description: Filter by status. scheduled (default) also includes notifications being sent right now; all returns every status.
+            description: Filter by status. scheduled (default) also includes notifications being sent right now and lists soonest first; the other filters list latest first. all returns every status.
             enum:
               - scheduled
               - sent
@@ -5293,6 +5540,13 @@ paths:
             maximum: 100
             minimum: 1
             type: integer
+        - description: Opaque pagination cursor returned by a prior call's next_cursor, with the same status.
+          explode: false
+          in: query
+          name: cursor
+          schema:
+            description: Opaque pagination cursor returned by a prior call's next_cursor, with the same status.
+            type: string
       responses:
         "200":
           content:
@@ -5300,6 +5554,21 @@ paths:
               schema:
                 $ref: "#/components/schemas/ListScheduledNotificationsOutputBody"
           description: OK
+        "400":
+          content:
+            application/problem+json:
+              examples:
+                cursor.invalid:
+                  value:
+                    code: cursor.invalid
+                    detail: malformed cursor
+                    instance: /requests/9f86d081884c7d65
+                    status: 400
+                    title: Bad Request
+                    type: https://pushward.app/errors/bad-request
+              schema:
+                $ref: "#/components/schemas/Problem"
+          description: Bad Request
         "401":
           content:
             application/problem+json:
@@ -5396,7 +5665,7 @@ paths:
       tags:
         - Notifications
     post:
-      description: Queues a notification to be sent at `send_at` (at most 30 days ahead). The body is a `POST /notifications` body plus `send_at`, validated the same way. The send counts against the notification quota when it happens, not when it is scheduled; an account already out of quota gets the same `429 quota.exceeded` as `POST /notifications`. Up to 20 scheduled notifications can be pending per account. Revoking the integration key that scheduled one cancels it.
+      description: Queues a notification to be sent at `send_at` (at most 30 days ahead). The body is a `POST /notifications` body plus `send_at`, validated the same way. Add `recurrence` (a cron expression and a time zone) to repeat it; `send_at` is then optional and marks where the schedule starts. A repeating schedule keeps one id and one pending slot for the whole series, and canceling it stops the series. Each send counts against the notification quota when it happens, not when it is scheduled; an account already out of quota gets the same `429 quota.exceeded` as `POST /notifications`. Up to 25 scheduled notifications can be pending per account. Revoking the integration key that scheduled one cancels it.
       operationId: createScheduledNotification
       requestBody:
         content:
@@ -5420,6 +5689,15 @@ paths:
                   value:
                     code: notification.invalid
                     detail: media.url and media.type are required when media is set
+                    instance: /requests/9f86d081884c7d65
+                    status: 400
+                    title: Bad Request
+                    type: https://pushward.app/errors/bad-request
+                recurrence_invalid:
+                  summary: The repeat rule is invalid
+                  value:
+                    code: scheduled_notification.invalid
+                    detail: recurrence.cron sends more often than every 15 minutes
                     instance: /requests/9f86d081884c7d65
                     status: 400
                     title: Bad Request
@@ -5471,7 +5749,7 @@ paths:
                 scheduled_notification.limit_exceeded:
                   value:
                     code: scheduled_notification.limit_exceeded
-                    detail: scheduled notification limit reached (max 20 pending)
+                    detail: scheduled notification limit reached (max 25 pending)
                     instance: /requests/9f86d081884c7d65
                     status: 409
                     title: Conflict
@@ -5572,7 +5850,7 @@ paths:
         - Notifications
   /notifications/scheduled/{id}:
     delete:
-      description: Cancels a pending scheduled notification. Returns 409 while it is being sent. Deleting a sent or failed one only removes its record. An integration key can cancel only the ones it scheduled.
+      description: Cancels a pending scheduled notification, or stops a repeating one. Returns 409 while it is being sent. Deleting a sent or failed one only removes its record. An integration key can cancel only the ones it scheduled.
       operationId: cancelScheduledNotification
       parameters:
         - description: Scheduled notification ID

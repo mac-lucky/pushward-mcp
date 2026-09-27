@@ -41,12 +41,24 @@ General rules for any code that talks to the PushWard REST API
   blobs on every tick.
 - **Let the server hold future notifications.** For a notification that should
   arrive later, `POST /notifications/scheduled` with `send_at` (up to 30 days
-  ahead) instead of keeping a timer in your process. Up to 20 can be pending per
-  account; a send counts against the notification quota when it goes out, and
-  one that finds the quota used up is marked `failed` with `quota_exceeded`.
+  ahead) instead of keeping a timer in your process. For one that repeats, add
+  `recurrence: {cron, timezone}` (5-field cron such as `0 8 * * 1-5`, an IANA
+  zone, optionally `until` or `count`); `send_at` then only says where the
+  schedule starts. A repeating schedule is one id that re-arms after each send,
+  so cancel it to stop the series. Sends closer than 15 minutes apart are
+  refused. Up to 25 can be pending per account; a send counts against the
+  notification quota when it goes out, and one that finds the quota used up is
+  marked `failed` with `quota_exceeded` (a repeating one just skips that send).
   Keep the returned `id` if you may need to cancel it
   (`DELETE /notifications/scheduled/{id}`). A key only sees and cancels what
   it scheduled itself, and revoking the key cancels its pending ones.
+- **Ask with a notification when a Live Activity is too much.** Leave `url` off
+  a silent action and the server records the tap itself; add `text_input` to
+  get a typed reply too. The create response says `answerable: true`. Read the
+  answer with `wait_for_answer` (`notification_id`) or
+  `GET /notifications/answers/{id}?wait=20`, which holds the request until the
+  tap lands. The first answer wins. Foreground actions without a `url` still
+  just open the app.
 
 ## live-activity
 

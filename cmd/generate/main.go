@@ -321,6 +321,10 @@ var skipOperations = map[string]bool{
 	"getActivity":        true, // superseded by a composite that adds include_log_backlog (?include=log_backlog)
 	"setActivityAlarm":   true, // removed from public surface - alarm is now a merge-patch field
 	"clearActivityAlarm": true, // same
+	// Both take query parameters the generator does not emit: status/limit/cursor
+	// paging and the ?wait= long-poll.
+	"listScheduledNotifications": true,
+	"getNotificationAnswer":      true,
 }
 
 func buildAPITools(spec *openAPISpec) []toolDef {

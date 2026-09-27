@@ -1886,3 +1886,67 @@ func TestWaitForAnswer_StreamsKeepalivesWithoutProgressToken(t *testing.T) {
 		t.Errorf("keepalive frame arrived after the result: %s", text)
 	}
 }
+
+// ---------- wait_for_answer on a notification ----------
+
+func TestHandleWaitForAnswer_NotificationAnswered(t *testing.T) {
+	shortAnswerPoll(t)
+	var calls atomic.Int64
+	var sawWait atomic.Bool
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/notifications/answers/42" {
+			t.Errorf("path = %s", r.URL.Path)
+		}
+		if r.URL.Query().Get("wait") != "" {
+			sawWait.Store(true)
+		}
+		if calls.Add(1) < 3 {
+			io.WriteString(w, `{"notification_id":42,"status":"pending"}`)
+			return
+		}
+		io.WriteString(w, `{"notification_id":42,"status":"answered","action_id":"reply","text":"oat milk"}`)
+	}))
+	defer srv.Close()
+	api := client.NewAPIClient(srv.URL, "tok")
+
+	out := waitForAnswerOutcome(t, context.Background(), api, map[string]any{"notification_id": float64(42)})
+	if !out.Answered || out.State != "answered" || !strings.Contains(string(out.Answer), `"oat milk"`) {
+		t.Errorf("unexpected outcome: %+v", out)
+	}
+	if !sawWait.Load() {
+		t.Error("polls did not ask the server to hold (?wait=)")
+	}
+}
+
+func TestHandleWaitForAnswer_NotificationTimeoutIsResult(t *testing.T) {
+	shortAnswerPoll(t)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		io.WriteString(w, `{"notification_id":7,"status":"pending"}`)
+	}))
+	defer srv.Close()
+	api := client.NewAPIClient(srv.URL, "tok")
+
+	out := waitForAnswerOutcome(t, context.Background(), api, map[string]any{"notification_id": float64(7), "timeout_seconds": float64(1)})
+	if out.Answered || out.State != "pending" || !strings.Contains(out.Reason, "no answer within") {
+		t.Errorf("unexpected outcome: %+v", out)
+	}
+}
+
+func TestHandleWaitForAnswer_TargetArguments(t *testing.T) {
+	api := client.NewAPIClient("http://127.0.0.1:1", "tok")
+	for name, args := range map[string]map[string]any{
+		"neither":         {},
+		"both":            {"slug": "appr", "notification_id": float64(1)},
+		"fractional id":   {"notification_id": 1.5},
+		"non-positive id": {"notification_id": float64(0)},
+		"id wrong type":   {"notification_id": "abc"},
+		"malformed slug":  {"slug": "Not A Slug!"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			result, err := handleWaitForAnswer(context.Background(), newReq(args), api)
+			if err != nil || !result.IsError {
+				t.Errorf("args %v: want a tool error, got %v / %s", args, err, resultText(t, result))
+			}
+		})
+	}
+}

@@ -172,9 +172,11 @@ func registerAPITools(s *mcpserver.MCPServer, api *client.APIClient) {
 			mcp.WithBoolean("push",
 				mcp.Description("Send as an APNs push to the user's devices. Defaults to true; set false to store in the inbox only."),
 			),
+			mcp.WithObject("recurrence",
+				mcp.Description("Repeat the notification on a cron schedule: {cron, timezone, until, count}. cron is a 5-field expression (minute hour day-of-month month day-of-week, e.g. \"0 8 * * 1-5\" for weekdays at 08:00) or @daily/@weekly/@monthly, evaluated in timezone (IANA, required); sends must be at least 15 minutes apart. until (RFC 3339, inclusive) or count ends the series. The schedule keeps one id for the whole series and holds one pending slot; canceling it stops the series."),
+			),
 			mcp.WithString("send_at",
-				mcp.Required(),
-				mcp.Description("When to send the notification (RFC 3339). Must be in the future and at most 30 days ahead."),
+				mcp.Description("When to send the notification (RFC 3339). Must be in the future and at most 30 days ahead. Required unless recurrence is set; with recurrence, the first send is the first cron match at or after send_at (default: now)."),
 			),
 			mcp.WithString("source",
 				mcp.Description("Source identifier"),
@@ -337,20 +339,6 @@ func registerAPITools(s *mcpserver.MCPServer, api *client.APIClient) {
 		),
 		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 			return handleGetWidget(ctx, req, api)
-		},
-	)
-
-	// list_scheduled_notifications
-	s.AddTool(
-		mcp.NewTool("list_scheduled_notifications",
-			mcp.WithDescription("List scheduled notifications"),
-			mcp.WithReadOnlyHintAnnotation(true),
-			// Every tool proxies an external REST API (api.pushward.app), so its
-			// results cross a trust boundary - keep the open-world hint explicit.
-			mcp.WithOpenWorldHintAnnotation(true),
-		),
-		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-			return handleListScheduledNotifications(ctx, req, api)
 		},
 	)
 
@@ -607,18 +595,13 @@ func handleCreateScheduledNotification(ctx context.Context, req mcp.CallToolRequ
 	if err != nil {
 		return mcp.NewToolResultError(err.Error()), nil
 	}
-	paramSendAt, err := req.RequireString("send_at")
-	if err != nil {
-		return mcp.NewToolResultError(err.Error()), nil
-	}
 	paramTitle, err := req.RequireString("title")
 	if err != nil {
 		return mcp.NewToolResultError(err.Error()), nil
 	}
 	input := client.CreateScheduledNotificationInput{
-		Body:   paramBody,
-		SendAt: paramSendAt,
-		Title:  paramTitle,
+		Body:  paramBody,
+		Title: paramTitle,
 	}
 	if v, ok := req.GetArguments()["actions"]; ok && v != nil {
 		buf, err := json.Marshal(v)
@@ -658,6 +641,20 @@ func handleCreateScheduledNotification(ctx context.Context, req mcp.CallToolRequ
 	// or non-bool input; assign only on success. Requires a *bool client field.
 	if v, err := req.RequireBool("push"); err == nil {
 		input.Push = &v
+	}
+	if v, ok := req.GetArguments()["recurrence"]; ok && v != nil {
+		buf, err := json.Marshal(v)
+		if err != nil {
+			return mcp.NewToolResultError("encoding recurrence: " + err.Error()), nil
+		}
+		var parsed *client.Recurrence
+		if err := json.Unmarshal(buf, &parsed); err != nil {
+			return mcp.NewToolResultError("parsing recurrence: " + err.Error()), nil
+		}
+		input.Recurrence = parsed
+	}
+	if v := req.GetString("send_at", ""); v != "" {
+		input.SendAt = v
 	}
 	if v := req.GetString("source", ""); v != "" {
 		input.Source = v
@@ -776,14 +773,6 @@ func handleGetWidget(ctx context.Context, req mcp.CallToolRequest, api *client.A
 		return mcp.NewToolResultError(err.Error()), nil
 	}
 	raw, err := api.GetWidget(ctx, paramSlug)
-	if err != nil {
-		return mcp.NewToolResultError(err.Error()), nil
-	}
-	return mcp.NewToolResultText(string(raw)), nil
-}
-
-func handleListScheduledNotifications(ctx context.Context, req mcp.CallToolRequest, api *client.APIClient) (*mcp.CallToolResult, error) {
-	raw, err := api.ListScheduledNotifications(ctx)
 	if err != nil {
 		return mcp.NewToolResultError(err.Error()), nil
 	}

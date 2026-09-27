@@ -911,3 +911,36 @@ func TestAPIClient_UpdateActivity_OmitsUnsetDismissalTTL(t *testing.T) {
 		t.Errorf("unset dismissal_ttl must stay off the wire so the server keeps its value, got wire=%v", wire)
 	}
 }
+
+func TestAnswerAndScheduledQueryParams(t *testing.T) {
+	var got []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		got = append(got, r.URL.RequestURI())
+		_, _ = w.Write([]byte(`{}`))
+	}))
+	defer srv.Close()
+	api := NewAPIClient(srv.URL, "tok")
+	ctx := context.Background()
+
+	if _, err := api.ListScheduledNotifications(ctx, "sent", "c1", 10); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := api.ListScheduledNotifications(ctx, "", "", 0); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := api.GetNotificationAnswer(ctx, 42, 20); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := api.WaitActivity(ctx, "appr", 20); err != nil {
+		t.Fatal(err)
+	}
+	want := []string{
+		"/notifications/scheduled?cursor=c1&limit=10&status=sent",
+		"/notifications/scheduled",
+		"/notifications/answers/42?wait=20",
+		"/activities/appr?wait=20",
+	}
+	if strings.Join(got, "\n") != strings.Join(want, "\n") {
+		t.Errorf("requests =\n%s\nwant\n%s", strings.Join(got, "\n"), strings.Join(want, "\n"))
+	}
+}

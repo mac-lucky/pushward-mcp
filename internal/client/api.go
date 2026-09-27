@@ -264,7 +264,8 @@ func (c *APIClient) CreateNotification(ctx context.Context, input CreateNotifica
 type CreateScheduledNotificationInput struct {
 	Title             string            `json:"title"`
 	Body              string            `json:"body"`
-	SendAt            string            `json:"send_at"`
+	SendAt            string            `json:"send_at,omitempty"`
+	Recurrence        *Recurrence       `json:"recurrence,omitempty"`
 	Subtitle          string            `json:"subtitle,omitempty"`
 	Source            string            `json:"source,omitempty"`
 	SourceDisplayName string            `json:"source_display_name,omitempty"`
@@ -281,17 +282,66 @@ type CreateScheduledNotificationInput struct {
 	Volume            *float64          `json:"volume,omitempty"`
 }
 
-// CreateScheduledNotification queues a notification for `send_at`. The send
-// counts against the notification quota when it happens.
+// Recurrence repeats a scheduled notification on a cron schedule evaluated in
+// Timezone. Until (RFC 3339) and Count are mutually exclusive.
+type Recurrence struct {
+	Cron     string `json:"cron"`
+	Timezone string `json:"timezone"`
+	Until    string `json:"until,omitempty"`
+	Count    int    `json:"count,omitempty"`
+}
+
+// CreateScheduledNotification queues a notification for `send_at`, or on a
+// cron schedule with Recurrence. Each send counts against the notification
+// quota when it happens.
 func (c *APIClient) CreateScheduledNotification(ctx context.Context, input CreateScheduledNotificationInput) (json.RawMessage, error) {
 	raw, _, err := c.DoJSON(ctx, http.MethodPost, "/notifications/scheduled", input)
 	return raw, err
 }
 
-// ListScheduledNotifications returns the pending scheduled notifications.
-func (c *APIClient) ListScheduledNotifications(ctx context.Context) (json.RawMessage, error) {
-	raw, _, err := c.DoJSON(ctx, http.MethodGet, "/notifications/scheduled", nil)
+// ListScheduledNotifications lists scheduled notifications. status is
+// scheduled (the server default: pending, soonest first), sent, failed or all
+// (latest first); cursor is a prior page's next_cursor. Empty values and a
+// zero limit leave the server defaults.
+func (c *APIClient) ListScheduledNotifications(ctx context.Context, status, cursor string, limit int) (json.RawMessage, error) {
+	q := url.Values{}
+	if status != "" {
+		q.Set("status", status)
+	}
+	if cursor != "" {
+		q.Set("cursor", cursor)
+	}
+	if limit > 0 {
+		q.Set("limit", strconv.Itoa(limit))
+	}
+	raw, _, err := c.DoJSON(ctx, http.MethodGet, withQuery("/notifications/scheduled", q), nil)
 	return raw, err
+}
+
+// GetNotificationAnswer reads the server-recorded answer to a notification
+// sent with url-less actions. wait > 0 long-polls: the server holds the
+// request up to that many seconds (max 25) until the answer lands. The status
+// code is returned so callers can tell a transient failure from a hard miss.
+func (c *APIClient) GetNotificationAnswer(ctx context.Context, id int64, wait int) (json.RawMessage, int, error) {
+	q := url.Values{}
+	if wait > 0 {
+		q.Set("wait", strconv.Itoa(wait))
+	}
+	return c.DoJSON(ctx, http.MethodGet, withQuery("/notifications/answers/"+strconv.FormatInt(id, 10), q), nil)
+}
+
+// WaitActivity reads an activity like GetActivity, holding the request up to
+// wait seconds (max 25) while it is an approval still waiting for its answer.
+// Servers that predate ?wait= answer at once.
+func (c *APIClient) WaitActivity(ctx context.Context, slug string, wait int) (json.RawMessage, int, error) {
+	if err := ValidateSlug(slug); err != nil {
+		return nil, 0, err
+	}
+	q := url.Values{}
+	if wait > 0 {
+		q.Set("wait", strconv.Itoa(wait))
+	}
+	return c.DoJSON(ctx, http.MethodGet, withQuery("/activities/"+slug, q), nil)
 }
 
 // GetScheduledNotification returns one scheduled notification, including its
