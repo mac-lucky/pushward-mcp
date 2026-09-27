@@ -15,6 +15,25 @@ import (
 
 func registerAPITools(s *mcpserver.MCPServer, api *client.APIClient) {
 
+	// cancel_scheduled_notification
+	s.AddTool(
+		mcp.NewTool("cancel_scheduled_notification",
+			mcp.WithDescription("Cancel scheduled notification"),
+			mcp.WithDestructiveHintAnnotation(true),
+			mcp.WithIdempotentHintAnnotation(true),
+			// Every tool proxies an external REST API (api.pushward.app), so its
+			// results cross a trust boundary - keep the open-world hint explicit.
+			mcp.WithOpenWorldHintAnnotation(true),
+			mcp.WithString("id",
+				mcp.Required(),
+				mcp.Description("id path parameter"),
+			),
+		),
+		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			return handleCancelScheduledNotification(ctx, req, api)
+		},
+	)
+
 	// create_activity
 	s.AddTool(
 		mcp.NewTool("create_activity",
@@ -113,6 +132,75 @@ func registerAPITools(s *mcpserver.MCPServer, api *client.APIClient) {
 		),
 		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 			return handleCreateNotification(ctx, req, api)
+		},
+	)
+
+	// create_scheduled_notification
+	s.AddTool(
+		mcp.NewTool("create_scheduled_notification",
+			mcp.WithDescription("Schedule notification"),
+			// Create/send is additive, not destructive; override the destructiveHint:true
+			// default so clients don't treat it as a data-clobbering operation.
+			mcp.WithDestructiveHintAnnotation(false),
+			// Every tool proxies an external REST API (api.pushward.app), so its
+			// results cross a trust boundary - keep the open-world hint explicit.
+			mcp.WithOpenWorldHintAnnotation(true),
+			mcp.WithArray("actions",
+				mcp.Description("Server-driven action buttons. Max 10 (Apple cap)."),
+				mcp.Items(map[string]any{"type": "object"}),
+			),
+			mcp.WithString("activity_slug",
+				mcp.Description("activity_slug"),
+			),
+			mcp.WithString("body",
+				mcp.Required(),
+				mcp.Description("Notification body"),
+			),
+			mcp.WithString("collapse_id",
+				mcp.Description("Collapse ID for replacing notifications"),
+			),
+			mcp.WithString("icon_url",
+				mcp.Description("http or https URL for per-notification source avatar, shown as the Communication Notification avatar on iOS. Recommended <=256x256 and <=100 KB; responses larger than 512 KB are rejected by the iOS extension to protect the 24 MB memory budget."),
+			),
+			mcp.WithString("level",
+				mcp.Description("Interruption level (default: active)"),
+				mcp.Enum("passive", "active", "time-sensitive", "critical"),
+			),
+			mcp.WithObject("media",
+				mcp.Description("Rich media attachment (image, video, or audio). HTTPS only."),
+			),
+			mcp.WithBoolean("push",
+				mcp.Description("Send as an APNs push to the user's devices. Defaults to true; set false to store in the inbox only."),
+			),
+			mcp.WithString("send_at",
+				mcp.Required(),
+				mcp.Description("When to send the notification (RFC 3339). Must be in the future and at most 30 days ahead."),
+			),
+			mcp.WithString("source",
+				mcp.Description("Source identifier"),
+			),
+			mcp.WithString("source_display_name",
+				mcp.Description("Human-readable source name"),
+			),
+			mcp.WithString("subtitle",
+				mcp.Description("Notification subtitle"),
+			),
+			mcp.WithString("thread_id",
+				mcp.Description("Thread identifier for grouping"),
+			),
+			mcp.WithString("title",
+				mcp.Required(),
+				mcp.Description("Notification title"),
+			),
+			mcp.WithString("url",
+				mcp.Description("Action URL"),
+			),
+			mcp.WithNumber("volume",
+				mcp.Description("Volume for critical alerts (0.0-1.0) (min: 0, max: 1)"),
+			),
+		),
+		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			return handleCreateScheduledNotification(ctx, req, api)
 		},
 	)
 
@@ -216,6 +304,24 @@ func registerAPITools(s *mcpserver.MCPServer, api *client.APIClient) {
 		},
 	)
 
+	// get_scheduled_notification
+	s.AddTool(
+		mcp.NewTool("get_scheduled_notification",
+			mcp.WithDescription("Get scheduled notification"),
+			mcp.WithReadOnlyHintAnnotation(true),
+			// Every tool proxies an external REST API (api.pushward.app), so its
+			// results cross a trust boundary - keep the open-world hint explicit.
+			mcp.WithOpenWorldHintAnnotation(true),
+			mcp.WithString("id",
+				mcp.Required(),
+				mcp.Description("id path parameter"),
+			),
+		),
+		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			return handleGetScheduledNotification(ctx, req, api)
+		},
+	)
+
 	// get_widget
 	s.AddTool(
 		mcp.NewTool("get_widget",
@@ -231,6 +337,20 @@ func registerAPITools(s *mcpserver.MCPServer, api *client.APIClient) {
 		),
 		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 			return handleGetWidget(ctx, req, api)
+		},
+	)
+
+	// list_scheduled_notifications
+	s.AddTool(
+		mcp.NewTool("list_scheduled_notifications",
+			mcp.WithDescription("List scheduled notifications"),
+			mcp.WithReadOnlyHintAnnotation(true),
+			// Every tool proxies an external REST API (api.pushward.app), so its
+			// results cross a trust boundary - keep the open-world hint explicit.
+			mcp.WithOpenWorldHintAnnotation(true),
+		),
+		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			return handleListScheduledNotifications(ctx, req, api)
 		},
 	)
 
@@ -361,6 +481,18 @@ func registerAPITools(s *mcpserver.MCPServer, api *client.APIClient) {
 	)
 }
 
+func handleCancelScheduledNotification(ctx context.Context, req mcp.CallToolRequest, api *client.APIClient) (*mcp.CallToolResult, error) {
+	paramID, err := req.RequireString("id")
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
+	err = api.CancelScheduledNotification(ctx, paramID)
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
+	return mcp.NewToolResultText("deleted successfully"), nil
+}
+
 func handleCreateActivity(ctx context.Context, req mcp.CallToolRequest, api *client.APIClient) (*mcp.CallToolResult, error) {
 	paramName, err := req.RequireString("name")
 	if err != nil {
@@ -470,6 +602,88 @@ func handleCreateNotification(ctx context.Context, req mcp.CallToolRequest, api 
 	return mcp.NewToolResultText(string(raw)), nil
 }
 
+func handleCreateScheduledNotification(ctx context.Context, req mcp.CallToolRequest, api *client.APIClient) (*mcp.CallToolResult, error) {
+	paramBody, err := req.RequireString("body")
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
+	paramSendAt, err := req.RequireString("send_at")
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
+	paramTitle, err := req.RequireString("title")
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
+	input := client.CreateScheduledNotificationInput{
+		Body:   paramBody,
+		SendAt: paramSendAt,
+		Title:  paramTitle,
+	}
+	if v, ok := req.GetArguments()["actions"]; ok && v != nil {
+		buf, err := json.Marshal(v)
+		if err != nil {
+			return mcp.NewToolResultError("encoding actions: " + err.Error()), nil
+		}
+		// Forward opaque JSON - server is the source of truth for the
+		// actions schema, so new fields don't require an MCP rebuild.
+		input.Actions = json.RawMessage(buf)
+	}
+	if v := req.GetString("activity_slug", ""); v != "" {
+		input.ActivitySlug = v
+	}
+	if v := req.GetString("collapse_id", ""); v != "" {
+		input.CollapseID = v
+	}
+	if v := req.GetString("icon_url", ""); v != "" {
+		input.IconURL = v
+	}
+	if v := req.GetString("level", ""); v != "" {
+		input.Level = v
+	}
+	if v, ok := req.GetArguments()["media"]; ok && v != nil {
+		buf, err := json.Marshal(v)
+		if err != nil {
+			return mcp.NewToolResultError("encoding media: " + err.Error()), nil
+		}
+		var parsed *client.MediaAttachment
+		if err := json.Unmarshal(buf, &parsed); err != nil {
+			return mcp.NewToolResultError("parsing media: " + err.Error()), nil
+		}
+		input.Media = parsed
+	}
+	// Send the field only when the caller supplied a real boolean, so an omitted
+	// (or null) value inherits the server-side default - e.g. push defaults to
+	// true - instead of being forced to false. RequireBool errors on absent, null,
+	// or non-bool input; assign only on success. Requires a *bool client field.
+	if v, err := req.RequireBool("push"); err == nil {
+		input.Push = &v
+	}
+	if v := req.GetString("source", ""); v != "" {
+		input.Source = v
+	}
+	if v := req.GetString("source_display_name", ""); v != "" {
+		input.SourceDisplayName = v
+	}
+	if v := req.GetString("subtitle", ""); v != "" {
+		input.Subtitle = v
+	}
+	if v := req.GetString("thread_id", ""); v != "" {
+		input.ThreadID = v
+	}
+	if v := req.GetString("url", ""); v != "" {
+		input.URL = v
+	}
+	if v := req.GetFloat("volume", math.NaN()); !math.IsNaN(v) {
+		input.Volume = &v
+	}
+	raw, err := api.CreateScheduledNotification(ctx, input)
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
+	return mcp.NewToolResultText(string(raw)), nil
+}
+
 func handleCreateWidget(ctx context.Context, req mcp.CallToolRequest, api *client.APIClient) (*mcp.CallToolResult, error) {
 	contentStr, err := req.RequireString("content_json")
 	if err != nil {
@@ -544,12 +758,32 @@ func handleGetMe(ctx context.Context, req mcp.CallToolRequest, api *client.APICl
 	return mcp.NewToolResultText(string(raw)), nil
 }
 
+func handleGetScheduledNotification(ctx context.Context, req mcp.CallToolRequest, api *client.APIClient) (*mcp.CallToolResult, error) {
+	paramID, err := req.RequireString("id")
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
+	raw, err := api.GetScheduledNotification(ctx, paramID)
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
+	return mcp.NewToolResultText(string(raw)), nil
+}
+
 func handleGetWidget(ctx context.Context, req mcp.CallToolRequest, api *client.APIClient) (*mcp.CallToolResult, error) {
 	paramSlug, err := req.RequireString("slug")
 	if err != nil {
 		return mcp.NewToolResultError(err.Error()), nil
 	}
 	raw, err := api.GetWidget(ctx, paramSlug)
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
+	return mcp.NewToolResultText(string(raw)), nil
+}
+
+func handleListScheduledNotifications(ctx context.Context, req mcp.CallToolRequest, api *client.APIClient) (*mcp.CallToolResult, error) {
+	raw, err := api.ListScheduledNotifications(ctx)
 	if err != nil {
 		return mcp.NewToolResultError(err.Error()), nil
 	}

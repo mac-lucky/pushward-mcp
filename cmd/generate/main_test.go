@@ -519,7 +519,7 @@ func TestActivityContentFieldParity(t *testing.T) {
 	// the deliberate exceptions, documented as things to fetch rather than send
 	// (answer is the whole outcome API of the approval template).
 	documented := []string{"answer", "log_backlog"}
-	want := []string{"answer", "log_backlog", "snoozed_until", "warning_pushed"}
+	want := []string{"answer", "answer_round", "log_backlog", "snoozed_until", "warning_pushed"}
 	got := sortedClone(serverOwned)
 	if !slices.Equal(got, want) {
 		t.Errorf("the spec marks %v read-only, the exemption list is %v", got, want)

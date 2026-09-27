@@ -39,6 +39,14 @@ General rules for any code that talks to the PushWard REST API
 - **Send only what changed.** `PATCH` is a merge-patch, so include the fields you
   are updating plus the `content.template`. Avoid resending unchanged large
   blobs on every tick.
+- **Let the server hold future notifications.** For a notification that should
+  arrive later, `POST /notifications/scheduled` with `send_at` (up to 30 days
+  ahead) instead of keeping a timer in your process. Up to 20 can be pending per
+  account; a send counts against the notification quota when it goes out, and
+  one that finds the quota used up is marked `failed` with `quota_exceeded`.
+  Keep the returned `id` if you may need to cancel it
+  (`DELETE /notifications/scheduled/{id}`). A key only sees and cancels what
+  it scheduled itself, and revoking the key cancels its pending ones.
 
 ## live-activity
 

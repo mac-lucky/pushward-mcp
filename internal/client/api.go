@@ -257,6 +257,74 @@ func (c *APIClient) CreateNotification(ctx context.Context, input CreateNotifica
 	return raw, err
 }
 
+// CreateScheduledNotificationInput is the request body for
+// POST /notifications/scheduled: a notification plus `send_at` (RFC 3339, in
+// the future and at most 30 days ahead). Same field handling as
+// CreateNotificationInput, including opaque `actions`.
+type CreateScheduledNotificationInput struct {
+	Title             string            `json:"title"`
+	Body              string            `json:"body"`
+	SendAt            string            `json:"send_at"`
+	Subtitle          string            `json:"subtitle,omitempty"`
+	Source            string            `json:"source,omitempty"`
+	SourceDisplayName string            `json:"source_display_name,omitempty"`
+	ThreadID          string            `json:"thread_id,omitempty"`
+	CollapseID        string            `json:"collapse_id,omitempty"`
+	Level             string            `json:"level,omitempty"`
+	IconURL           string            `json:"icon_url,omitempty"`
+	Media             *MediaAttachment  `json:"media,omitempty"`
+	URL               string            `json:"url,omitempty"`
+	ActivitySlug      string            `json:"activity_slug,omitempty"`
+	Metadata          map[string]string `json:"metadata,omitempty"`
+	Actions           json.RawMessage   `json:"actions,omitempty"`
+	Push              *bool             `json:"push,omitempty"`
+	Volume            *float64          `json:"volume,omitempty"`
+}
+
+// CreateScheduledNotification queues a notification for `send_at`. The send
+// counts against the notification quota when it happens.
+func (c *APIClient) CreateScheduledNotification(ctx context.Context, input CreateScheduledNotificationInput) (json.RawMessage, error) {
+	raw, _, err := c.DoJSON(ctx, http.MethodPost, "/notifications/scheduled", input)
+	return raw, err
+}
+
+// ListScheduledNotifications returns the pending scheduled notifications.
+func (c *APIClient) ListScheduledNotifications(ctx context.Context) (json.RawMessage, error) {
+	raw, _, err := c.DoJSON(ctx, http.MethodGet, "/notifications/scheduled", nil)
+	return raw, err
+}
+
+// GetScheduledNotification returns one scheduled notification, including its
+// send outcome once it has fired.
+func (c *APIClient) GetScheduledNotification(ctx context.Context, id string) (json.RawMessage, error) {
+	path, err := scheduledNotificationPath(id)
+	if err != nil {
+		return nil, err
+	}
+	raw, _, err := c.DoJSON(ctx, http.MethodGet, path, nil)
+	return raw, err
+}
+
+// CancelScheduledNotification cancels a pending scheduled notification.
+func (c *APIClient) CancelScheduledNotification(ctx context.Context, id string) error {
+	path, err := scheduledNotificationPath(id)
+	if err != nil {
+		return err
+	}
+	_, _, err = c.DoJSON(ctx, http.MethodDelete, path, nil)
+	return err
+}
+
+// scheduledNotificationPath rejects anything but a positive integer id before
+// it is spliced into the path.
+func scheduledNotificationPath(id string) (string, error) {
+	n, err := strconv.ParseInt(id, 10, 64)
+	if err != nil || n <= 0 {
+		return "", fmt.Errorf("invalid scheduled notification id %q: must be a positive integer", id)
+	}
+	return "/notifications/scheduled/" + strconv.FormatInt(n, 10), nil
+}
+
 // SendEmailInput is the request body for POST /emails. `To` must already be a
 // verified, non-unsubscribed recipient of the calling account - registering and
 // verifying recipients is an hla_/dashboard operation, not reachable with the
