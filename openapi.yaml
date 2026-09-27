@@ -5471,6 +5471,7 @@ paths:
                     code: answer_wait.limit_exceeded
                     detail: too many concurrent waits; retry shortly
                     instance: /requests/9f86d081884c7d65
+                    retry_after_ms: 2000
                     status: 429
                     title: Too Many Requests
                     type: https://pushward.app/errors/too-many-requests

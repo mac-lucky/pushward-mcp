@@ -463,7 +463,7 @@ func transientPollFailure(status int) bool {
 // which defaults to error, and a dropped keepalive keeps nothing alive. Send
 // failures never abort the wait, and without a server in ctx (tests, direct
 // calls) the reporter is a no-op.
-func answerProgress(ctx context.Context, req mcp.CallToolRequest, slug string, total float64) func(elapsed float64) {
+func answerProgress(ctx context.Context, req mcp.CallToolRequest, target string, total float64) func(elapsed float64) {
 	srv := mcpserver.ServerFromContext(ctx)
 	if srv == nil {
 		return func(float64) {}
@@ -475,7 +475,7 @@ func answerProgress(ctx context.Context, req mcp.CallToolRequest, slug string, t
 				"progressToken": token,
 				"progress":      elapsed,
 				"total":         total,
-				"message":       fmt.Sprintf("waiting for an answer on %s (%.0fs of %.0fs)", slug, elapsed, total),
+				"message":       fmt.Sprintf("waiting for an answer on %s (%.0fs of %.0fs)", target, elapsed, total),
 			})
 		}
 	}
@@ -483,7 +483,7 @@ func answerProgress(ctx context.Context, req mcp.CallToolRequest, slug string, t
 		_ = srv.SendNotificationToClient(ctx, string(mcp.MethodNotificationMessage), map[string]any{
 			"level":  "info",
 			"logger": "wait_for_answer",
-			"data":   fmt.Sprintf("still waiting for an answer on %s (%.0fs of %.0fs)", slug, elapsed, total),
+			"data":   fmt.Sprintf("still waiting for an answer on %s (%.0fs of %.0fs)", target, elapsed, total),
 		})
 	}
 	keepalive(0)
@@ -516,6 +516,65 @@ func longPollSeconds(deadline time.Time) int {
 	return max(1, min(answerLongPollMax, int(time.Until(deadline)/time.Second)))
 }
 
+// waitJudge decodes one poll of wait_for_answer. A non-nil result ends the
+// wait; state is kept for the timeout result.
+type waitJudge func(raw json.RawMessage) (state string, result *mcp.CallToolResult)
+
+// judgeNotificationAnswer ends the wait once the notification is answered.
+func judgeNotificationAnswer(target string) waitJudge {
+	return func(raw json.RawMessage) (string, *mcp.CallToolResult) {
+		var out struct {
+			Status string `json:"status"`
+		}
+		if err := json.Unmarshal(raw, &out); err != nil {
+			return "", mcp.NewToolResultError(fmt.Sprintf("decode answer of %s: %v", target, err))
+		}
+		if out.Status == "answered" {
+			return out.Status, waitResult(waitOutcome{State: out.Status, Answered: true, Answer: raw})
+		}
+		return out.Status, nil
+	}
+}
+
+// judgeApprovalAnswer ends the wait once the approval activity records an
+// answer, or ends without one.
+func judgeApprovalAnswer(slug string) waitJudge {
+	return func(raw json.RawMessage) (string, *mcp.CallToolResult) {
+		var out struct {
+			State   string `json:"state"`
+			Content struct {
+				Template string          `json:"template"`
+				Answer   json.RawMessage `json:"answer"`
+			} `json:"content"`
+		}
+		if err := json.Unmarshal(raw, &out); err != nil {
+			return "", mcp.NewToolResultError(fmt.Sprintf("decode activity %s: %v", slug, err))
+		}
+		// No template means the activity was created without content and
+		// can never record an answer - fail now, like a non-approval
+		// template, instead of polling out the timeout.
+		if out.Content.Template == "" {
+			return "", mcp.NewToolResultError(fmt.Sprintf("activity %s has no content yet - it needs approval content before an answer can arrive", slug))
+		}
+		if out.Content.Template != tmplApproval {
+			return "", mcp.NewToolResultError(fmt.Sprintf("activity %s is template %q, not approval", slug, out.Content.Template))
+		}
+		if answer := string(out.Content.Answer); answer != "" && answer != "null" {
+			return out.State, waitResult(waitOutcome{State: out.State, Answered: true, Answer: out.Content.Answer})
+		}
+		// Ended without an answer is final: a producer-webhook option was
+		// tapped (invisible here) or something ended the activity
+		// externally. Preempted is not - the server promotes preempted
+		// activities back to ongoing and answers only land while ongoing -
+		// so the wait rides it out.
+		if out.State == stateEnded {
+			return out.State, waitResult(waitOutcome{State: out.State, Answered: false,
+				Reason: "the activity ended with no recorded answer (a producer-webhook option was tapped, or it was ended externally)"})
+		}
+		return out.State, nil
+	}
+}
+
 // handleWaitForAnswer long-polls until the server records the answer: the
 // tapped option in an approval activity's content.answer (slug), or the
 // tapped action of a notification (notification_id). Url-less options and
@@ -527,19 +586,29 @@ func handleWaitForAnswer(ctx context.Context, req mcp.CallToolRequest, api *clie
 	if (slug == "") == !hasNotification {
 		return mcp.NewToolResultError("pass exactly one of slug or notification_id"), nil
 	}
-	var notificationID int64
-	target := slug
+	var (
+		target string
+		fetch  func(wait int) (json.RawMessage, int, error)
+		judge  waitJudge
+	)
 	if hasNotification {
 		id, err := notificationIDArg(req)
 		if err != nil {
 			return mcp.NewToolResultError(err.Error()), nil
 		}
-		notificationID, target = id, fmt.Sprintf("notification %d", id)
-	} else if err := client.ValidateSlug(slug); err != nil {
+		target = fmt.Sprintf("notification %d", id)
+		fetch = func(wait int) (json.RawMessage, int, error) { return api.GetNotificationAnswer(ctx, id, wait) }
+		judge = judgeNotificationAnswer(target)
+	} else {
 		// A malformed slug can never fetch anything - reject it here instead
 		// of letting the client-side check surface as status 0 and eat the
 		// transient-failure budget.
-		return mcp.NewToolResultError(err.Error()), nil
+		if err := client.ValidateSlug(slug); err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		target = "activity " + slug
+		fetch = func(wait int) (json.RawMessage, int, error) { return api.WaitActivity(ctx, slug, wait) }
+		judge = judgeApprovalAnswer(slug)
 	}
 	timeout := req.GetFloat("timeout_seconds", answerWaitDefault)
 	if timeout <= 0 {
@@ -554,74 +623,22 @@ func handleWaitForAnswer(ctx context.Context, req mcp.CallToolRequest, api *clie
 	lastState := ""
 	for {
 		pollStart := time.Now()
-		if notificationID != 0 {
-			raw, status, err := api.GetNotificationAnswer(ctx, notificationID, longPollSeconds(deadline))
-			switch {
-			case err != nil && ctx.Err() != nil:
-				return mcp.NewToolResultError("cancelled while waiting for an answer"), nil
-			case err != nil:
-				failures++
-				if !transientPollFailure(status) || failures >= answerPollFailureBudget {
-					return mcp.NewToolResultError(fmt.Sprintf("get answer of %s: %v", target, err)), nil
-				}
-			default:
-				failures = 0
-				var out struct {
-					Status string `json:"status"`
-				}
-				if err := json.Unmarshal(raw, &out); err != nil {
-					return mcp.NewToolResultError(fmt.Sprintf("decode answer of %s: %v", target, err)), nil
-				}
-				lastState = out.Status
-				if out.Status == "answered" {
-					return waitResult(waitOutcome{State: out.Status, Answered: true, Answer: raw}), nil
-				}
+		raw, status, err := fetch(longPollSeconds(deadline))
+		switch {
+		case err != nil && ctx.Err() != nil:
+			return mcp.NewToolResultError("cancelled while waiting for an answer"), nil
+		case err != nil:
+			failures++
+			if !transientPollFailure(status) || failures >= answerPollFailureBudget {
+				return mcp.NewToolResultError(fmt.Sprintf("get %s: %v", target, err)), nil
 			}
-		} else {
-			raw, status, err := api.WaitActivity(ctx, slug, longPollSeconds(deadline))
-			switch {
-			case err != nil && ctx.Err() != nil:
-				return mcp.NewToolResultError("cancelled while waiting for an answer"), nil
-			case err != nil:
-				failures++
-				if !transientPollFailure(status) || failures >= answerPollFailureBudget {
-					return mcp.NewToolResultError(fmt.Sprintf("get activity %s: %v", slug, err)), nil
-				}
-			default:
-				failures = 0
-				var out struct {
-					State   string `json:"state"`
-					Content struct {
-						Template string          `json:"template"`
-						Answer   json.RawMessage `json:"answer"`
-					} `json:"content"`
-				}
-				if err := json.Unmarshal(raw, &out); err != nil {
-					return mcp.NewToolResultError(fmt.Sprintf("decode activity %s: %v", slug, err)), nil
-				}
-				// No template means the activity was created without content and
-				// can never record an answer - fail now, like a non-approval
-				// template, instead of polling out the timeout.
-				if out.Content.Template == "" {
-					return mcp.NewToolResultError(fmt.Sprintf("activity %s has no content yet - it needs approval content before an answer can arrive", slug)), nil
-				}
-				if out.Content.Template != tmplApproval {
-					return mcp.NewToolResultError(fmt.Sprintf("activity %s is template %q, not approval", slug, out.Content.Template)), nil
-				}
-				lastState = out.State
-				if answer := string(out.Content.Answer); answer != "" && answer != "null" {
-					return waitResult(waitOutcome{State: out.State, Answered: true, Answer: out.Content.Answer}), nil
-				}
-				// Ended without an answer is final: a producer-webhook option was
-				// tapped (invisible here) or something ended the activity
-				// externally. Preempted is not - the server promotes preempted
-				// activities back to ongoing and answers only land while ongoing -
-				// so the wait rides it out.
-				if out.State == stateEnded {
-					return waitResult(waitOutcome{State: out.State, Answered: false,
-						Reason: "the activity ended with no recorded answer (a producer-webhook option was tapped, or it was ended externally)"}), nil
-				}
+		default:
+			failures = 0
+			state, result := judge(raw)
+			if result != nil {
+				return result, nil
 			}
+			lastState = state
 		}
 		elapsed := time.Since(start)
 		if time.Now().After(deadline) {

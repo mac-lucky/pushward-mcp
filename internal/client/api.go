@@ -159,12 +159,16 @@ func (c *APIClient) CreateActivity(ctx context.Context, input CreateActivityInpu
 // - the server returns server-owned extras like the log template's rolling
 // backlog only when asked, omitting them from the default lean response.
 func (c *APIClient) GetActivity(ctx context.Context, slug string, includes ...string) (json.RawMessage, int, error) {
-	if err := ValidateSlug(slug); err != nil {
-		return nil, 0, err
-	}
 	q := url.Values{}
 	if len(includes) > 0 {
 		q.Set("include", strings.Join(includes, ","))
+	}
+	return c.getActivity(ctx, slug, q)
+}
+
+func (c *APIClient) getActivity(ctx context.Context, slug string, q url.Values) (json.RawMessage, int, error) {
+	if err := ValidateSlug(slug); err != nil {
+		return nil, 0, err
 	}
 	return c.DoJSON(ctx, http.MethodGet, withQuery("/activities/"+slug, q), nil)
 }
@@ -323,25 +327,23 @@ func (c *APIClient) ListScheduledNotifications(ctx context.Context, status, curs
 // request up to that many seconds (max 25) until the answer lands. The status
 // code is returned so callers can tell a transient failure from a hard miss.
 func (c *APIClient) GetNotificationAnswer(ctx context.Context, id int64, wait int) (json.RawMessage, int, error) {
-	q := url.Values{}
-	if wait > 0 {
-		q.Set("wait", strconv.Itoa(wait))
-	}
-	return c.DoJSON(ctx, http.MethodGet, withQuery("/notifications/answers/"+strconv.FormatInt(id, 10), q), nil)
+	return c.DoJSON(ctx, http.MethodGet, withQuery("/notifications/answers/"+strconv.FormatInt(id, 10), waitQuery(wait)), nil)
 }
 
 // WaitActivity reads an activity like GetActivity, holding the request up to
 // wait seconds (max 25) while it is an approval still waiting for its answer.
 // Servers that predate ?wait= answer at once.
 func (c *APIClient) WaitActivity(ctx context.Context, slug string, wait int) (json.RawMessage, int, error) {
-	if err := ValidateSlug(slug); err != nil {
-		return nil, 0, err
-	}
+	return c.getActivity(ctx, slug, waitQuery(wait))
+}
+
+// waitQuery is the ?wait= long-poll hold; empty for wait <= 0.
+func waitQuery(wait int) url.Values {
 	q := url.Values{}
 	if wait > 0 {
 		q.Set("wait", strconv.Itoa(wait))
 	}
-	return c.DoJSON(ctx, http.MethodGet, withQuery("/activities/"+slug, q), nil)
+	return q
 }
 
 // GetScheduledNotification returns one scheduled notification, including its

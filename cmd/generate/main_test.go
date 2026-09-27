@@ -859,3 +859,18 @@ func TestContentJSONDesc(t *testing.T) {
 	// of hand-listing them, and matches on word boundaries rather than
 	// substrings.
 }
+
+// Every query parameter of the committed spec is either on a hand-written
+// operation or explicitly ignored; a new one must fail generation, not vanish.
+func TestUnhandledQueryParams(t *testing.T) {
+	if dropped := unhandledQueryParams(apiSpec(t)); len(dropped) > 0 {
+		t.Fatalf("unhandled query parameters: %v", dropped)
+	}
+	spec := &openAPISpec{Paths: map[string]pathItem{"/x": {"get": operation{
+		OperationID: "listThings",
+		Parameters:  []parameter{{Name: "cursor", In: "query"}, {Name: "id", In: "path"}},
+	}}}}
+	if got := unhandledQueryParams(spec); len(got) != 1 || got[0] != "listThings?cursor" {
+		t.Fatalf("got %v, want [listThings?cursor]", got)
+	}
+}

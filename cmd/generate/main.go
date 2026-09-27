@@ -39,8 +39,14 @@ type operation struct {
 	OperationID string       `json:"operationId" yaml:"operationId"`
 	Summary     string       `json:"summary" yaml:"summary"`
 	Description string       `json:"description" yaml:"description"`
+	Parameters  []parameter  `json:"parameters" yaml:"parameters"`
 	RequestBody *requestBody `json:"requestBody" yaml:"requestBody"`
 	Security    []any        `json:"security" yaml:"security"`
+}
+
+type parameter struct {
+	Name string `json:"name" yaml:"name"`
+	In   string `json:"in" yaml:"in"`
 }
 
 type requestBody struct {
@@ -148,6 +154,10 @@ func main() {
 
 	apiData := loadSpec(useLocal, apiSpecURL, filepath.Join(rootDir, "openapi.yaml"))
 	apiSpec := parseSpecJSON(apiData, "api")
+	if dropped := unhandledQueryParams(apiSpec); len(dropped) > 0 {
+		fmt.Fprintf(os.Stderr, "generated tools would silently drop query parameters %v: hand-write the operation (skipOperations) or list the parameter in ignoredQueryParams\n", dropped)
+		os.Exit(1)
+	}
 	apiTools := buildAPITools(apiSpec)
 
 	relayData := loadSpec(useLocal, relaySpecURL, filepath.Join(rootDir, "relay-openapi.json"))
@@ -325,6 +335,33 @@ var skipOperations = map[string]bool{
 	// paging and the ?wait= long-poll.
 	"listScheduledNotifications": true,
 	"getNotificationAnswer":      true,
+}
+
+// ignoredQueryParams lists query parameters a generated tool deliberately
+// does not expose. The generator emits no query parameters at all, so any
+// other one on a generated operation fails generation instead of vanishing.
+var ignoredQueryParams = map[string]map[string]bool{
+	"updateActivity": {"upsert": true}, // the tool only patches; create_activity creates
+}
+
+// unhandledQueryParams returns "operationId?param" for every query parameter
+// of a generated operation that ignoredQueryParams does not account for.
+func unhandledQueryParams(spec *openAPISpec) []string {
+	var out []string
+	for _, item := range spec.Paths {
+		for _, op := range item {
+			if op.OperationID == "" || skipOperations[op.OperationID] {
+				continue
+			}
+			for _, p := range op.Parameters {
+				if p.In == "query" && !ignoredQueryParams[op.OperationID][p.Name] {
+					out = append(out, op.OperationID+"?"+p.Name)
+				}
+			}
+		}
+	}
+	sort.Strings(out)
+	return out
 }
 
 func buildAPITools(spec *openAPISpec) []toolDef {
