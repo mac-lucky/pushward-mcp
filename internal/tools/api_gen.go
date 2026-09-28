@@ -15,25 +15,6 @@ import (
 
 func registerAPITools(s *mcpserver.MCPServer, api *client.APIClient) {
 
-	// cancel_scheduled_notification
-	s.AddTool(
-		mcp.NewTool("cancel_scheduled_notification",
-			mcp.WithDescription("Cancel scheduled notification"),
-			mcp.WithDestructiveHintAnnotation(true),
-			mcp.WithIdempotentHintAnnotation(true),
-			// Every tool proxies an external REST API (api.pushward.app), so its
-			// results cross a trust boundary - keep the open-world hint explicit.
-			mcp.WithOpenWorldHintAnnotation(true),
-			mcp.WithString("id",
-				mcp.Required(),
-				mcp.Description("id path parameter"),
-			),
-		),
-		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-			return handleCancelScheduledNotification(ctx, req, api)
-		},
-	)
-
 	// create_activity
 	s.AddTool(
 		mcp.NewTool("create_activity",
@@ -176,7 +157,7 @@ func registerAPITools(s *mcpserver.MCPServer, api *client.APIClient) {
 				mcp.Description("Repeat the notification on a cron schedule: {cron, timezone, until, count}. cron is a 5-field expression (minute hour day-of-month month day-of-week, e.g. \"0 8 * * 1-5\" for weekdays at 08:00) or @daily/@weekly/@monthly, evaluated in timezone (IANA, required); sends must be at least 15 minutes apart. until (RFC 3339, inclusive) or count ends the series. The schedule keeps one id for the whole series and holds one pending slot; canceling it stops the series."),
 			),
 			mcp.WithString("send_at",
-				mcp.Description("When to send the notification (RFC 3339). Must be in the future and at most 30 days ahead. Required unless recurrence is set; with recurrence, the first send is the first cron match at or after send_at (default: now)."),
+				mcp.Description("When to send the notification (RFC 3339). Must be in the future and at most 365 days ahead. Required unless recurrence is set; with recurrence, the first send is the first cron match at or after send_at (default: now)."),
 			),
 			mcp.WithString("source",
 				mcp.Description("Source identifier"),
@@ -467,18 +448,6 @@ func registerAPITools(s *mcpserver.MCPServer, api *client.APIClient) {
 			return handleUpdateWidget(ctx, req, api)
 		},
 	)
-}
-
-func handleCancelScheduledNotification(ctx context.Context, req mcp.CallToolRequest, api *client.APIClient) (*mcp.CallToolResult, error) {
-	paramID, err := req.RequireString("id")
-	if err != nil {
-		return mcp.NewToolResultError(err.Error()), nil
-	}
-	err = api.CancelScheduledNotification(ctx, paramID)
-	if err != nil {
-		return mcp.NewToolResultError(err.Error()), nil
-	}
-	return mcp.NewToolResultText("deleted successfully"), nil
 }
 
 func handleCreateActivity(ctx context.Context, req mcp.CallToolRequest, api *client.APIClient) (*mcp.CallToolResult, error) {

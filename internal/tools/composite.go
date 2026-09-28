@@ -116,10 +116,10 @@ func registerCompositeTools(s *mcpserver.MCPServer, api *client.APIClient, relay
 	// query parameters, which the generator does not emit.
 	s.AddTool(
 		mcp.NewTool("list_scheduled_notifications",
-			mcp.WithDescription("List scheduled notifications. status=scheduled (default) lists pending ones, soonest first, including repeating (cron) schedules; sent, failed or all list history (kept 7 days), latest first. Pass next_cursor from a previous page as cursor to page on."),
+			mcp.WithDescription("List scheduled notifications. status=scheduled (default) lists pending ones, soonest first, including repeating (cron) schedules; sent and failed (kept 7 days), canceled (kept 24 hours) or all list history, latest first. Pass next_cursor from a previous page as cursor to page on."),
 			mcp.WithReadOnlyHintAnnotation(true),
 			mcp.WithOpenWorldHintAnnotation(true),
-			mcp.WithString("status", mcp.Enum("scheduled", "sent", "failed", "all"), mcp.Description("Which schedules to list (default scheduled)")),
+			mcp.WithString("status", mcp.Enum("scheduled", "sent", "failed", "canceled", "all"), mcp.Description("Which schedules to list (default scheduled)")),
 			mcp.WithNumber("limit", mcp.Description("Maximum results (default 50) (min: 1, max: 100)"), mcp.Min(1), mcp.Max(100)),
 			mcp.WithString("cursor", mcp.Description("next_cursor from a previous page with the same status")),
 		),
@@ -129,6 +129,33 @@ func registerCompositeTools(s *mcpserver.MCPServer, api *client.APIClient, relay
 				return mcp.NewToolResultError(err.Error()), nil
 			}
 			return mcp.NewToolResultText(string(raw)), nil
+		},
+	)
+
+	// cancel_scheduled_notification - hand-written for its ?purge= query
+	// parameter, which the generator does not emit.
+	s.AddTool(
+		mcp.NewTool("cancel_scheduled_notification",
+			mcp.WithDescription("Cancel a scheduled notification, or stop a repeating one. It is kept as status canceled for 24 hours, then deleted; canceling it again changes nothing. One being sent right now is canceled too unless its send has already gone out. Canceling a sent or failed one only removes its record. purge=true deletes it outright with no canceled record: use it when replacing a schedule with a new one."),
+			mcp.WithDestructiveHintAnnotation(true),
+			mcp.WithIdempotentHintAnnotation(true),
+			mcp.WithOpenWorldHintAnnotation(true),
+			mcp.WithString("id", mcp.Required(), mcp.Description("Scheduled notification id")),
+			mcp.WithBoolean("purge", mcp.Description("Delete outright instead of keeping it as canceled (default false)")),
+		),
+		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			id, err := req.RequireString("id")
+			if err != nil {
+				return mcp.NewToolResultError(err.Error()), nil
+			}
+			purge := req.GetBool("purge", false)
+			if err := api.CancelScheduledNotification(ctx, id, purge); err != nil {
+				return mcp.NewToolResultError(err.Error()), nil
+			}
+			if purge {
+				return mcp.NewToolResultText("deleted"), nil
+			}
+			return mcp.NewToolResultText("canceled"), nil
 		},
 	)
 

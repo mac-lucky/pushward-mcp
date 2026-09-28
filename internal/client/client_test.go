@@ -934,11 +934,19 @@ func TestAnswerAndScheduledQueryParams(t *testing.T) {
 	if _, _, err := api.WaitActivity(ctx, "appr", 20); err != nil {
 		t.Fatal(err)
 	}
+	if err := api.CancelScheduledNotification(ctx, "7", false); err != nil {
+		t.Fatal(err)
+	}
+	if err := api.CancelScheduledNotification(ctx, "7", true); err != nil {
+		t.Fatal(err)
+	}
 	want := []string{
 		"/notifications/scheduled?cursor=c1&limit=10&status=sent",
 		"/notifications/scheduled",
 		"/notifications/answers/42?wait=20",
 		"/activities/appr?wait=20",
+		"/notifications/scheduled/7",
+		"/notifications/scheduled/7?purge=true",
 	}
 	if strings.Join(got, "\n") != strings.Join(want, "\n") {
 		t.Errorf("requests =\n%s\nwant\n%s", strings.Join(got, "\n"), strings.Join(want, "\n"))

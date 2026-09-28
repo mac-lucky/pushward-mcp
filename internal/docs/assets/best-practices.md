@@ -40,7 +40,7 @@ General rules for any code that talks to the PushWard REST API
   are updating plus the `content.template`. Avoid resending unchanged large
   blobs on every tick.
 - **Let the server hold future notifications.** For a notification that should
-  arrive later, `POST /notifications/scheduled` with `send_at` (up to 30 days
+  arrive later, `POST /notifications/scheduled` with `send_at` (up to 365 days
   ahead) instead of keeping a timer in your process. For one that repeats, add
   `recurrence: {cron, timezone}` (5-field cron such as `0 8 * * 1-5`, an IANA
   zone, optionally `until` or `count`); `send_at` then only says where the
@@ -50,8 +50,11 @@ General rules for any code that talks to the PushWard REST API
   notification quota when it goes out, and one that finds the quota used up is
   marked `failed` with `quota_exceeded` (a repeating one just skips that send).
   Keep the returned `id` if you may need to cancel it
-  (`DELETE /notifications/scheduled/{id}`). A key only sees and cancels what
-  it scheduled itself, and revoking the key cancels its pending ones.
+  (`DELETE /notifications/scheduled/{id}`): it then reads `canceled` for 24
+  hours, and the owner sees it as canceled in the app. When you replace a
+  schedule with a new one, cancel the old one with `?purge=true` so it leaves
+  no canceled record. A key only sees and cancels what it scheduled itself,
+  and revoking the key deletes its pending ones.
 - **Ask with a notification when a Live Activity is too much.** Leave `url` off
   a silent action and the server records the tap itself; add `text_input` to
   get a typed reply too. The create response says `answerable: true`. Read the

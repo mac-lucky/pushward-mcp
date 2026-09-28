@@ -331,10 +331,11 @@ var skipOperations = map[string]bool{
 	"getActivity":        true, // superseded by a composite that adds include_log_backlog (?include=log_backlog)
 	"setActivityAlarm":   true, // removed from public surface - alarm is now a merge-patch field
 	"clearActivityAlarm": true, // same
-	// Both take query parameters the generator does not emit: status/limit/cursor
-	// paging and the ?wait= long-poll.
-	"listScheduledNotifications": true,
-	"getNotificationAnswer":      true,
+	// These take query parameters the generator does not emit: status/limit/cursor
+	// paging, the ?wait= long-poll and the ?purge= cancel.
+	"listScheduledNotifications":  true,
+	"getNotificationAnswer":       true,
+	"cancelScheduledNotification": true,
 }
 
 // ignoredQueryParams lists query parameters a generated tool deliberately

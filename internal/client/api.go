@@ -263,7 +263,7 @@ func (c *APIClient) CreateNotification(ctx context.Context, input CreateNotifica
 
 // CreateScheduledNotificationInput is the request body for
 // POST /notifications/scheduled: a notification plus `send_at` (RFC 3339, in
-// the future and at most 30 days ahead). Same field handling as
+// the future and at most 365 days ahead). Same field handling as
 // CreateNotificationInput, including opaque `actions`.
 type CreateScheduledNotificationInput struct {
 	Title             string            `json:"title"`
@@ -358,10 +358,13 @@ func (c *APIClient) GetScheduledNotification(ctx context.Context, id string) (js
 }
 
 // CancelScheduledNotification cancels a pending scheduled notification.
-func (c *APIClient) CancelScheduledNotification(ctx context.Context, id string) error {
+func (c *APIClient) CancelScheduledNotification(ctx context.Context, id string, purge bool) error {
 	path, err := scheduledNotificationPath(id)
 	if err != nil {
 		return err
+	}
+	if purge {
+		path = withQuery(path, url.Values{"purge": {"true"}})
 	}
 	_, _, err = c.DoJSON(ctx, http.MethodDelete, path, nil)
 	return err
