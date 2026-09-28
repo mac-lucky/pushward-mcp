@@ -2780,7 +2780,7 @@ components:
           $ref: "#/components/schemas/Recurrence"
           description: "Repeat the notification on a cron schedule: {cron, timezone, until, count}. cron is a 5-field expression (minute hour day-of-month month day-of-week, e.g. \"0 8 * * 1-5\" for weekdays at 08:00) or @daily/@weekly/@monthly, evaluated in timezone (IANA, required); sends must be at least 15 minutes apart. until (RFC 3339, inclusive) or count ends the series. The schedule keeps one id for the whole series and holds one pending slot; canceling it stops the series."
         send_at:
-          description: "When to send the notification (RFC 3339). Must be in the future and at most 30 days ahead. Required unless recurrence is set; with recurrence, the first send is the first cron match at or after send_at (default: now)."
+          description: "When to send the notification (RFC 3339). Must be in the future and at most 365 days ahead. Required unless recurrence is set; with recurrence, the first send is the first cron match at or after send_at (default: now)."
           examples:
             - "2026-10-01T18:00:00Z"
           format: date-time
@@ -3403,6 +3403,11 @@ components:
           maxLength: 4096
           minLength: 1
           type: string
+        canceled_at:
+          description: When the schedule was canceled. Set when status is canceled.
+          format: date-time
+          readOnly: true
+          type: string
         collapse_id:
           description: Collapse ID for replacing notifications
           maxLength: 64
@@ -3503,12 +3508,13 @@ components:
           maxLength: 256
           type: string
         status:
-          description: "scheduled: waiting for send_at. sending: being sent right now. sent: delivered as notification_id. failed: not sent, see failure_reason. A repeating schedule goes back to scheduled after each occurrence until its rule runs out."
+          description: "scheduled: waiting for send_at. sending: being sent right now. sent: delivered as notification_id. failed: not sent, see failure_reason. canceled: canceled before it was sent (a repeating one: before its next send), see canceled_at; kept 24 hours, then deleted. A repeating schedule goes back to scheduled after each occurrence until its rule runs out."
           enum:
             - scheduled
             - sending
             - sent
             - failed
+            - canceled
           readOnly: true
           type: string
         subtitle:
@@ -5514,20 +5520,21 @@ paths:
         - Notifications
   /notifications/scheduled:
     get:
-      description: "Lists scheduled notifications: pending ones soonest first, sent and failed ones (kept 7 days) latest first. An integration key sees only the ones it scheduled."
+      description: "Lists scheduled notifications: pending ones soonest first, sent and failed ones (kept 7 days) and canceled ones (kept 24 hours) latest first. An integration key sees only the ones it scheduled."
       operationId: listScheduledNotifications
       parameters:
-        - description: Filter by status. scheduled (default) also includes notifications being sent right now and lists soonest first; the other filters list latest first. all returns every status.
+        - description: Filter by status. scheduled (default) also includes notifications being sent right now and lists soonest first; the other filters list latest first. all returns every status, canceled included.
           explode: false
           in: query
           name: status
           schema:
             default: scheduled
-            description: Filter by status. scheduled (default) also includes notifications being sent right now and lists soonest first; the other filters list latest first. all returns every status.
+            description: Filter by status. scheduled (default) also includes notifications being sent right now and lists soonest first; the other filters list latest first. all returns every status, canceled included.
             enum:
               - scheduled
               - sent
               - failed
+              - canceled
               - all
             type: string
         - description: Maximum number of results (default 50).
@@ -5607,7 +5614,7 @@ paths:
                     detail: validation failed
                     errors:
                       - location: query.status
-                        message: expected value to be one of "scheduled", "sent", "failed", "all"
+                        message: expected value to be one of "scheduled", "sent", "failed", "canceled", "all"
                     instance: /requests/9f86d081884c7d65
                     status: 422
                     title: Unprocessable Entity
@@ -5666,7 +5673,7 @@ paths:
       tags:
         - Notifications
     post:
-      description: Queues a notification to be sent at `send_at` (at most 30 days ahead). The body is a `POST /notifications` body plus `send_at`, validated the same way. Add `recurrence` (a cron expression and a time zone) to repeat it; `send_at` is then optional and marks where the schedule starts. A repeating schedule keeps one id and one pending slot for the whole series, and canceling it stops the series. Each send counts against the notification quota when it happens, not when it is scheduled; an account already out of quota gets the same `429 quota.exceeded` as `POST /notifications`. Up to 25 scheduled notifications can be pending per account. Revoking the integration key that scheduled one cancels it.
+      description: Queues a notification to be sent at `send_at` (at most 365 days ahead). The body is a `POST /notifications` body plus `send_at`, validated the same way. Add `recurrence` (a cron expression and a time zone) to repeat it; `send_at` is then optional and marks where the schedule starts. A repeating schedule keeps one id and one pending slot for the whole series, and canceling it stops the series. Each send counts against the notification quota when it happens, not when it is scheduled; an account already out of quota gets the same `429 quota.exceeded` as `POST /notifications`. Up to 25 scheduled notifications can be pending per account. Revoking the integration key that scheduled one cancels it.
       operationId: createScheduledNotification
       requestBody:
         content:
@@ -5704,7 +5711,7 @@ paths:
                     title: Bad Request
                     type: https://pushward.app/errors/bad-request
                 send_at_invalid:
-                  summary: send_at is in the past or more than 30 days ahead
+                  summary: send_at is in the past or more than 365 days ahead
                   value:
                     code: scheduled_notification.invalid
                     detail: send_at must be in the future
@@ -5851,7 +5858,7 @@ paths:
         - Notifications
   /notifications/scheduled/{id}:
     delete:
-      description: Cancels a pending scheduled notification, or stops a repeating one. A repeating one being sent right now stops after that send; a one-time one being sent returns 409. Deleting a sent or failed one only removes its record. An integration key can cancel only the ones it scheduled.
+      description: Cancels a pending scheduled notification, or stops a repeating one. It is kept as canceled for 24 hours, then deleted; canceling it again changes nothing. One being sent right now is canceled too unless its send has already gone out. Deleting a sent or failed one only removes its record. purge=true deletes it outright in any status, leaving no canceled record. An integration key can cancel only the ones it scheduled.
       operationId: cancelScheduledNotification
       parameters:
         - description: Scheduled notification ID
@@ -5862,6 +5869,13 @@ paths:
             description: Scheduled notification ID
             format: int64
             type: integer
+        - description: Delete the schedule outright instead of marking it canceled, leaving no canceled record (for an integration replacing a schedule it is about to re-create).
+          explode: false
+          in: query
+          name: purge
+          schema:
+            description: Delete the schedule outright instead of marking it canceled, leaving no canceled record (for an integration replacing a schedule it is about to re-create).
+            type: boolean
       responses:
         "204":
           description: No Content
@@ -5908,21 +5922,6 @@ paths:
               schema:
                 $ref: "#/components/schemas/Problem"
           description: Not Found
-        "409":
-          content:
-            application/problem+json:
-              examples:
-                scheduled_notification.in_flight:
-                  value:
-                    code: scheduled_notification.in_flight
-                    detail: scheduled notification is being sent and can no longer be canceled
-                    instance: /requests/9f86d081884c7d65
-                    status: 409
-                    title: Conflict
-                    type: https://pushward.app/errors/conflict
-              schema:
-                $ref: "#/components/schemas/Problem"
-          description: Conflict
         "422":
           content:
             application/problem+json:

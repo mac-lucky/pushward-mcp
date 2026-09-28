@@ -3508,7 +3508,7 @@ components:
           maxLength: 256
           type: string
         status:
-          description: "scheduled: waiting for send_at. sending: being sent right now. sent: delivered as notification_id. failed: not sent, see failure_reason. canceled: canceled before it was sent, see canceled_at; kept 24 hours, then deleted. A repeating schedule goes back to scheduled after each occurrence until its rule runs out."
+          description: "scheduled: waiting for send_at. sending: being sent right now. sent: delivered as notification_id. failed: not sent, see failure_reason. canceled: canceled before it was sent (a repeating one: before its next send), see canceled_at; kept 24 hours, then deleted. A repeating schedule goes back to scheduled after each occurrence until its rule runs out."
           enum:
             - scheduled
             - sending
