@@ -796,7 +796,9 @@ func buildRelayTools(spec *openAPISpec) []toolDef {
 			// and its /{id} DELETE) carry path params the flat tool template
 			// cannot express, and their paths do not form valid Go identifiers.
 			// Providers are single-segment by convention; skip everything else.
-			if strings.ContainsAny(provider, "/{") {
+			// The root route (POST /) is no provider: it hands each payload to
+			// the route of whichever provider sent it, and those have tools.
+			if provider == "" || strings.ContainsAny(provider, "/{") {
 				continue
 			}
 			t := toolDef{

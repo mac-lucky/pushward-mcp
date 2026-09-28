@@ -299,6 +299,24 @@ func renderTemplate(tmpl *template.Template, data any) []byte {
 	return buf.Bytes()
 }
 
+// The relay documents POST /, which dispatches to the provider routes. It has
+// no provider name, and a tool built from it would be named relay_ with a Go
+// func named Relay.
+func TestBuildRelayTools_SkipsRootRoute(t *testing.T) {
+	spec := parseSpecJSON([]byte(`{"paths": {
+		"/": {"post": {"operationId": "post-root-webhook", "summary": "Receive any webhook"}},
+		"/grafana": {"post": {"operationId": "post-grafana-webhook", "summary": "Receive Grafana alert webhook"}}
+	}}`), "relay")
+	tools := buildRelayTools(spec)
+	if len(tools) != 1 || tools[0].Name != "relay_grafana" {
+		names := make([]string, 0, len(tools))
+		for _, tl := range tools {
+			names = append(names, tl.Name)
+		}
+		t.Errorf("buildRelayTools = %v, want only relay_grafana", names)
+	}
+}
+
 func TestBuildAPITools_ExpectedSet(t *testing.T) {
 	tools := buildAPITools(apiSpec(t))
 	if len(tools) == 0 {
