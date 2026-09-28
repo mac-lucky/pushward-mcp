@@ -2,7 +2,7 @@
 
 > Full Markdown bundle of every PushWard docs page, auto-generated from the prerendered HTML at build time. Source: https://pushward.app
 
-> Generated: 2026-09-27T23:44:04.656Z
+> Generated: 2026-09-28T09:48:54.269Z
 
 ---
 <!-- source: https://pushward.app/docs/getting-started -->
@@ -2095,7 +2095,7 @@ Scheduled notifications need the `notifications` capability on your integration 
 | Status | Meaning |
 | --- | --- |
 | `scheduled` | Waiting for `send_at`. A repeating schedule comes back to this status after each send. |
-| `sending` | Being sent right now. It can no longer be canceled. |
+| `sending` | Being sent right now. A one-time schedule can no longer be canceled; a repeating one can still be stopped, and it ends after this send. |
 | `sent` | Delivered. `notification_id` is the notification it became, `sent_at` when it went out, and `delivery` / `reason` report the push outcome as on `POST /notifications`. A repeating schedule ends here once its `until` or `count` runs out. |
 | `failed` | Not sent. `failure_reason` is `quota_exceeded`, `key_revoked` or `internal_error`. For a repeating schedule, `key_revoked` ends the series; the other two skip one send and the series carries on. |
 
@@ -2181,7 +2181,7 @@ curl -X DELETE https://api.pushward.app/notifications/scheduled/42 \
   -H "Authorization: Bearer hlk_YOUR_TOKEN"
 ```
 
-A cancel returns `204`. While the notification is being sent it returns `409` with code `scheduled_notification.in_flight`. Deleting a repeating schedule stops the series. Deleting one that was already sent or failed only removes its record.
+A cancel returns `204` and deletes the schedule. Deleting a repeating schedule stops the series, even while one of its sends is going out: that send still arrives, and nothing after it. A one-time schedule that is being sent returns `409` with code `scheduled_notification.in_flight`. Deleting one that was already sent or failed only removes its record.
 
 ---
 
@@ -3497,6 +3497,16 @@ Point webhooks from 19+ services at relay.pushward.app - no deployment needed, j
 
 ](https://pushward.app/docs/integrations/relay)[
 
+![Universal Webhook logo](https://pushward.app/_app/immutable/assets/webhook.DfE0AVox.svg)
+
+### Universal Webhook
+
+Send any JSON webhook to relay.pushward.app. PushWard maps its fields onto a notification or Live Activity and asks you to confirm each new payload shape.
+
+
+
+](https://pushward.app/docs/integrations/universal-webhook)[
+
 ![Home Assistant logo](https://pushward.app/_app/immutable/assets/home-assistant.DHxJrpSK.svg)
 
 ### Home Assistant Recommended
@@ -3583,7 +3593,7 @@ Point your services' webhooks at `relay.pushward.app` and get push notifications
 
 ## Supported Providers
 
-                  
+                   
 
 ### Grafana
 
@@ -3602,7 +3612,7 @@ notification
 
 ## Public Relay
 
-PushWard hosts a public relay at `relay.pushward.app` - no deployment required. Just point your services at it with your integration key. It supports all 19 providers listed above; if you prefer to self-host, see the [self-hosted setup](#self-hosted) further down.
+PushWard hosts a public relay at `relay.pushward.app` - no deployment required. Just point your services at it with your integration key. It supports every provider listed above; if you prefer to self-host, see the [self-hosted setup](#self-hosted) further down.
 
 Example: Grafana webhook 
 
@@ -3613,6 +3623,10 @@ https://relay.pushward.app/grafana
 # HTTP Header:
 Authorization: Bearer hlk_YOUR_INTEGRATION_KEY
 ```
+
+### One URL for any service
+
+You can also post any webhook to the relay root, `https://relay.pushward.app/`. Payloads from the providers above are recognised and handled exactly as on their own route, except TrueNAS and Gitea or Forgejo events other than Actions runs, which need their own route. Anything else goes to the [universal webhook](https://pushward.app/docs/integrations/universal-webhook), which maps arbitrary JSON onto a notification or Live Activity and asks you once, from a notification, whether it picked the right fields. Where a service lets you set the path, its own route is still the better choice.
 
 ## How It Works
 
@@ -3747,6 +3761,189 @@ Three patterns depending on the provider:
 | `PUSHWARD_SERVER_ADDRESS` | HTTP listen address | `:8090` |
 
 Each provider can be individually enabled/disabled and configured with its own priority, cleanup delay, and stale timeout via environment variables or YAML config.
+
+---
+
+<!-- source: https://pushward.app/docs/integrations/universal-webhook -->
+
+# Universal Webhook
+
+Point any service's JSON webhook at the relay and get a notification or Live Activity on your iPhone. PushWard picks the fields to show and asks you once to confirm them.
+
+ℹ Info
+
+The universal webhook runs on the hosted [Relay](https://pushward.app/docs/integrations/relay), so there is nothing to deploy. It is for services the relay has no route for. Grafana, ArgoCD, the \*arr apps and the other supported providers get purpose-built Live Activities on their own routes, and the relay recognises most of them on this URL too.
+
+## Get Your Integration Key
+
+Use your default integration key from the PushWard app under **Settings -> Integration Key**, or [create a scoped key](https://pushward.app/docs/api/authentication#scoped-keys) for this integration.
+
+## Send a webhook
+
+Set the service's webhook URL to the relay root, `https://relay.pushward.app/`, and send your key as a Bearer token. The body can be any JSON object or array up to 1 MB.
+
+Send a webhook with curl 
+
+```
+curl -X POST "https://relay.pushward.app/?source=backup" \
+  -H "Authorization: Bearer hlk_..." \
+  -H "Content-Type: application/json" \
+  -d '{"job":"nightly-offsite","status":"running","progress":0.42,"message":"Uploading chunk 420 of 1000"}'
+```
+
+Plenty of services can only set a URL. Put the key in it as the Basic Auth password; the username is ignored:
+
+Key in the URL (Basic Auth) 
+
+```
+https://pushward:hlk_...@relay.pushward.app/?source=backup
+```
+
+### Name the sender
+
+`?source=` is optional, but set it. Mappings are kept per source, so two services that happen to send similar JSON don't share one. The name also shows up as the subtitle on cards and in the review's title, and each source's notifications get their own thread. It takes lowercase letters, digits and dashes, up to 32 characters; anything else is a `422`.
+
+## Services the relay already knows
+
+Before it maps anything, the relay checks whether the payload comes from one of its providers. A recognised payload is handled exactly as if it had been posted to that provider's route: same Live Activity, same query parameters, same response.
+
+| Recognised by | Services |
+| --- | --- |
+| The `User-Agent` header | Radarr, Sonarr, Prowlarr |
+| An `X-Gitea-Event` or `X-Forgejo-Event` header | Gitea and Forgejo Actions runs |
+| Fields in the JSON body | Grafana, ArgoCD, Backrest, Changedetection.io, Gatus, Jellyfin, Komodo, Overseerr / Jellyseerr, Paperless-ngx, Proxmox VE, Uptime Kuma, and Bazarr and Unmanic through Apprise |
+
+Detection is deliberately conservative, so when a service lets you set the path, use its own route anyway. Payloads from GitHub, GitLab, Bitbucket and Sentry (recognised by their event headers) always go to the universal mapper, and so do Lidarr, Readarr and Whisparr.
+
+⚠ Warning
+
+Two providers need their own route. TrueNAS is never detected, because the OpsGenie protocol it speaks is not TrueNAS's alone: keep its API URL at `https://relay.pushward.app/truenas`. Gitea and Forgejo events other than Actions runs are not detected either, and would be mapped as unknown JSON.
+
+## The first event of a new shape
+
+Anything the relay does not recognise goes to the universal mapper. It flattens the JSON into field paths such as `alerts[].labels.severity`, and the set of paths is the payload's shape. The first time a shape arrives for your key and source, the relay proposes a mapping, delivers the event with it straight away, and then sends a **Check mapping** notification that says what each field became. For an Alertmanager webhook posted with `?source=alertmanager`, it reads:
+
+Check mapping notification 
+
+```
+Check mapping: alertmanager
+Sent as an alert card.
+Title <- alerts[].labels.alertname = "DiskAlmostFull"
+Body <- alerts[].annotations.description = "The /data volume has 42 GB left."
+Link <- externalURL = "https://alertmanager.example.com"
+Matched on <- alerts[].fingerprint
+Severity <- alerts[].labels.severity = "critical" (critical: critical)
+Status <- status = "firing" (firing: ongoing)
+```
+
+It has three buttons, and each needs your iPhone unlocked:
+
+-   **Looks right** confirms the mapping.
+-   **Send raw instead** turns mapping off for this shape. Later events arrive as a plain notification listing their first six fields, with an Edit button in case you change your mind.
+-   **Edit** opens the mapping editor in Safari. See [below](#editor).
+
+Until you answer, events of that shape keep using the proposed mapping. The buttons work for 7 days; after that the proposal expires and the next event of the shape starts over with a fresh one. Only the first tap counts, so "Looks right" after "Send raw instead" changes nothing. Use the editor to change a decision.
+
+The review goes out even when `channels` suppresses notifications. It is not one of the webhook's own events, and without it the mapping could never be confirmed.
+
+## What a mapping holds
+
+A mapping says how the shape is delivered and which field fills each role. A role can be left empty.
+
+| Role | What it does |
+| --- | --- |
+| Title | The notification or card title. Also keys the card when nothing is matched on. |
+| Body | The notification text, and the state line of an alert card. |
+| Link | Opens when you tap the notification or card. |
+| Matched on | Events with the same value update one card, which is what keeps one card per alert or job. For a notification, a newer one replaces the older instead of stacking. |
+| Progress | Fills the bar on a progress card, read as a ratio (0 to 1) or a percentage (0 to 100). |
+| Severity | `critical`, `warning` or `info`. Sets the card's color and how loudly it notifies: critical is time-sensitive, info is passive. |
+| Status | `ongoing` or `ended`. An ended value closes the card. |
+
+Severity and status also carry a small table of what each value means, such as `firing: ongoing` and `resolved: ended`. Values that aren't in it are read the way the relay would guess them.
+
+There are three ways to deliver a shape:
+
+-   A **notification** is a one-off push.
+-   An **alert card** is an [alert](https://pushward.app/docs/live-activities/alert) Live Activity. The first event opens it and notifies once, later events update it, and an ended status resolves it in green with a quiet notification.
+-   A **progress card** is a [generic](https://pushward.app/docs/live-activities/generic) Live Activity with a progress bar. It opens without a notification. An ended status finishes it as "Done" with a quiet notification, or in red with a normal one when the status reads like a failure (`failed`, `error`, `timeout`, `cancelled`).
+
+A card needs a value to find it again by: the Matched on field, or the title when there is none. An event with neither is sent as a notification, and the response says `ignored_activity`.
+
+## Editing a mapping
+
+The Edit button opens a page on the relay where you pick which field fills each role, whether the shape arrives as a notification, an alert card or a progress card, and what each severity and status value means. At the bottom it lists every field in the payload with its type and a redacted sample value.
+
+Say the backup job from the first example gets proposed as a progress card titled with `message`. You would rather see the job name, so you set Title to `job` and Body to `message`, and save. **Save** confirms the mapping as shown, changed or not. **Send raw instead** turns mapping off for the shape.
+
+The page takes no integration key: the link is the credential, so treat it like one. It works for 30 days. When the notification is gone or the link has expired, ask for a new one:
+
+Request a new editor link 
+
+```
+curl -X POST https://relay.pushward.app/universal/links \
+  -H "Authorization: Bearer hlk_..."
+```
+
+The relay answers `202` and sends a notification with an **Open editor** button. It opens a list of every mapping for your key, each with its own edit link. The list works for 24 hours, and the edit links on it stop when it does. You can ask once a minute; a second request inside the minute gets a `429`.
+
+## Query parameters
+
+The relay's [per-request overrides](https://pushward.app/docs/integrations/relay#overrides) work here too, next to `source`, and pass through to whichever route handles the request.
+
+-   `channels=notification` never opens a card; card events arrive as notifications instead. `channels=activity` drops every notification except the review, so a shape mapped as a notification delivers nothing.
+-   `priority` (`0`\-`10`) sets the priority of cards the request opens.
+-   `level` overrides the interruption level of every notification the event sends. The review always arrives as `active`.
+
+Example: notifications only, time-sensitive 
+
+```
+https://relay.pushward.app/?source=alertmanager&channels=notification&level=time-sensitive
+```
+
+## Responses
+
+| Status | Meaning |
+| --- | --- |
+| `200` `{"status":"ok"}` | Delivered. |
+| `200` `ignored` | The payload had no fields to map, such as `{}`. The `detail` field says why. |
+| `200` `ignored_activity` | Sent as a notification, because a card had nothing to be keyed on. |
+| `400` | The body is not a JSON object or array, or `channels`, `priority` or `level` is invalid. Fix the request rather than retrying. |
+| `422` | `source` has characters other than lowercase letters, digits and dashes, or is longer than 32. |
+| `401` / `403` | The key is missing, or PushWard rejected it. The key is only checked when there is something to deliver, so a bad key shows up on the first event, not when you save the webhook. |
+| `413` | The body is over 1 MB. |
+| `429` | Rate limited, by the relay or by PushWard. |
+| `502` | PushWard refused the delivery or could not be reached. When it refuses a new shape's first event for good, the review still arrives, with the reason on its first line. |
+
+## Limits
+
+-   5 shapes can wait for review per key. A new shape past that is still delivered with a proposed mapping but not reviewed, and is proposed again on its next event.
+-   32 confirmed mappings and 32 raw shapes per key. Saving one more removes the least recently used.
+-   A mapping no webhook has used for 180 days is removed.
+-   Up to 256 fields per payload and 8 levels of nesting. Values are cut at 256 characters, links at 2048.
+-   Only the first element of an array is read. An Alertmanager group with three alerts is mapped from the first one.
+
+## What the relay keeps
+
+Your payloads are not stored. For each shape the relay keeps a hash of your key, the field paths, the type of value each field holds, and the mapping itself, including the status words it reads, like `firing`. So the editor can show examples, it also keeps one redacted sample value per field for 7 days after the proposal. After that the editor shows field names only.
+
+Credentials, tokens, email addresses, card numbers and phone numbers are masked in the review, in the raw notification and in the editor. The Matched on value leaves the relay only as a hash: the review names the field but never shows what is in it.
+
+## Self-hosted relay
+
+The universal webhook is off by default on a self-hosted relay, and while it is off, `POST /` still hands recognised payloads to their providers and answers `404` for everything else. To turn it on:
+
+| Environment Variable | Description | Default |
+| --- | --- | --- |
+| `PUSHWARD_UNIVERSAL_ENABLED` | Turn the universal webhook on (YAML: `providers.universal.enabled`) | `false` |
+| `PUSHWARD_UNIVERSAL_PUBLIC_URL` | The URL your iPhone reaches the relay at, with no trailing slash. The review buttons and editor links point here, so it has to be reachable from the phone (YAML: `providers.universal.public_url`) | \-- |
+| `PUSHWARD_UNIVERSAL_REVIEW_KEY` | Base64, at least 32 bytes decoded. Signs the review and editor links; rotating it voids every link already sent. `PUSHWARD_UNIVERSAL_REVIEW_KEY_FILE` reads it from a file instead (YAML: `providers.universal.review_key`) | \-- |
+
+Generate a review key 
+
+```
+openssl rand -base64 32
+```
 
 ---
 

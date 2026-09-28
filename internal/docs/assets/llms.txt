@@ -71,6 +71,7 @@ A fully-expanded Markdown bundle of every docs page lives at [/llms-full.txt](ht
 
 - [Integrations](https://pushward.app/docs/integrations): Connect PushWard to your existing tools and services. Each integration authenticates with your integration key.
 - [Relay](https://pushward.app/docs/integrations/relay): Point your services' webhooks at relay.pushward.app and get push notifications without Docker, self-hosting, or per-user configuration.
+- [Universal Webhook](https://pushward.app/docs/integrations/universal-webhook): Point any service's JSON webhook at the relay and get a notification or Live Activity on your iPhone. PushWard picks the fields to show and asks you once to confirm them.
 - [Grafana](https://pushward.app/docs/integrations/grafana): Turn Grafana alerts into a timeline Live Activity on your iPhone Lock Screen. See metric history at a glance with real-time updates while alerts are firing.
 - [Home Assistant](https://pushward.app/docs/integrations/home-assistant): A native HACS integration that bridges Home Assistant entity state changes to PushWard Live Activities on your iPhone.
 - [GitHub Actions](https://pushward.app/docs/integrations/github-actions): Track CI/CD workflow progress in real-time on your Lock Screen using the steps template.

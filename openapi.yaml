@@ -5851,7 +5851,7 @@ paths:
         - Notifications
   /notifications/scheduled/{id}:
     delete:
-      description: Cancels a pending scheduled notification, or stops a repeating one. Returns 409 while it is being sent. Deleting a sent or failed one only removes its record. An integration key can cancel only the ones it scheduled.
+      description: Cancels a pending scheduled notification, or stops a repeating one. A repeating one being sent right now stops after that send; a one-time one being sent returns 409. Deleting a sent or failed one only removes its record. An integration key can cancel only the ones it scheduled.
       operationId: cancelScheduledNotification
       parameters:
         - description: Scheduled notification ID
