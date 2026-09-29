@@ -2,7 +2,7 @@
 
 > Full Markdown bundle of every PushWard docs page, auto-generated from the prerendered HTML at build time. Source: https://pushward.app
 
-> Generated: 2026-09-28T09:48:54.269Z
+> Generated: 2026-09-29T07:20:40.683Z
 
 ---
 <!-- source: https://pushward.app/docs/getting-started -->
@@ -1622,6 +1622,20 @@ curl -X POST https://api.pushward.app/notifications \
   }'
 ```
 
+_Requires PushWard iOS app 1.15.0 or later._
+
+## In the app
+
+A notification's detail view in the PushWard app offers the same actions as its buttons, and shows what came of them:
+
+-   A `text_input` action gets a reply field pinned to the bottom of the detail, up to 1024 characters. A draft is kept when you leave the notification and come back.
+-   Each action shows its progress and result. One that did not go through can be tapped to try again. Once a recorded question is answered or has expired, its other choices lock and the chosen one is checked.
+-   The detail shows your answer or your last reply. In the notification list, a recorded question reads **Needs Reply** until it is answered, and any answered notification reads **Answered**, including answers given from the Lock Screen, a banner or Siri.
+
+### Opening links
+
+Before the app opens a link from a notification (the link or a link in the text of the detail view, or an action that opens its `url` instead of firing it silently, from the detail, the Lock Screen, a banner or the Mac), it shows where the link goes: the host or the app it opens, whether the connection is secure, and the full URL. You can open it, copy it, or trust the site so its links open without asking. **Settings > Links** turns the confirmation off and lists your trusted sites; both sync over iCloud. Buttons on widgets and Live Activities, and actions run from Siri or Shortcuts, open links directly.
+
 ### Example: Overseerr request approval
 
 A new movie request lands. Three buttons: **Approve** (silent webhook), **Deny** (red, silent webhook), and **View Details** (opens the app). Each `id` and `url` is unique to the request.
@@ -1839,6 +1853,8 @@ curl "https://api.pushward.app/notifications/answers/1234?wait=25" \
 
 Without `wait` the request returns right away. With `?wait=N` (0-25 seconds) it is held open while the answer is `pending` and returns as soon as it lands; if the time runs out first it returns with `status: "pending"`. Repeat the request to wait longer. Agents on the [MCP server](https://pushward.app/docs/api/mcp) can call `wait_for_answer` with the `notification_id`, which does this for them.
 
+From Home Assistant, `pushward.get_notification_answer` does the same inside an automation. It keeps waiting for as long as its `timeout` allows (up to 24 hours) and hands `action_id` and `text` to the next step. See [Home Assistant](https://pushward.app/docs/integrations/home-assistant#notification-answers) for an example.
+
 ## Rules
 
 -   Only actions with no `url` and no `foreground` are recorded. A url-less `foreground` action still just opens the app, and an action with a `url` keeps calling that URL and is never recorded. One notification can mix all three.
@@ -1853,6 +1869,10 @@ Without `wait` the request returns right away. With `?wait=N` (0-25 seconds) it 
 ℹ Info
 
 Versions of the PushWard iOS app before 1.5 show a `text_input` action as a plain button. The tap is still recorded, without `text`.
+
+_Requires PushWard iOS app 1.15.0 or later._
+
+The app shows the recorded answer on the notification's detail and marks the notification **Needs Reply** or **Answered** in the list; see [In the app](https://pushward.app/docs/notifications/actions#in-the-app).
 
 For a question that should stay on the Lock Screen until someone answers it, use an [approval Live Activity](https://pushward.app/docs/live-activities/approval). Its url-less options are recorded the same way, and `GET /activities/{slug}?wait=25` waits for the answer.
 
@@ -2076,14 +2096,16 @@ The response is the schedule, with an `id` you can use to check on it or cancel 
 }
 ```
 
+From Home Assistant, `pushward.send_notification` takes the same `send_at` and `recurrence` fields, with the time zone defaulting to Home Assistant's own, and returns the schedule's id to the automation. `pushward.list_scheduled_notifications` and `pushward.cancel_scheduled_notification` cover the rest. See [Home Assistant](https://pushward.app/docs/integrations/home-assistant#scheduled-notifications) for an example.
+
 ## Rules
 
--   `send_at` is an RFC 3339 timestamp. It must be in the future and at most 30 days ahead; otherwise the request fails with `400` and code `scheduled_notification.invalid`. Leaving it out fails the same way, unless the schedule has a `recurrence`. Any UTC offset works, and the response always reports it in UTC.
+-   `send_at` is an RFC 3339 timestamp. It must be in the future and at most 365 days ahead; otherwise the request fails with `400` and code `scheduled_notification.invalid`. Leaving it out fails the same way, unless the schedule has a `recurrence`. Any UTC offset works, and the response always reports it in UTC.
 -   The rest of the body is checked exactly like `POST /notifications`, when you schedule it, so a bad media URL or an unknown `activity_slug` fails right away rather than at send time.
 -   Up to 25 scheduled notifications can be waiting per account. One more returns `409` with code `scheduled_notification.limit_exceeded`. A repeating schedule takes one of those slots for its whole series.
 -   Scheduling is free. The send counts toward your notification quota at the moment it goes out, like any other notification. If the quota is used up by then, the notification is not sent and its status becomes `failed` with `failure_reason` `quota_exceeded`. If your quota is already used up when you schedule, the request fails with the same `429` (`quota.exceeded`) as `POST /notifications`.
 -   If the activity named in `activity_slug` was deleted before the send, the notification still goes out, without the link.
--   Revoking the integration key that created a scheduled notification cancels it, and so does removing the key's `notifications` capability (the schedule then fails with `key_revoked`).
+-   Revoking the integration key that created a scheduled notification deletes its pending schedules outright (they do not show up as `canceled`; one already being sent still goes out). Removing the key's `notifications` capability instead makes each schedule fail with `key_revoked` when it comes due.
 -   An integration key can list, read and cancel only the scheduled notifications it created.
 
 ℹ Info
@@ -2095,15 +2117,16 @@ Scheduled notifications need the `notifications` capability on your integration 
 | Status | Meaning |
 | --- | --- |
 | `scheduled` | Waiting for `send_at`. A repeating schedule comes back to this status after each send. |
-| `sending` | Being sent right now. A one-time schedule can no longer be canceled; a repeating one can still be stopped, and it ends after this send. |
+| `sending` | Being sent right now. It can still be canceled: the send is dropped unless it has already gone out. |
 | `sent` | Delivered. `notification_id` is the notification it became, `sent_at` when it went out, and `delivery` / `reason` report the push outcome as on `POST /notifications`. A repeating schedule ends here once its `until` or `count` runs out. |
 | `failed` | Not sent. `failure_reason` is `quota_exceeded`, `key_revoked` or `internal_error`. For a repeating schedule, `key_revoked` ends the series; the other two skip one send and the series carries on. |
+| `canceled` | Canceled before it was sent (a repeating schedule: before its next send). `canceled_at` is when. The content stays readable so the app can show what was canceled. |
 
-Sent and failed schedules stay readable for 7 days, then they are removed.
+Sent and failed schedules stay readable for 7 days, canceled ones for 24 hours, then they are removed.
 
 ## Repeating notifications
 
-Add a `recurrence` object to send the same notification on a cron schedule. The schedule keeps one `id` for the whole series and holds one pending slot: after each send it goes back to `scheduled` with the next `send_at`, and deleting it stops the series.
+Add a `recurrence` object to send the same notification on a cron schedule. The schedule keeps one `id` for the whole series and holds one pending slot: after each send it goes back to `scheduled` with the next `send_at`, and canceling it stops the series.
 
 Every weekday at 08:00 in Warsaw 
 
@@ -2163,7 +2186,7 @@ Set `until` or `count`, not both. With neither, the series runs until you cancel
 | `@daily` | Every day at midnight (same as `0 0 * * *`) |
 
 -   `send_at` is optional with a `recurrence`. It marks where the series starts: the first send is the first cron match at or after it, and it defaults to now. If you pass it, the rules above apply to it.
--   The first send must be at most 30 days ahead, so a rule whose first match is further out (a `@yearly` rule created in March, say) fails with `400` `scheduled_notification.invalid`. Later sends have no such limit.
+-   The first send must be at most 365 days ahead, so a rule whose first match is further out (one for February 29, say) fails with `400` `scheduled_notification.invalid`. Later sends have no such limit.
 -   Every send counts toward your notification quota when it goes out, like any other notification.
 -   If sends fall due during an outage, the pending one goes out when service returns and the rest are skipped, never sent in a burst.
 -   Daylight saving time: on the day the clocks go back, a time inside the repeated hour sends once. On the day they go forward, a time inside the skipped hour sends just after it (02:30 becomes 03:30), so the day is not lost.
@@ -2172,7 +2195,7 @@ A repeating schedule's response also carries `recurrence`, `occurrence` (sends s
 
 ## List, check and cancel
 
-`GET /notifications/scheduled` lists your schedules. By default (`?status=scheduled`) it returns the ones still waiting, soonest first; pass `sent`, `failed` or `all` for the others, latest first. `limit` (1-100, default 50) caps a page. When more remain, the response has a `next_cursor`: pass it back as `?cursor=` with the same `status` for the next page. The last page has no `next_cursor`, and a cursor only works with the status it came from. `GET /notifications/scheduled/{id}` returns one.
+`GET /notifications/scheduled` lists your schedules. By default (`?status=scheduled`) it returns the ones still waiting, soonest first; pass `sent`, `failed`, `canceled` or `all` for the others, latest first. `limit` (1-100, default 50) caps a page. When more remain, the response has a `next_cursor`: pass it back as `?cursor=` with the same `status` for the next page. The last page has no `next_cursor`, and a cursor only works with the status it came from. `GET /notifications/scheduled/{id}` returns one.
 
 Cancel a scheduled notification 
 
@@ -2181,7 +2204,15 @@ curl -X DELETE https://api.pushward.app/notifications/scheduled/42 \
   -H "Authorization: Bearer hlk_YOUR_TOKEN"
 ```
 
-A cancel returns `204` and deletes the schedule. Deleting a repeating schedule stops the series, even while one of its sends is going out: that send still arrives, and nothing after it. A one-time schedule that is being sent returns `409` with code `scheduled_notification.in_flight`. Deleting one that was already sent or failed only removes its record.
+A cancel returns `204` and the schedule becomes `canceled`: it is not sent, and a repeating schedule stops for good. It stays readable for 24 hours, then it is deleted. A schedule that is being sent right now is canceled too, unless that send has already gone out: then the notification still arrives, a repeating schedule is canceled after that send, and a one-time schedule counts as sent, so the cancel only removes its record. Canceling a canceled schedule again changes nothing, and canceling one that was already sent or failed only removes its record.
+
+Add `?purge=true` to delete the schedule outright, in any status, with no canceled record. Use it when you replace a schedule with a new one, so the old one does not show as canceled in the app.
+
+_Requires PushWard iOS app 1.15.0 or later._
+
+## In the app
+
+The clock button in the app's Notifications tab opens your scheduled notifications: the pending ones with their send time, a **Repeats** badge on repeating ones, and a **Recently Canceled** section with the cancels of the last 24 hours. Swipe a schedule (right-click it on the Mac) to cancel it; on a repeating one the action is **Stop Repeating**. **Settings > Customization > Show Canceled Schedules** hides the canceled section. The app lists and cancels; schedules are created through this API, [Home Assistant](https://pushward.app/docs/integrations/home-assistant#scheduled-notifications) or the [MCP server](https://pushward.app/docs/api/mcp).
 
 ---
 
@@ -2274,11 +2305,11 @@ Queue a notification for a later `send_at`, or repeat it on a cron schedule. The
 
 POST `/notifications/scheduled`
 
-Schedule a notification: a POST /notifications body plus send\_at (RFC 3339, in the future, at most 30 days ahead), or a recurrence (cron, timezone, until, count) that repeats it, with send\_at then optional as the start point. Returns 201 with the schedule. At most 25 pending per account (409 scheduled\_notification.limit\_exceeded); a repeating schedule holds one slot for its whole series. Each send counts toward the notification quota when it goes out; an account already out of quota gets 429 quota.exceeded.
+Schedule a notification: a POST /notifications body plus send\_at (RFC 3339, in the future, at most 365 days ahead), or a recurrence (cron, timezone, until, count) that repeats it, with send\_at then optional as the start point. Returns 201 with the schedule. At most 25 pending per account (409 scheduled\_notification.limit\_exceeded); a repeating schedule holds one slot for its whole series. Each send counts toward the notification quota when it goes out; an account already out of quota gets 429 quota.exceeded.
 
 GET `/notifications/scheduled`
 
-List schedules. ?status=scheduled (default) lists pending ones soonest first; sent, failed or all list latest first. ?limit=1-100 (default 50) per page; pass next\_cursor back as ?cursor= with the same status for the next page. A key sees only the schedules it created.
+List schedules. ?status=scheduled (default) lists pending ones soonest first; sent, failed, canceled or all list latest first. ?limit=1-100 (default 50) per page; pass next\_cursor back as ?cursor= with the same status for the next page. A key sees only the schedules it created.
 
 GET `/notifications/scheduled/{id}`
 
@@ -2286,7 +2317,7 @@ Get one schedule, including notification\_id, sent\_at and the push outcome once
 
 DELETE `/notifications/scheduled/{id}`
 
-Cancel a pending schedule (204); for a repeating schedule this stops the series. Returns 409 scheduled\_notification.in\_flight while it is being sent.
+Cancel a pending schedule (204); for a repeating schedule this stops the series. It stays readable as canceled for 24 hours, then it is deleted. ?purge=true deletes it outright with no canceled record.
 
 ## Notification Answers
 
@@ -3501,7 +3532,7 @@ Point webhooks from 19+ services at relay.pushward.app - no deployment needed, j
 
 ### Universal Webhook
 
-Send any JSON webhook to relay.pushward.app. PushWard maps its fields onto a notification or Live Activity and asks you to confirm each new payload shape.
+Send any JSON webhook to relay.pushward.app. Known services get a ready-made mapping; anything else arrives as a clean notification.
 
 
 
@@ -3626,7 +3657,7 @@ Authorization: Bearer hlk_YOUR_INTEGRATION_KEY
 
 ### One URL for any service
 
-You can also post any webhook to the relay root, `https://relay.pushward.app/`. Payloads from the providers above are recognised and handled exactly as on their own route, except TrueNAS and Gitea or Forgejo events other than Actions runs, which need their own route. Anything else goes to the [universal webhook](https://pushward.app/docs/integrations/universal-webhook), which maps arbitrary JSON onto a notification or Live Activity and asks you once, from a notification, whether it picked the right fields. Where a service lets you set the path, its own route is still the better choice.
+You can also post any webhook to the relay root, `https://relay.pushward.app/`. Payloads from the providers above are recognised and handled exactly as on their own route, except TrueNAS and Gitea or Forgejo events other than Actions runs, which need their own route. Anything else goes to the [universal webhook](https://pushward.app/docs/integrations/universal-webhook), which maps the payloads of dozens of known services through presets (some open an alert or progress card) and sends any other JSON as one plain notification. Where a service lets you set the path, its own route is still the better choice.
 
 ## How It Works
 
@@ -3768,7 +3799,7 @@ Each provider can be individually enabled/disabled and configured with its own p
 
 # Universal Webhook
 
-Point any service's JSON webhook at the relay and get a notification or Live Activity on your iPhone. PushWard picks the fields to show and asks you once to confirm them.
+Point any service's JSON webhook at the relay and get a notification on your iPhone. Services PushWard knows get a preset, with Live Activities for alerts.
 
 ℹ Info
 
@@ -3780,7 +3811,7 @@ Use your default integration key from the PushWard app under **Settings -> Integ
 
 ## Send a webhook
 
-Set the service's webhook URL to the relay root, `https://relay.pushward.app/`, and send your key as a Bearer token. The body can be any JSON object or array up to 1 MB.
+Set the service's webhook URL to the relay root, `https://relay.pushward.app/`, and send your key as a Bearer token. The body can be any JSON object or array up to 1 MB. There is nothing to set up or confirm: the first event arrives like every other.
 
 Send a webhook with curl 
 
@@ -3788,7 +3819,7 @@ Send a webhook with curl
 curl -X POST "https://relay.pushward.app/?source=backup" \
   -H "Authorization: Bearer hlk_..." \
   -H "Content-Type: application/json" \
-  -d '{"job":"nightly-offsite","status":"running","progress":0.42,"message":"Uploading chunk 420 of 1000"}'
+  -d '{"job":"nightly-offsite","status":"finished","message":"Uploaded 1000 chunks in 42 minutes"}'
 ```
 
 Plenty of services can only set a URL. Put the key in it as the Basic Auth password; the username is ignored:
@@ -3801,11 +3832,11 @@ https://pushward:hlk_...@relay.pushward.app/?source=backup
 
 ### Name the sender
 
-`?source=` is optional, but set it. Mappings are kept per source, so two services that happen to send similar JSON don't share one. The name also shows up as the subtitle on cards and in the review's title, and each source's notifications get their own thread. It takes lowercase letters, digits and dashes, up to 32 characters; anything else is a `422`.
+`?source=` is optional, but set it. Each source's notifications get their own thread, a payload with no title of its own is titled after it, and it is the subtitle on cards. A few presets only apply when the source names their service (see the table below). It takes lowercase letters, digits and dashes, up to 32 characters; anything else is a `422`.
 
 ## Services the relay already knows
 
-Before it maps anything, the relay checks whether the payload comes from one of its providers. A recognised payload is handled exactly as if it had been posted to that provider's route: same Live Activity, same query parameters, same response.
+Before anything else, the relay checks whether the payload comes from one of its providers. A recognised payload is handled exactly as if it had been posted to that provider's route: same Live Activity, same query parameters, same response.
 
 | Recognised by | Services |
 | --- | --- |
@@ -3813,87 +3844,80 @@ Before it maps anything, the relay checks whether the payload comes from one of 
 | An `X-Gitea-Event` or `X-Forgejo-Event` header | Gitea and Forgejo Actions runs |
 | Fields in the JSON body | Grafana, ArgoCD, Backrest, Changedetection.io, Gatus, Jellyfin, Komodo, Overseerr / Jellyseerr, Paperless-ngx, Proxmox VE, Uptime Kuma, and Bazarr and Unmanic through Apprise |
 
-Detection is deliberately conservative, so when a service lets you set the path, use its own route anyway. Payloads from GitHub, GitLab, Bitbucket and Sentry (recognised by their event headers) always go to the universal mapper, and so do Lidarr, Readarr and Whisparr.
+Detection is deliberately conservative, so when a service lets you set the path, use its own route anyway. Payloads from GitHub, GitLab, Bitbucket and Sentry (recognised by their event headers), and from Lidarr, Readarr and Whisparr (by their `User-Agent`), go to the universal webhook with the service's name as their source, unless you set one.
 
 ⚠ Warning
 
-Two providers need their own route. TrueNAS is never detected, because the OpsGenie protocol it speaks is not TrueNAS's alone: keep its API URL at `https://relay.pushward.app/truenas`. Gitea and Forgejo events other than Actions runs are not detected either, and would be mapped as unknown JSON.
+Two providers need their own route. TrueNAS is never detected, because the OpsGenie protocol it speaks is not TrueNAS's alone: keep its API URL at `https://relay.pushward.app/truenas`. Gitea and Forgejo events other than Actions runs are not detected either, and arrive as notifications.
 
-## The first event of a new shape
+## Presets
 
-Anything the relay does not recognise goes to the universal mapper. It flattens the JSON into field paths such as `alerts[].labels.severity`, and the set of paths is the payload's shape. The first time a shape arrives for your key and source, the relay proposes a mapping, delivers the event with it straight away, and then sends a **Check mapping** notification that says what each field became. For an Alertmanager webhook posted with `?source=alertmanager`, it reads:
+For services whose webhook format is documented, the relay ships a preset: which field is the title, the body, the link, what keys one alert, and what each status and severity value means. A preset is picked by the fields a payload has, never by guessing from its values, so every event of a kind arrives the same way. Alert-style services open an [alert](https://pushward.app/docs/live-activities/alert) Live Activity that updates as the alert changes and resolves in green when it clears. CI runs and deploys open a [progress card](https://pushward.app/docs/live-activities/generic) that finishes as "Done", or in red when the run failed.
 
-Check mapping notification 
+| Service | Events | Arrives as |
+| --- | --- | --- |
+| Prometheus Alertmanager | Alert groups | Alert card |
+| PagerDuty | Incidents (v3 webhooks) | Alert card |
+| Opsgenie | Alert actions | Alert card |
+| Grafana OnCall | Alert groups (outgoing webhook) | Alert card |
+| Atlassian Statuspage | Incidents and component changes | Alert card |
+| Azure Monitor | Alerts (common alert schema) | Alert card |
+| Google Cloud Monitoring | Incidents | Alert card |
+| Pingdom | Check state changes | Alert card |
+| updown.io | Checks going down and up | Notification |
+| New Relic  
+needs `?source=newrelic` | Issues (classic webhook body) | Alert card |
+| Better Stack  
+needs `?source=betterstack` | Incidents | Notification |
+| Netdata | Alerts, and node reachability with ?source=netdata | Notification |
+| Graylog | Event notifications | Notification |
+| Amazon SNS | Notifications, such as CloudWatch alarms | Notification |
+| Sentry | Issues, metric alerts, event alerts | Alert card for issues and metric alerts |
+| Honeybadger | Faults, uptime, check-ins | Alert card |
+| Rollbar | Items | Alert card |
+| GitHub | Pushes, pull requests, issues, releases, check runs, workflow runs | Progress card for runs |
+| GitLab | Pipelines, deployments, merge requests, issues, pushes | Progress card for pipelines and deployments |
+| Bitbucket | Pushes, pull requests, commit statuses | Notification |
+| Buildkite | Builds | Progress card |
+| Drone | Builds | Progress card |
+| Jenkins | Builds (Notification plugin) | Progress card |
+| CircleCI | Finished workflows and jobs | Notification |
+| Semaphore | Finished pipelines | Notification |
+| Netlify | Deploys | Progress card |
+| Docker Hub | Image pushes | Notification |
+| Harbor | Artifact pushes, scans and other events | Notification |
+| Flux | Notification controller events | Notification |
+| Lidarr | Grabs, imports, failures, health | Alert card for health |
+| Readarr | Grabs, imports, health | Notification |
+| Whisparr | Grabs, imports, health | Alert card for health |
+| Nextcloud | File, form and mail events (webhook\_listeners) | Notification |
+| Watchtower  
+needs `?source=watchtower` | Update reports (JSON template) | Notification |
 
-```
-Check mapping: alertmanager
-Sent as an alert card.
-Title <- alerts[].labels.alertname = "DiskAlmostFull"
-Body <- alerts[].annotations.description = "The /data volume has 42 GB left."
-Link <- externalURL = "https://alertmanager.example.com"
-Matched on <- alerts[].fingerprint
-Severity <- alerts[].labels.severity = "critical" (critical: critical)
-Status <- status = "firing" (firing: ongoing)
-```
+A service missing here still works: its events arrive as notifications, described next.
 
-It has three buttons, and each needs your iPhone unlocked:
+## Everything else: a notification
 
--   **Looks right** confirms the mapping.
--   **Send raw instead** turns mapping off for this shape. Later events arrive as a plain notification listing their first six fields, with an Edit button in case you change your mind.
--   **Edit** opens the mapping editor in Safari. See [below](#editor).
+A payload no preset knows becomes one notification. The relay flattens the JSON into field paths such as `data.check.name` and picks the field that reads most like a title, the one that reads most like a body, and a link, by their names and what they hold. When the payload has no title of its own, the source is the title. When it has no body, the body lists up to four of its most readable fields. For example, a payload of only `{"host":"nas-01","disk":"/srv","used":"93%","id":"8d3f5a1e-..."}` posted with `?source=disk-check` arrives as:
 
-Until you answer, events of that shape keep using the proposed mapping. The buttons work for 7 days; after that the proposal expires and the next event of the shape starts over with a fresh one. Only the first tap counts, so "Looks right" after "Send raw instead" changes nothing. Use the editor to change a decision.
-
-The review goes out even when `channels` suppresses notifications. It is not one of the webhook's own events, and without it the mapping could never be confirmed.
-
-## What a mapping holds
-
-A mapping says how the shape is delivered and which field fills each role. A role can be left empty.
-
-| Role | What it does |
-| --- | --- |
-| Title | The notification or card title. Also keys the card when nothing is matched on. |
-| Body | The notification text, and the state line of an alert card. |
-| Link | Opens when you tap the notification or card. |
-| Matched on | Events with the same value update one card, which is what keeps one card per alert or job. For a notification, a newer one replaces the older instead of stacking. |
-| Progress | Fills the bar on a progress card, read as a ratio (0 to 1) or a percentage (0 to 100). |
-| Severity | `critical`, `warning` or `info`. Sets the card's color and how loudly it notifies: critical is time-sensitive, info is passive. |
-| Status | `ongoing` or `ended`. An ended value closes the card. |
-
-Severity and status also carry a small table of what each value means, such as `firing: ongoing` and `resolved: ended`. Values that aren't in it are read the way the relay would guess them.
-
-There are three ways to deliver a shape:
-
--   A **notification** is a one-off push.
--   An **alert card** is an [alert](https://pushward.app/docs/live-activities/alert) Live Activity. The first event opens it and notifies once, later events update it, and an ended status resolves it in green with a quiet notification.
--   A **progress card** is a [generic](https://pushward.app/docs/live-activities/generic) Live Activity with a progress bar. It opens without a notification. An ended status finishes it as "Done" with a quiet notification, or in red with a normal one when the status reads like a failure (`failed`, `error`, `timeout`, `cancelled`).
-
-A card needs a value to find it again by: the Matched on field, or the title when there is none. An event with neither is sent as a notification, and the response says `ignored_activity`.
-
-## Editing a mapping
-
-The Edit button opens a page on the relay where you pick which field fills each role, whether the shape arrives as a notification, an alert card or a progress card, and what each severity and status value means. At the bottom it lists every field in the payload with its type and a redacted sample value.
-
-Say the backup job from the first example gets proposed as a progress card titled with `message`. You would rather see the job name, so you set Title to `job` and Body to `message`, and save. **Save** confirms the mapping as shown, changed or not. **Send raw instead** turns mapping off for the shape.
-
-The page takes no integration key: the link is the credential, so treat it like one. It works for 30 days. When the notification is gone or the link has expired, ask for a new one:
-
-Request a new editor link 
+A payload no preset knows 
 
 ```
-curl -X POST https://relay.pushward.app/universal/links \
-  -H "Authorization: Bearer hlk_..."
+Disk check
+Disk: /srv
+Host: nas-01
+Used: 93%
 ```
 
-The relay answers `202` and sends a notification with an **Open editor** button. It opens a list of every mapping for your key, each with its own edit link. The list works for 24 hours, and the edit links on it stop when it does. You can ask once a minute; a second request inside the minute gets a `429`.
+Ids, timestamps and links are left out of those lines, and anything that looks like a credential, token, email address, card or phone number is masked. Each event is picked on its own, so a notification never depends on an earlier one.
 
 ## Query parameters
 
 The relay's [per-request overrides](https://pushward.app/docs/integrations/relay#overrides) work here too, next to `source`, and pass through to whichever route handles the request.
 
--   `channels=notification` never opens a card; card events arrive as notifications instead. `channels=activity` drops every notification except the review, so a shape mapped as a notification delivers nothing.
+-   `channels=notification` never opens a card; card events arrive as notifications instead. `channels=activity` drops notifications, so a payload that would be a notification delivers nothing.
 -   `priority` (`0`\-`10`) sets the priority of cards the request opens.
--   `level` overrides the interruption level of every notification the event sends. The review always arrives as `active`.
+-   `level` overrides the interruption level of every notification the event sends.
 
 Example: notifications only, time-sensitive 
 
@@ -3906,28 +3930,23 @@ https://relay.pushward.app/?source=alertmanager&channels=notification&level=time
 | Status | Meaning |
 | --- | --- |
 | `200` `{"status":"ok"}` | Delivered. |
-| `200` `ignored` | The payload had no fields to map, such as `{}`. The `detail` field says why. |
+| `200` `ignored` | The payload had no fields, such as `{}`. The `detail` field says why. |
 | `200` `ignored_activity` | Sent as a notification, because a card had nothing to be keyed on. |
 | `400` | The body is not a JSON object or array, or `channels`, `priority` or `level` is invalid. Fix the request rather than retrying. |
 | `422` | `source` has characters other than lowercase letters, digits and dashes, or is longer than 32. |
 | `401` / `403` | The key is missing, or PushWard rejected it. The key is only checked when there is something to deliver, so a bad key shows up on the first event, not when you save the webhook. |
 | `413` | The body is over 1 MB. |
 | `429` | Rate limited, by the relay or by PushWard. |
-| `502` | PushWard refused the delivery or could not be reached. When it refuses a new shape's first event for good, the review still arrives, with the reason on its first line. |
+| `502` | PushWard refused the delivery or could not be reached. |
 
 ## Limits
 
--   5 shapes can wait for review per key. A new shape past that is still delivered with a proposed mapping but not reviewed, and is proposed again on its next event.
--   32 confirmed mappings and 32 raw shapes per key. Saving one more removes the least recently used.
--   A mapping no webhook has used for 180 days is removed.
--   Up to 256 fields per payload and 8 levels of nesting. Values are cut at 256 characters, links at 2048.
--   Only the first element of an array is read. An Alertmanager group with three alerts is mapped from the first one.
+-   Up to 256 fields per payload and 8 levels of nesting. Values are cut at 256 characters.
+-   Only the first element of an array is read. An Alertmanager group with three alerts is shown from the first one.
 
 ## What the relay keeps
 
-Your payloads are not stored. For each shape the relay keeps a hash of your key, the field paths, the type of value each field holds, and the mapping itself, including the status words it reads, like `firing`. So the editor can show examples, it also keeps one redacted sample value per field for 7 days after the proposal. After that the editor shows field names only.
-
-Credentials, tokens, email addresses, card numbers and phone numbers are masked in the review, in the raw notification and in the editor. The Matched on value leaves the relay only as a hash: the review names the field but never shows what is in it.
+Nothing about your payloads. Each event is mapped and delivered on its own and then forgotten. While a preset's card is open, the relay keeps a hash of your key and of the value that keys the card, so the next event finds it; that entry goes when the card ends.
 
 ## Self-hosted relay
 
@@ -3936,14 +3955,7 @@ The universal webhook is off by default on a self-hosted relay, and while it is 
 | Environment Variable | Description | Default |
 | --- | --- | --- |
 | `PUSHWARD_UNIVERSAL_ENABLED` | Turn the universal webhook on (YAML: `providers.universal.enabled`) | `false` |
-| `PUSHWARD_UNIVERSAL_PUBLIC_URL` | The URL your iPhone reaches the relay at, with no trailing slash. The review buttons and editor links point here, so it has to be reachable from the phone (YAML: `providers.universal.public_url`) | \-- |
-| `PUSHWARD_UNIVERSAL_REVIEW_KEY` | Base64, at least 32 bytes decoded. Signs the review and editor links; rotating it voids every link already sent. `PUSHWARD_UNIVERSAL_REVIEW_KEY_FILE` reads it from a file instead (YAML: `providers.universal.review_key`) | \-- |
-
-Generate a review key 
-
-```
-openssl rand -base64 32
-```
+| `PUSHWARD_UNIVERSAL_PRESETS` | Map the services above with their presets. Off, every payload arrives as a notification (YAML: `providers.universal.presets`) | `true` |
 
 ---
 
@@ -4224,10 +4236,150 @@ On Home Assistant restart, any tracked entity already in a start state automatic
 Beyond mirroring entities to Live Activities, the integration exposes services for the rest of the PushWard surface. Each needs the matching capability on your integration key - your default key has all three enabled:
 
 -   **iOS widgets** - add a **tracked widget** sub-entry (event- or poll-triggered, 10-3600 s) to push Home Screen widgets in the `value`, `progress`, `gauge`, `status`, and `stat_list` templates, or call `pushward.widget_refresh` to force a refresh and `pushward.delete_widget` to remove one. Needs the `widgets` capability.
--   **Push notifications** - the `pushward.send_notification` service sends a regular (non-Live-Activity) [push](https://pushward.app/docs/notifications) with title, body, level (including `critical`), actions, and rich media. Needs the `notifications` capability.
+-   **Push notifications** - the `pushward.send_notification` service sends a regular (non-Live-Activity) [push](https://pushward.app/docs/notifications) with title, body, level (including `critical`), actions, and rich media. It can also send the notification [later or on a repeating schedule](#scheduled-notifications), and its buttons can [record an answer](#notification-answers) for the automation to act on. Needs the `notifications` capability.
 -   **Transactional email** - the `pushward.send_email` service delivers [email](https://pushward.app/docs/email) to a verified recipient of your account. Needs the `emails` capability.
 
 For driving an activity straight from an automation (rather than tracking an entity), the create, update, end, and delete services are all available. Update actions are template-specific - `pushward.update_activity_generic`, `..._steps`, `..._gauge`, and so on - so each action's form only shows the fields that template uses.
+
+## Scheduled and repeating notifications
+
+Add `send_at` to `pushward.send_notification` and PushWard holds the notification and sends it at that time, at most 365 days ahead. A time picked in the action editor has no UTC offset, so it is read in Home Assistant's time zone. The send happens on PushWard's side: Home Assistant does not have to be running when it goes out. For reminders from the due dates on a to-do list, with no script to write, use a [tracked to-do list](#todo-reminders).
+
+To repeat it, add a `recurrence` object:
+
+| Field | Required | Description |
+| --- | --- | --- |
+| `cron` | Yes | A 5-field cron expression (minute, hour, day of month, month, day of week) or one of `@hourly`, `@daily`, `@weekly`, `@monthly`, `@yearly`. Sends must be at least 15 minutes apart. |
+| `timezone` | No | IANA time zone name, such as `Europe/Warsaw`. Defaults to the time zone configured in Home Assistant, so 08:00 means 08:00 at home, across daylight saving changes too. |
+| `until` | No | Date and time of the last allowed send. |
+| `count` | No | Number of sends, 1-1000. |
+
+-   Set `until` or `count`, not both. With neither, the series runs until you cancel it.
+-   With a `recurrence`, `send_at` is optional and marks where the series starts. Without it, the first send is the next time the cron expression matches, which must be within 365 days.
+-   A repeating notification keeps one id for the whole series and takes one of the 25 slots an account has for pending scheduled notifications.
+-   Scheduling is free. Each send counts toward your notification quota when it goes out.
+
+Set `response_variable` on the action to get the id back. A scheduled or repeating send returns `scheduled_notification_id`, `send_at` (the next send) and `recurrence`; one sent right away returns `notification_id` and `answerable`. The response only lives for that run, so the example below keeps the id in an `input_text` helper for the script that stops the reminder.
+
+Start and stop a weekday reminder 
+
+```
+script:
+  start_school_run_reminder:
+    alias: Start the school run reminder
+    sequence:
+      - action: pushward.send_notification
+        data:
+          title: School run in 15 minutes
+          body: Shoes, bags, lunch boxes.
+          source: home
+          recurrence:
+            cron: "0 8 * * 1-5"
+        response_variable: reminder
+      - action: input_text.set_value
+        target:
+          entity_id: input_text.school_run_reminder_id
+        data:
+          value: "{{ reminder.scheduled_notification_id }}"
+
+  stop_school_run_reminder:
+    alias: Stop the school run reminder
+    sequence:
+      - action: pushward.cancel_scheduled_notification
+        data:
+          scheduled_notification_id: "{{ states('input_text.school_run_reminder_id') | int }}"
+```
+
+`pushward.cancel_scheduled_notification` cancels the schedule, and the PushWard app shows it as canceled for 24 hours. For a repeating one that stops the whole series, even while one of its sends is going out: that send arrives only if it had already gone out, and nothing is sent after it. An id that no longer exists is ignored, so running the stop script twice does no harm.
+
+`pushward.list_scheduled_notifications` returns `scheduled_notifications`, a list. `status` picks which ones: `scheduled` (the default: still pending, including one being sent right now), `sent` and `failed` (both kept for 7 days), `canceled` (kept for 24 hours) or `all`. Repeating items also carry `recurrence`, `occurrence` (sends so far) and `last_sent_at`. It only sees the notifications scheduled with this integration's key.
+
+Statuses, failure reasons and more cron examples are on the [scheduled notifications](https://pushward.app/docs/notifications/scheduled) page.
+
+## Notification answers
+
+Give a notification action no `url` and PushWard records the tap itself: which button was chosen, and when. Add `text_input: true` to such an action and the person can type a reply, which is recorded with it (`text_input_placeholder` and `text_input_button_title` label the field). An action with `foreground: true` and no url only opens the app and is never recorded. When at least one action will be recorded, the `send_notification` response has `answerable: true`.
+
+`pushward.get_notification_answer` reads the answer for a `notification_id`. It waits up to `timeout` seconds (default 300, at most 86400) and returns as soon as the answer lands, so the automation pauses on that step and the person has that long to tap. `timeout: 0` reads once without waiting.
+
+Ask before closing the garage door 
+
+```
+automation:
+  - alias: Ask before closing the garage door
+    triggers:
+      - trigger: state
+        entity_id: cover.garage_door
+        to: open
+        for: "00:30:00"
+    actions:
+      - action: pushward.send_notification
+        data:
+          title: Garage door open
+          body: It has been open for 30 minutes. Close it?
+          level: time-sensitive
+          actions:
+            - id: close
+              title: Close
+              icon: door.garage.closed
+            - id: ignore
+              title: Ignore
+              destructive: true
+        response_variable: sent
+      - action: pushward.get_notification_answer
+        data:
+          notification_id: "{{ sent.notification_id }}"
+          timeout: 3600
+        response_variable: answer
+      - choose:
+          - conditions:
+              - condition: template
+                value_template: "{{ answer.action_id == 'close' }}"
+            sequence:
+              - action: cover.close_cover
+                target:
+                  entity_id: cover.garage_door
+```
+
+Ignore, and no answer within the hour, both leave the door as it is. The response carries these fields:
+
+| Field | Description |
+| --- | --- |
+| `answered` | `true` once someone has answered. |
+| `status` | `pending` or `answered`. |
+| `action_id` | The `id` of the action that was tapped. |
+| `text` | The typed reply, for a `text_input` action. |
+| `answered_at` | When the answer was recorded. |
+| `reason` | Only when the timeout ran out first. The response then has `answered: false` and `status: pending`. |
+
+-   The first answer wins. Once one device has answered, later taps on any device change nothing.
+-   Answers are kept for 30 days. An automation that should not sit and wait can store the `notification_id` and read the answer later with `timeout: 0`.
+-   A Home Assistant restart stops a waiting automation like any other. The answer stays on PushWard, so a later read with `timeout: 0` still finds it.
+
+How recording works, and its limits, is covered on the [notification answers](https://pushward.app/docs/notifications/answers) page.
+
+## To-do reminders
+
+A tracked to-do list turns the due dates on a Home Assistant to-do list into PushWard reminders. Add one under **Settings > Devices & Services > PushWard > Add tracked to-do list** and pick any `todo` entity, such as a Local To-do list. Every open item with a due date gets a [scheduled notification](#scheduled-notifications): the item's title is the push title, and its description is the body (the list name when it has no description).
+
+| Option | Default | Description |
+| --- | --- | --- |
+| Remind before due | 0 min | Send the reminder this long before the due time, up to 7 days. |
+| Time for date-only items | 09:00 | An item with a due date but no time is reminded at this time on that day. |
+| Notification level | `active` | `passive`, `active` or `time-sensitive`. |
+| Done button | On | Adds a Done button to the push. Tapping it completes the item in Home Assistant. |
+| Most reminders scheduled at once | 10 | 1-25. Only the soonest items are scheduled; the rest follow as those go out. |
+
+Say the list has a 30 minute lead and you add "Dentist", due tomorrow at 15:00. PushWard schedules a push titled Dentist for 14:30 tomorrow, with a Done button. Tap Done and the item is ticked off in Home Assistant; move the appointment to 16:00 and the reminder moves to 15:30.
+
+-   Adding or editing an item schedules or replaces its reminder right away. Completing or deleting it cancels the reminder.
+-   PushWard sends the push itself, so it arrives even if Home Assistant is offline at that time.
+-   An item due more than 365 days out is scheduled once it comes within range. An item whose reminder time has already passed gets its reminder within a minute, unless it is more than 90 minutes past due; then it gets none.
+-   If you stop a reminder in the PushWard app, the item stays open and gets no new reminder until you change its due date or time. Renaming an item whose reminder already went out does not send it again either.
+-   After a reminder goes out, the item stays open until you tick it off. With the Done button, Home Assistant watches for the tap for 24 hours.
+-   Every pending reminder takes one of the 25 slots the account has for scheduled notifications, shared with anything else that schedules them. Leave room below 25 if your automations schedule notifications too.
+-   Which reminder belongs to which item is kept in Home Assistant's storage, not in the item, so notes synced to other apps (Apple Reminders through the Home Assistant app's Reminders Sync, for example) stay clean.
+-   Removing the list, or the whole integration, cancels its pending reminders.
 
 ## Account Sensors
 
@@ -5921,6 +6073,20 @@ When a new activity goes `ongoing` and the user already has 5 live activities, t
 
 Priority is an integer from **0 to 10** (0 = lowest, 10 = highest).
 
+### Scheduled Notifications and Answers
+
+| Limit | Value |
+| --- | --- |
+| Pending scheduled notifications per user (a repeating schedule counts once) | **25** |
+| Furthest first `send_at` | **365** days ahead |
+| Sent and failed schedules readable for | **7** days |
+| Canceled schedules readable for | **24** hours |
+| Notification answers kept for | **30** days |
+| Longest `?wait` on an answer or activity read | **25** seconds |
+| Open `?wait` requests per account | **4** |
+
+See [Scheduled Notifications](https://pushward.app/docs/notifications/scheduled) and [Notification Answers](https://pushward.app/docs/notifications/answers).
+
 ### Field Length Limits
 
 | Field | Max Length |
@@ -6107,13 +6273,13 @@ Each bridge has its own README with full configuration and per-event behavior.
 | [github](./github/) | GitHub Actions workflow-run CI/CD progress (poller) | - (outbound only) | `ghcr.io/mac-lucky/pushward-github` |
 | [grafana](./grafana/) | Grafana alert timelines with Prometheus/VictoriaMetrics history + PromQL-polled iOS widgets | 8090 | `ghcr.io/mac-lucky/pushward-grafana` |
 | [sabnzbd](./sabnzbd/) | SABnzbd download + post-processing progress | 8090 | `ghcr.io/mac-lucky/pushward-sabnzbd` |
-| [relay](./relay/) | Multi-tenant webhook gateway (20 routes / 16 provider modules) | 8090 (+ 9090 metrics) | `ghcr.io/mac-lucky/pushward-relay` |
+| [relay](./relay/) | Multi-tenant webhook gateway: 20 provider routes, plus a universal route for any other JSON webhook | 8090 (+ 9090 metrics) | `ghcr.io/mac-lucky/pushward-relay` |
 
 Images are published to **GitHub Container Registry only** (`ghcr.io/mac-lucky/pushward-<bridge>`). A Docker Hub name is configured in CI but `push_to_dockerhub` is `false`, so no Docker Hub images are pushed.
 
 ### Relay providers
 
-The relay registers 20 webhook routes across 16 provider modules (`starr` serves Radarr, Sonarr, and Prowlarr; `gitea` serves Gitea and Forgejo). Every route returns `200 {"status":"ok"}` and is wrapped by the middleware chain (per-IP rate limit -> `hlk_` auth -> per-key rate limit). Most providers create Live Activities; the exceptions are noted.
+The relay registers 20 provider routes across 16 provider modules (`starr` serves Radarr, Sonarr, and Prowlarr; `gitea` serves Gitea and Forgejo), plus the universal route below. Every route returns `200 {"status":"ok"}` and is wrapped by the middleware chain (per-IP rate limit -> `hlk_` auth -> per-key rate limit). Most providers create Live Activities; the exceptions are noted.
 
 > The relay's `/forgejo` route and the standalone [forgejo](./forgejo/) bridge cover the same service by different
 > routes: the relay takes Forgejo's terminal `action_run_*` hooks, the bridge polls the API for live per-job
@@ -6141,6 +6307,7 @@ The relay registers 20 webhook routes across 16 provider modules (`starr` serves
 | Forgejo | `POST /forgejo` | Forgejo Actions run result (generic) - for live per-job progress use the [forgejo](./forgejo/) poller bridge instead |
 | Komodo | `POST /komodo` | Resolvable conditions (server + swarm health) as Live Activities, other alerts as push notifications (HTTP Basic auth via URL userinfo) |
 | TrueNAS | `POST /truenas/v2/alerts`, `DELETE /truenas/v2/alerts/{id}` | OpsGenie-compatible alert open/clear (GenieKey auth) |
+| Universal | `POST /`, `POST /universal` | Off by default. `POST /` hands a payload it recognises to that provider's route; anything else is mapped by one of 67 presets (Alertmanager, PagerDuty, GitHub, GitLab, Sentry and more) or sent as one plain notification |
 
 Auth styles differ by what each service's webhook UI allows: most providers accept `Authorization: Bearer hlk_...`; Radarr, Sonarr, Prowlarr, Bazarr, and Komodo use HTTP Basic Auth with the `hlk_` key as the **password** (username ignored); TrueNAS uses the OpsGenie `GenieKey` scheme. See the [relay README](./relay/) for per-provider setup snippets.
 
@@ -6265,7 +6432,7 @@ pushward-integrations/
   github/          # GitHub Actions poller - standalone bridge
   grafana/         # Grafana alert timelines + widgets - standalone bridge
   sabnzbd/         # SABnzbd webhook + download tracker - standalone bridge
-  relay/           # Multi-tenant webhook gateway (PostgreSQL) - 16 provider modules, 20 routes
+  relay/           # Multi-tenant webhook gateway (PostgreSQL) - 16 provider modules, 20 routes, universal route
   .github/workflows/   # Per-bridge CI/CD + shared lint + release orchestrator
 ```
 
@@ -6427,12 +6594,13 @@ A service POSTs its native webhook to a per-provider route (e.g. `POST /grafana`
 
 - **Multi-tenant by design** - tenants are identified by their `hlk_` integration key, extracted from every request by shared auth middleware. No per-service key configuration; one relay serves many users.
 - **20 webhook routes** across **16 configurable provider blocks** (the `starr` block serves Radarr, Sonarr, and Prowlarr; the `gitea` block serves Gitea and Forgejo). See [Providers](#providers).
+- **Universal webhook** - `POST /` routes a payload it recognises to its provider, and anything else to the universal route: 67 presets map documented payloads (Alertmanager, PagerDuty, GitHub, GitLab, Sentry and more) to alert or progress cards, and any other JSON becomes one plain notification. Off by default. See [Root route](#root-route-post-).
 - **Two-phase end lifecycle** - completion events send a final `ONGOING` update (so the result shows on the Dynamic Island), then `ENDED` after a short display delay. Used by ArgoCD, Radarr, Sonarr, Jellyfin, Paperless, Unmanic, Proxmox, Overseerr, Uptime Kuma, Gatus, Backrest, Gitea, Forgejo, Komodo, and TrueNAS. Grafana, Prowlarr, Bazarr, and Changedetection are fire-and-forget.
 - **Push notifications** - one-shot APNs alerts for events that don't fit a Live Activity (Grafana alerts, Bazarr subtitle downloads, Prowlarr grabs).
 - **Cross-provider notification threads** - Radarr/Sonarr/Overseerr/Jellyfin notifications about the same movie (TMDB id) or show (TVDB id) collapse into one iOS notification thread.
 - **PostgreSQL state store** - persistent alert grouping, sync tracking, and download dedup with a background TTL sweep every 30s.
 - **Per-tenant client pool** - LRU pool of PushWard API clients keyed by `hlk_` hash (up to 1,000 concurrent tenants), wrapped in a shared circuit breaker.
-- **Dual-layer rate limiting** - per-IP (5 req/s, burst 20) and per-key (1 req/s, burst 10) token buckets.
+- **Dual-layer rate limiting** - per-IP (5 req/s, burst 20; an IPv6 client's whole /64 shares one bucket) and per-key (1 req/s, burst 10) token buckets.
 - **Live credential rotation** - optional DB `password_file` watched via fsnotify; the connection pool resets automatically when the file changes.
 - **Built-in observability** - auto-generated OpenAPI 3.1 spec (`/openapi.json`) + interactive docs (`/docs`), Prometheus `/metrics` on a separate internal listener, and optional OpenTelemetry OTLP/gRPC tracing.
 - **Graceful shutdown** - flushes pending two-phase ENDED timers and waits for in-flight callbacks on SIGINT/SIGTERM.
@@ -6498,8 +6666,23 @@ Settings come from a YAML config file (`-config` flag, default `config.yml`) **o
 | `PUSHWARD_SERVER_METRICS_ADDRESS` | `server.metrics_address` | Listen address for the internal-only Prometheus metrics server (`GET /metrics`). Must differ from `server.address` or config load fails. Set empty to disable. | `:9090` |
 | `PUSHWARD_DATABASE_PASSWORD_FILE` | `database.password_file` | Path to a file holding the DB password; overrides the password in the DSN and is watched via fsnotify for live rotation (pool resets on change). | _(empty)_ |
 | `PUSHWARD_TRUSTED_PROXY_CIDRS` | `trusted_proxy_cidrs` | CIDRs of trusted reverse proxies. Only when `RemoteAddr` falls in one of these are `CF-Connecting-IP` / `X-Real-IP` / `X-Forwarded-For` honored for per-IP rate limiting. Comma-separated as env; a YAML list in the file. | _(empty)_ |
+| `PUSHWARD_STATE_KEY_MODE` | `state.key_mode` | How the tenant key is stored in `relay_state`: `compat` (the raw `hlk_` key, as 0.14 and earlier did) or `hashed` (its SHA-256). Switch to `hashed` once no 0.14 pod is left, see [State keys](#state-keys). | `compat` |
 | _(none)_ | `circuit_breaker.threshold` | Consecutive outbound-API failures before the breaker opens. Must be `>= 1`. | `5` |
 | _(none)_ | `circuit_breaker.cooldown` | How long the breaker stays open before allowing a probe. Must be `>= 1s`. | `30s` |
+
+### State keys
+
+Up to 0.14 the relay stored the raw `hlk_` key in the `user_key` column of `relay_state`, so anyone who could read the table could send as any tenant. The `hashed` mode stores the key's SHA-256 instead. Either mode still reads rows the other one wrote and deletes the leftover copy when it rewrites a row, so pods in different modes can share the table:
+
+1. Deploy this release as it comes. It defaults to `compat` and keeps writing raw keys, so 0.14 pods still running next to it during the rolling update find every row.
+2. Once no 0.14 pod is left, set `PUSHWARD_STATE_KEY_MODE=hashed`, or wait for a release that makes `hashed` the default. Raw rows stay readable until they expire.
+3. A later release stops reading raw rows at all. It must come at least 24 h after step 2: with the default `stale_timeout` values every row has a TTL of 24 h or less (check yours if you raised one).
+
+To roll back from step 2, go back to `compat` on this release, never straight to 0.14: a 0.14 pod reads raw keys only, so every row written in `hashed` mode is invisible to it until it expires.
+
+Until step 3 the store makes about twice the queries it used to: every write deletes the other copy first, and a read that misses tries the other key too.
+
+`SELECT count(*) FROM relay_state WHERE starts_with(user_key, 'hlk_')` shows how many raw rows are left.
 
 ### Telemetry (OpenTelemetry, optional)
 
@@ -6525,6 +6708,16 @@ All 16 provider blocks default to `enabled: true`. Env toggles exist **only** fo
 | `PUSHWARD_STARR_MODE` | `providers.starr.mode` | Radarr/Sonarr routing: `activity` (default), `notify`, or `smart`. | `activity` |
 | `PUSHWARD_ARGOCD_URL` | `providers.argocd.url` | ArgoCD UI base URL used to build deep links in activities. | _(empty)_ |
 | `PUSHWARD_ARGOCD_SYNC_GRACE_PERIOD` | `providers.argocd.sync_grace_period` | Defers activity creation for fast syncs that complete within this window. `PUSHWARD_SYNC_GRACE_PERIOD` is a legacy fallback. | `10s` |
+
+### Universal webhook
+
+The universal route is the only provider that starts disabled. See [Root route](#root-route-post-) for what it does.
+
+| Env Variable | Config Key | Description | Default |
+|---|---|---|---|
+| `PUSHWARD_UNIVERSAL_ENABLED` | `providers.universal.enabled` | Turn on the universal route. | `false` |
+| `PUSHWARD_UNIVERSAL_PRESETS` | `providers.universal.presets` | Map payloads from the services listed under [Presets](#presets) the way their preset says. Off, every payload the route gets is sent as a plain notification. | `true` |
+| `PUSHWARD_UNIVERSAL_RANKER` | `providers.universal.ranker` | Let the built-in ranker pick the title, body and link of a plain notification ahead of the heuristic. It only takes over when the weights shipped with the build passed their evaluation gate; otherwise the relay logs that at startup and keeps the heuristic. | `false` |
 
 ### Per-provider tuning (YAML only)
 
@@ -6591,6 +6784,7 @@ The key itself is only checked when the relay calls PushWard on your behalf, so 
 | POST | `/komodo` | Komodo Custom-alerter webhooks |
 | POST | `/truenas/v2/alerts` | TrueNAS OpsGenie create-alert calls |
 | DELETE | `/truenas/v2/alerts/{id}` | TrueNAS OpsGenie close-alert calls |
+| POST | `/` | Any webhook: handed to the provider that sent it, else to the universal route (see [Root route](#root-route-post-)) |
 | GET | `/health` | Liveness - returns `ok` |
 | GET | `/ready` | Readiness - `ready`, or `503` if the DB ping fails |
 | GET | `/openapi.json` | Auto-generated OpenAPI 3.1 spec |
@@ -6649,6 +6843,87 @@ https://relay.pushward.app/komodo?channels=notification&priority=8&level=passive
 
 Note the asymmetry: Live-Activity-only providers (ArgoCD, Proxmox, Gitea/Forgejo, Jellyfin playback) have no one-shot notification to fall back to, so `channels=notification` suppresses their output entirely; notification-only providers (Grafana, Prowlarr, Bazarr) have no Live Activity, so `channels=activity` suppresses theirs.
 
+### Root route: `POST /`
+
+Any of the services below can also post to the relay's root, `https://relay.pushward.app/`, instead of its own path. The relay looks at the headers and the top level of the JSON body, and a payload it recognises is handled exactly as if it had been posted to that provider's route: same auth, rate limits, query parameters, response, and the provider's `enabled` flag. When a service lets you set the path, use its own route anyway; detection is deliberately conservative.
+
+| Route | Recognised by |
+|---|---|
+| `/radarr`, `/sonarr`, `/prowlarr` | a `User-Agent` starting `Radarr/`, `Sonarr/` or `Prowlarr/`, and a string `eventType` |
+| `/gitea` | an `X-Gitea-Event` or `X-Forgejo-Event` header, and a `workflow_run` or `workflow_job` object |
+| `/forgejo` | an `X-Forgejo-Event` header and a `run` object |
+| `/grafana` | an `alerts` array and a `groupKey`, plus `"version": "1"` or a numeric `orgId` (Alertmanager's own `"version": "4"` is not Grafana) |
+| `/argocd` | a non-empty `app`, and `event` one of `sync-running`, `sync-succeeded`, `deployed`, `sync-failed`, `health-degraded` |
+| `/backrest` | an `event` like `CONDITION_SNAPSHOT_START` |
+| `/changedetection` | `diff_url`, plus `url` or `preview_url` |
+| `/gatus` | `endpoint_name`, and `status` `TRIGGERED` or `RESOLVED` |
+| `/jellyfin` | `NotificationType`, plus `ServerId`, `ServerName` or `ServerVersion` |
+| `/komodo` | a numeric `ts`, a boolean `resolved`, `level` `OK`/`WARNING`/`CRITICAL`, a `target` object, and a `data` object with a `type` |
+| `/overseerr` | `notification_type` `MEDIA_*`, `ISSUE_*` or `TEST_NOTIFICATION`, plus `subject` |
+| `/paperless` | `event` `added` or `updated` with a numeric `doc_id`, or `consumption_started` with a `filename` |
+| `/proxmox` | `type`, `title`, `message`, `severity` and `hostname`, with a Proxmox severity and notification type |
+| `/uptimekuma` | `msg`, with `heartbeat` (numeric `status`) and `monitor` objects, or both `null` (the test notification) |
+| `/bazarr`, `/unmanic` | Apprise's JSON (`version`, `title`, `message`, `type`) with a title starting `Bazarr` or `Unmanic` |
+
+TrueNAS is never detected: the OpsGenie protocol it speaks isn't TrueNAS's alone, so keep its API URL at `/truenas`. Gitea and Forgejo events other than Actions runs are not either, and neither are Lidarr, Readarr or Whisparr. A request with `X-GitHub-Event` (and no Gitea headers), `X-Gitlab-Event`, `X-Event-Key` (Bitbucket) or `Sentry-Hook-Resource` skips the body checks altogether.
+
+Anything the relay doesn't recognise goes to the universal route, and so does a recognised payload whose provider is disabled. A payload from a service with a preset (see [Presets](#presets)) is mapped the way the preset says, which can open and end a Live Activity. Any other JSON is sent as one notification: the relay picks the fields that read most like a title, a body and a link. When the payload has no title of its own the source is the title, and when it has no body the body lists up to four of its most readable fields, with ids, times and links left out and anything that looks secret masked. No mapping is stored and nothing asks you to confirm anything; only a preset's open card keeps state until it ends. The universal route is off by default (`providers.universal.enabled`, `PUSHWARD_UNIVERSAL_ENABLED`), and while it is off those requests get the `404` that `POST /` has always returned. Add `?source=` (lowercase letters, digits and `-`, up to 32) to name the sender: its notifications get their own thread, it titles a payload that has none, and a few presets only apply when it names their service:
+
+```
+https://relay.pushward.app/?source=alertmanager
+```
+
+`channels`, `priority` and `level` pass through to whichever route handles the request.
+
+The relay reads the body for detection only when the request carries an `hlk_` key and a JSON `Content-Type`, declares no `Content-Length` of 1 MB or more, and comes from an IP that is still under its rate limit. A missing or `text/plain` `Content-Type` counts as JSON, because it is rewritten to `application/json` before this check. A chunked body declares no length, so it is read up to 1 MB and passed on undetected if it gets that far. A request that fails any of these goes to the universal route, which answers `401` for a missing key, `413` for a body over the limit and `429` over the rate limit; with the universal route off, it gets `404`. `pushward_relay_root_dispatch_total{route,via}` counts where requests to `/` went and why: `header` or `body` for a detected sender, `disabled`, `veto`, `none`, or `skipped` for one whose body was not inspected.
+
+#### Presets
+
+A preset is a fixed mapping for one documented payload of a service: which field is the title, the body and the link, which value keys one alert or run, and what each status and severity value means. The relay picks one by the fields a payload has, never by its values, so every event of a kind arrives the same way. An alert preset opens an alert card that resolves when the alert clears; a progress preset opens a card for a CI run or deploy that ends as "Done", or in red when the run failed. The presets live in `internal/universal/presets/data/`, each with a link to the vendor page it was written from.
+
+A request whose headers name a sender with no route here (the Lidarr, Readarr and Whisparr `User-Agent`, `X-GitHub-Event`, `X-Gitlab-Event`, `X-Event-Key`, `Sentry-Hook-Resource`, and Gitea and Forgejo events other than Actions runs) gets that name as its `?source=` unless it set one, so the presets that need a source apply to it too.
+
+| Service | Presets | Live Activity |
+|---|---|---|
+| Amazon SNS | `aws-sns` | - |
+| Atlassian Statuspage | `statuspage-component`, `statuspage-incident` | `statuspage-component` alert, `statuspage-incident` alert |
+| Azure Monitor | `azure-monitor` | `azure-monitor` alert |
+| Better Stack | `betterstack-incident` (needs `?source=betterstack`) | - |
+| Bitbucket Cloud | `bitbucket-commit-status`, `bitbucket-pullrequest`, `bitbucket-push` | - |
+| Buildkite | `buildkite-build` | `buildkite-build` progress |
+| CircleCI | `circleci-job`, `circleci-workflow` | - |
+| Docker Hub | `dockerhub-push` | - |
+| Drone | `drone-build` | `drone-build` progress |
+| Flux | `flux-event` | - |
+| GitHub | `github-check-run`, `github-issues`, `github-pull-request`, `github-push`, `github-release`, `github-workflow-run` | `github-check-run` progress, `github-workflow-run` progress |
+| GitLab | `gitlab-deployment`, `gitlab-issue`, `gitlab-merge-request`, `gitlab-pipeline`, `gitlab-push` | `gitlab-deployment` progress, `gitlab-pipeline` progress |
+| Google Cloud Monitoring | `gcp-monitoring` | `gcp-monitoring` alert |
+| Grafana OnCall | `grafana-oncall` | `grafana-oncall` alert |
+| Graylog | `graylog` | - |
+| Harbor | `harbor-artifact`, `harbor-cloudevents` | - |
+| Honeybadger | `honeybadger-check-in`, `honeybadger-fault`, `honeybadger-uptime` | `honeybadger-check-in` alert, `honeybadger-fault` alert, `honeybadger-uptime` alert |
+| Jenkins Notification plugin | `jenkins-notification` | `jenkins-notification` progress |
+| Lidarr | `lidarr-download-failure`, `lidarr-download`, `lidarr-grab`, `lidarr-health` (needs `?source=lidarr`), `lidarr-import-failure` | `lidarr-health` alert |
+| Netdata | `netdata-alert`, `netdata-reachability` (needs `?source=netdata`) | - |
+| Netlify | `netlify-deploy` | `netlify-deploy` progress |
+| New Relic | `newrelic-classic` (needs `?source=newrelic`) | `newrelic-classic` alert |
+| Nextcloud | `nextcloud-form`, `nextcloud-mail`, `nextcloud-node-pair`, `nextcloud-node` | - |
+| Opsgenie | `opsgenie` | `opsgenie` alert |
+| PagerDuty | `pagerduty-incident` | `pagerduty-incident` alert |
+| Pingdom | `pingdom` | `pingdom` alert |
+| Prometheus Alertmanager | `alertmanager` | `alertmanager` alert |
+| Readarr | `readarr-download`, `readarr-grab`, `readarr-health` (needs `?source=readarr`) | - |
+| Rollbar | `rollbar-item` | `rollbar-item` alert |
+| Semaphore | `semaphore-pipeline` | - |
+| Sentry | `sentry-event-alert`, `sentry-issue`, `sentry-legacy-webhook`, `sentry-metric-alert` | `sentry-issue` alert, `sentry-metric-alert` alert |
+| updown.io | `updown` | - |
+| Watchtower | `watchtower` (needs `?source=watchtower`) | - |
+| Whisparr | `whisparr-download` (needs `?source=whisparr`), `whisparr-grab` (needs `?source=whisparr`), `whisparr-health` (needs `?source=whisparr`), `whisparr-v3-download`, `whisparr-v3-grab` | `whisparr-health` alert |
+
+For GitHub, subscribe to workflow runs rather than check runs: a check run opens one card per job. Jenkins's default "all" events end a build twice (COMPLETED and FINALIZED); the second is dropped while the card is ending. A preset table can mark a value as `update`: it changes an open card (an Opsgenie note, a Honeybadger comment) and never opens one.
+
+Set `PUSHWARD_UNIVERSAL_PRESETS=false` to send every payload as a plain notification instead.
+
 ---
 
 ### Grafana
@@ -6675,7 +6950,7 @@ Receives ArgoCD sync webhooks via argocd-notifications. Maps sync progress to a 
 
 **Events:** `sync-running` -> Step 1/3 Syncing, `sync-succeeded` -> Step 2/3 Rolling out, `deployed` -> Step 3/3 Deployed, `sync-failed` -> Sync Failed, `health-degraded` -> Degraded (transient warning during rollout).
 
-**Grace period:** `sync_grace_period` (default `10s`) defers activity creation for fast syncs that complete before the window expires, suppressing no-op notifications.
+**Grace period:** `sync_grace_period` (default `10s`) defers activity creation for fast syncs that complete before the window expires, suppressing no-op notifications. The timer lives in the pod that got `sync-running`. If that pod goes away, the replica that gets the next event creates the activity right away when the window ended more than 5 s ago, and otherwise keeps a timer of its own.
 
 **Setup:** Configure `argocd-notifications-cm` with a webhook service pointing to `POST /argocd`, Go-templated bodies per event, and trigger expressions. Store the `hlk_` key in `argocd-notifications-secret` and reference it as `$KEY_NAME` in the `Authorization: Bearer` header. Use `oncePer: app.status.operationState.startedAt` so every sync fires all events. See the [ArgoCD webhook docs](https://argo-cd.readthedocs.io/en/stable/operator-manual/notifications/services/webhook/). The webhook body needs only: `{"app":"...","event":"...","revision":"...","repo_url":"..."}`. Set `providers.argocd.url` to build deep links.
 
@@ -7202,7 +7477,7 @@ Emulates the OpsGenie alert service that TrueNAS ships with. TrueNAS opens an al
 
 ## Development
 
-Commands match CI (`go-cicd-reusable.yml`, which builds with `go_module_path: ./relay`, `go_test_args: -race -count=1 -v`).
+Commands match CI (`go-cicd-reusable.yml`, which builds with `go_module_path: ./relay`, `go_test_args: -race -count=1 -v -tags integration`).
 
 ```bash
 # Build (workspace root)
@@ -7225,7 +7500,7 @@ docker build -f relay/Dockerfile -t pushward-relay .
 docker build -f relay/Dockerfile --build-arg GO_VERSION=1.26.5 -t pushward-relay .
 ```
 
-> DB state tests (`relay/internal/state/...`) use testcontainers-go and require a running Docker daemon.
+> The Postgres state tests (`relay/internal/state/...`) sit behind the `integration` build tag, use testcontainers-go and need a running Docker daemon: `go test -tags integration ./relay/internal/state/... -race -count=1`.
 
 ## CI/CD & Releases
 
@@ -8382,8 +8657,9 @@ flowchart LR
 
 - **Live Activities**: when an entity enters a configured *start* state (e.g. the washer turns on), a Live Activity appears; on an *end* state it dismisses with a two-phase completion animation. Each tracked entity is a `tracked_entity` subentry.
 - **Widgets**: an entity (or several, for `stat_list`) is bound to a server-rendered Home/Lock Screen widget that re-renders on state change or on a poll interval. Each widget is a `tracked_widget` subentry.
+- **To-do reminders**: every open item with a due date on a tracked to-do list gets a push at its due time, sent by PushWard even while Home Assistant is down. Each list is a `tracked_todo` subentry.
 
-The two surfaces are independent (separate config, managers, and caches) and share only the API client and icon/color resolution.
+The surfaces are independent (separate config, managers, and caches) and share only the API client and icon/color resolution.
 
 ## Features
 
@@ -8392,6 +8668,7 @@ The two surfaces are independent (separate config, managers, and caches) and sha
 - **10 widget templates**: value, progress, gauge, status, stat_list, trend, countdown, battery, schedule, flow
 - **Two widget trigger modes**: `event` (state-change) or `poll` (10-3600 s interval), plus an optional
   staleness heartbeat that keeps a rarely-changing widget from greying out
+- **To-do reminders**: a push for every dated item on a to-do list, with a Done button that completes the item
 - **Account usage sensors**: notifications, Live Activity updates, widget updates, and emails consumed vs. plan limits, plus subscription tier
 - **Template auto-suggestion** picks the best activity template from entity domain and device class
 - **14 domain defaults**: pre-filled start/end states and a default icon per HA domain
@@ -8758,6 +9035,27 @@ Leave the field blank and the widget is never marked stale and no heartbeat runs
 
 How many `stat_list` rows are visible depends on the widget size. By default a medium or large Home Screen widget shows all 6 rows; the small widget shows 4 and the Lock Screen rectangular shows 3, packing in up to 6 when every value is very short (for example a single status glyph). You can change Row Density per widget in the PushWard iOS app: Compact packs two columns to show up to 6 rows on any size (labels may truncate on the small placements), and Comfortable keeps a single column with larger rows. To see all 6 rows with full labels, use a medium or large widget, or set Compact.
 
+### Add a tracked to-do list
+
+**Settings > Devices & Services > PushWard > Add tracked to-do list** picks a to-do list (any `todo` entity, such as a Local To-do list). Every open item on it with a due date gets a PushWard scheduled notification: the item's title is the push title, its description (or the list name) the body.
+
+| Option | Default | What it does |
+|--------|---------|--------------|
+| To-do list | | The `todo` entity to follow. Each list can be tracked once |
+| Remind before due | 0 min | Send the reminder this long before the due time (up to 7 days) |
+| Time for date-only items | 09:00 | An item with a due date but no time is reminded at this time on that day |
+| Notification level | active | passive, active or time-sensitive |
+| Done button | on | Adds a Done button to the reminder; tapping it completes the item in Home Assistant |
+| Most reminders scheduled at once | 10 | Only the soonest items are scheduled; the rest follow as those go out (the account holds at most 25 pending scheduled notifications across everything) |
+
+How it stays in step:
+
+- Adding or editing an item (title, description, due date) schedules or replaces its reminder right away; completing or deleting it cancels the reminder. PushWard sends the push at its time, so it arrives even if Home Assistant is offline then.
+- An item due more than 365 days out is scheduled once it comes within range. An item whose reminder time has already passed gets its reminder within a minute, unless it is more than 90 minutes past due; then it gets none.
+- If you stop a reminder in the PushWard app, the item stays open and gets no new reminder until you change its due date or time. Renaming an item whose reminder already went out does not send it again either.
+- After a reminder goes out, the item stays open for you to tick off. With the Done button, the integration watches for the tap for 24 hours: a long-lived request at a time for the first hour, then a quick check every 5 minutes.
+- The pairing between items and reminders is kept in Home Assistant's storage, not in the item, so notes synced to other apps stay clean. Removing the list (or the integration) cancels its pending reminders.
+
 ## Account sensors
 
 Each config entry registers **5 sensors** under one service device named **PushWard**, fed by a coordinator that polls `GET /auth/me` every **15 minutes**. They report your account's own consumption against its plan limits (these sensors stay *unavailable* on older servers that don't return usage to integration keys):
@@ -9078,11 +9376,12 @@ Send a push notification.
 | `media` | No | Object `{ url, type }`, type is image, video, or audio |
 | `icon_url` | No | Custom icon URL |
 | `metadata` | No | Arbitrary key-value pairs for custom app handling |
-| `actions` | No | List of action buttons `{ id, title, url, foreground, destructive, authentication_required, icon }`. `url` may use a custom scheme, and `method`/`headers`/`body` make the button a silent HTTP webhook (http(s) only). A silent http(s) action can also set `text_input: true` (with optional `text_input_placeholder`, `text_input_button_title`) to prompt for a typed reply, delivered to your webhook as JSON `{ "text": ... }` or via the `{{input}}` body placeholder |
+| `actions` | No | List of action buttons `{ id, title, url, foreground, destructive, authentication_required, icon }`. `url` may use a custom scheme, and `method`/`headers`/`body` make the button a silent HTTP webhook (http(s) only). Without a `url` (and without `foreground`) PushWard records the tap itself, see [Answers](#answers). A silent action can also set `text_input: true` (with optional `text_input_placeholder`, `text_input_button_title`) to prompt for a typed reply: recorded by PushWard when the action has no `url`, otherwise delivered to your webhook as JSON `{ "text": ... }` or via the `{{input}}` body placeholder |
 | `push` | No | Send as APNs push (default: true); when false, inbox-only |
-| `send_at` | No | Send later instead of now, at most 30 days ahead. A time without a UTC offset is read in Home Assistant's time zone |
+| `send_at` | No | Send later instead of now, at most 365 days ahead. A time without a UTC offset is read in Home Assistant's time zone |
+| `recurrence` | No | Repeat on a schedule: `{ cron, timezone, until, count }`, see below |
 
-With `send_at`, PushWard holds the notification and sends it at that time; it counts toward your notification quota when it is sent, not when you schedule it. Up to 20 can be waiting at once. Ask for a response to get the id you need to cancel it:
+With `send_at`, PushWard holds the notification and sends it at that time; it counts toward your notification quota when it is sent, not when you schedule it. Up to 25 can be waiting at once. Ask for a response to get the id you need to cancel it:
 
 ```yaml
 - action: pushward.send_notification
@@ -9096,7 +9395,53 @@ With `send_at`, PushWard holds the notification and sends it at that time; it co
     scheduled_notification_id: "{{ scheduled.scheduled_notification_id }}"
 ```
 
-`pushward.list_scheduled_notifications` returns them (`status`: scheduled by default, or sent, failed, all) as `scheduled_notifications`; it covers the ones this integration's key scheduled. Scheduling while your notification quota is already used up fails right away. Without `send_at`, a requested response carries the created `notification_id`.
+`recurrence` repeats the notification. `cron` is a 5-field expression (minute hour day-of-month month day-of-week) or `@hourly`, `@daily`, `@weekly`, `@monthly`, `@yearly`, read in `timezone` (defaults to Home Assistant's time zone; wall-clock times hold across DST changes). End the series with `until` (a date and time) or `count` (1-1000 sends), not both, or leave both out to repeat until you cancel it. Sends must be at least 15 minutes apart. With `recurrence`, `send_at` is optional and marks where the series starts. A series keeps one id and takes one of the 25 slots; each send counts toward your quota when it happens. Canceling it stops the whole series, even while a send is in progress. A canceled notification shows as canceled in the PushWard app for 24 hours:
+
+```yaml
+- action: pushward.send_notification
+  data:
+    title: "Standup in 10 minutes"
+    body: "Room 2 or the usual call."
+    recurrence:
+      cron: "50 8 * * 1-5"
+  response_variable: standup
+```
+
+`pushward.list_scheduled_notifications` returns them (`status`: scheduled by default, or sent, failed, canceled, all) as `scheduled_notifications`, soonest first for `scheduled` and latest first for the other statuses; it covers the ones this integration's key scheduled. Repeating ones also carry `recurrence`, `occurrence` (sends so far) and `last_sent_at`. Scheduling while your notification quota is already used up fails right away. Without `send_at` or `recurrence`, a requested response carries the created `notification_id` and `answerable`.
+
+#### Answers
+
+Give a notification actions without a `url` and PushWard records which one was tapped, and the typed reply of a `text_input` action. The response of `send_notification` says `answerable: true` when it will. `pushward.get_notification_answer` then waits for the answer:
+
+| Field | Required | Description |
+|-------|:--------:|-------------|
+| `notification_id` | Yes | `notification_id` from the `send_notification` response (or from a sent scheduled notification) |
+| `timeout` | No | Seconds to wait, default 300, up to 86400 (24 h). `0` reads the current answer without waiting |
+
+It returns `answered`, `status` (`answered` or `pending`), `action_id`, `text` and `answered_at`; when nobody answers in time, `answered` is false and `reason` says so. Answers are kept for 30 days, so an automation can also read one later with `timeout: 0` instead of waiting.
+
+```yaml
+- action: pushward.send_notification
+  data:
+    title: "Garage door is open"
+    body: "Close it?"
+    actions:
+      - id: close
+        title: Close
+      - id: leave
+        title: Leave it
+  response_variable: sent
+- action: pushward.get_notification_answer
+  data:
+    notification_id: "{{ sent.notification_id }}"
+    timeout: 3600
+  response_variable: answer
+- if: "{{ answer.action_id == 'close' }}"
+  then:
+    - action: cover.close_cover
+      target:
+        entity_id: cover.garage_door
+```
 
 ### `pushward.send_email`
 

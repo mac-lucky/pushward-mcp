@@ -16,6 +16,20 @@ lifecycle, a notification round-trip, a health check) and `get_pushward_docs` /
 `get_pushward_best_practices`, which load the API reference and integration notes into the
 agent's context.
 
+## Tools
+
+| Area | Tools |
+|---|---|
+| Live Activities | `create_activity`, `update_activity`, `end_activity`, `get_activity`, `list_activities`, `delete_activity`, `bulk_end_activities` |
+| Notifications | `create_notification`, `create_scheduled_notification` (one-off `send_at` up to 365 days ahead, or a cron `recurrence`), `list_scheduled_notifications`, `get_scheduled_notification`, `cancel_scheduled_notification` (`purge` deletes instead of leaving a 24-hour canceled record) |
+| Answers | `get_notification_answer` (can hold the request until the answer arrives), `wait_for_answer` (longer waits, for a notification or an approval Live Activity) |
+| Widgets | `create_widget`, `update_widget`, `get_widget`, `list_widgets`, `delete_widget` |
+| Account and health | `get_me`, `get_health`, `get_ready` |
+| Email | `send_email`, `test_email` |
+| Composite tests | `test_activity_lifecycle`, `test_notification`, `test_health`, `test_relay_provider` |
+| Docs | `get_pushward_docs`, `get_pushward_best_practices` |
+| Relay (stdio only) | `relay_<provider>` for ArgoCD, Backrest, Bazarr, Changedetection.io, Forgejo, Gatus, Gitea, Grafana, Jellyfin, Komodo, Overseerr, Paperless-ngx, Prowlarr, Proxmox VE, Radarr, Sonarr, Unmanic and Uptime Kuma |
+
 ## Using the hosted server
 
 The easiest path is the hosted remote endpoint. Point an OAuth-capable MCP client at:
