@@ -9,7 +9,8 @@ The tools wrap two HTTP surfaces:
 
 - `api.pushward.app` for activities, notifications, and widgets (the REST API).
 - `relay.pushward.app` for simulating webhooks from services like Grafana, Sonarr, Proxmox,
-  and a dozen others (`relay_<provider>` tools).
+  and a dozen others (`relay_<provider>` tools), or any other JSON payload posted to the
+  relay root URL (`relay_universal`).
 
 On top of those there are a few composite `test_` tools for common flows (a full activity
 lifecycle, a notification round-trip, a health check) and `get_pushward_docs` /
@@ -28,7 +29,7 @@ agent's context.
 | Email | `send_email`, `test_email` |
 | Composite tests | `test_activity_lifecycle`, `test_notification`, `test_health`, `test_relay_provider` |
 | Docs | `get_pushward_docs`, `get_pushward_best_practices` |
-| Relay (stdio only) | `relay_<provider>` for ArgoCD, Backrest, Bazarr, Changedetection.io, Forgejo, Gatus, Gitea, Grafana, Jellyfin, Komodo, Overseerr, Paperless-ngx, Prowlarr, Proxmox VE, Radarr, Sonarr, Unmanic and Uptime Kuma |
+| Relay (stdio only) | `relay_<provider>` for ArgoCD, Backrest, Bazarr, Changedetection.io, Forgejo, Gatus, Gitea, Grafana, Jellyfin, Komodo, Overseerr, Paperless-ngx, Prowlarr, Proxmox VE, Radarr, Sonarr, Unmanic and Uptime Kuma; `relay_universal` POSTs any other JSON to the relay root URL, which hands a payload it recognises to that provider's route and maps the rest through the universal presets or into one plain notification (`source`, `channels`, `priority` and `level` go on the query string) |
 
 ## Using the hosted server
 

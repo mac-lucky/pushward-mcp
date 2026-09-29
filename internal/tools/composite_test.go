@@ -7,6 +7,8 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -894,6 +896,150 @@ func TestHandleTestRelayProvider_ValidProvider(t *testing.T) {
 	}
 	if result.IsError {
 		t.Errorf("expected success, got error: %s", text)
+	}
+}
+
+// ---------- handleRelayUniversal ----------
+
+// Every call goes to the relay root, the public universal webhook URL, with
+// only the query parameters the caller set.
+func TestHandleRelayUniversal_PostsToRoot(t *testing.T) {
+	payload := `{"receiver":"pw","status":"firing","alerts":[{"labels":{"alertname":"DiskFull"}}],"n":1.5,"ok":true}`
+	cases := []struct {
+		name      string
+		args      map[string]any
+		wantQuery string
+	}{
+		{"payload only", map[string]any{"payload_json": payload}, ""},
+		{"source", map[string]any{"payload_json": payload, "source": "alertmanager"}, "source=alertmanager"},
+		{"every override", map[string]any{"payload_json": payload, "source": "my-app-2", "channels": "notification", "priority": 8, "level": "passive"},
+			"channels=notification&level=passive&priority=8&source=my-app-2"},
+		{"priority zero is sent", map[string]any{"payload_json": payload, "priority": 0}, "priority=0"},
+		{"activity at time-sensitive", map[string]any{"payload_json": payload, "channels": "activity", "level": "time-sensitive"}, "channels=activity&level=time-sensitive"},
+		{"empty strings dropped", map[string]any{"payload_json": payload, "source": "", "channels": "", "level": ""}, ""},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			var method, path, query, auth, ctype string
+			var body []byte
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				method, path, query = r.Method, r.URL.Path, r.URL.RawQuery
+				auth, ctype = r.Header.Get("Authorization"), r.Header.Get("Content-Type")
+				body, _ = io.ReadAll(r.Body)
+				w.Write([]byte(`{"status":"ok"}`))
+			}))
+			defer srv.Close()
+
+			result, err := handleRelayUniversal(context.Background(), newReq(c.args), client.NewRelayClient(srv.URL, "hlk_relay"))
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if result.IsError {
+				t.Fatalf("unexpected tool error: %s", resultText(t, result))
+			}
+			if got := resultText(t, result); got != `{"status":"ok"}` {
+				t.Errorf("result = %s, want the relay's response", got)
+			}
+			if method != http.MethodPost || path != "/" || query != c.wantQuery {
+				t.Errorf("request = %s %s?%s, want POST /?%s", method, path, query, c.wantQuery)
+			}
+			if auth != "Bearer hlk_relay" {
+				t.Errorf("Authorization = %q, want the relay token", auth)
+			}
+			if ctype != "application/json" {
+				t.Errorf("Content-Type = %q, want application/json", ctype)
+			}
+			var sent, want any
+			if err := json.Unmarshal(body, &sent); err != nil {
+				t.Fatalf("body is not JSON: %s", body)
+			}
+			_ = json.Unmarshal([]byte(payload), &want)
+			if !reflect.DeepEqual(sent, want) {
+				t.Errorf("body = %s, want the payload unchanged: %s", body, payload)
+			}
+		})
+	}
+}
+
+func TestHandleRelayUniversal_RejectsBeforeSending(t *testing.T) {
+	cases := []struct {
+		name string
+		args map[string]any
+		want string
+	}{
+		{"missing payload", map[string]any{"source": "x"}, "payload_json"},
+		{"array payload", map[string]any{"payload_json": `[{"a":1}]`}, "JSON object"},
+		{"invalid json", map[string]any{"payload_json": `{"a":`}, "JSON object"},
+		{"uppercase source", map[string]any{"payload_json": `{}`, "source": "Alertmanager"}, "invalid source"},
+		{"source with a slash", map[string]any{"payload_json": `{}`, "source": "../grafana"}, "invalid source"},
+		{"source too long", map[string]any{"payload_json": `{}`, "source": strings.Repeat("a", 33)}, "invalid source"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				t.Errorf("relay must not be called, got %s %s", r.Method, r.URL)
+			}))
+			defer srv.Close()
+
+			result, err := handleRelayUniversal(context.Background(), newReq(c.args), client.NewRelayClient(srv.URL, "tok"))
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if text := resultText(t, result); !result.IsError || !strings.Contains(text, c.want) {
+				t.Errorf("result = %q (IsError=%v), want an error mentioning %q", text, result.IsError, c.want)
+			}
+		})
+	}
+}
+
+// The relay answers 404 with the universal webhook off and 400 for a bad
+// channels, priority or level; the tool passes either on as an error that
+// keeps the relay's detail.
+func TestHandleRelayUniversal_RelayErrorIsError(t *testing.T) {
+	cases := []struct {
+		status int
+		detail string
+		args   map[string]any
+	}{
+		{http.StatusNotFound, "Not Found", map[string]any{"payload_json": `{"msg":"hi"}`}},
+		{http.StatusBadRequest, "invalid priority 11: must be 0-10", map[string]any{"payload_json": `{"msg":"hi"}`, "priority": 11}},
+	}
+	for _, c := range cases {
+		t.Run(strconv.Itoa(c.status), func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/problem+json")
+				w.WriteHeader(c.status)
+				fmt.Fprintf(w, `{"status":%d,"detail":%q}`, c.status, c.detail)
+			}))
+			defer srv.Close()
+
+			result, err := handleRelayUniversal(context.Background(), newReq(c.args), client.NewRelayClient(srv.URL, "tok"))
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			text := resultText(t, result)
+			if !result.IsError || !strings.Contains(text, strconv.Itoa(c.status)) || !strings.Contains(text, c.detail) {
+				t.Errorf("result = %q (IsError=%v), want an error carrying %d and %q", text, result.IsError, c.status, c.detail)
+			}
+		})
+	}
+}
+
+// relay_universal carries the shared relay credential like every relay tool,
+// so the hosted endpoint, which has no relay client, must not list it.
+func TestRelayUniversal_RegisteredOnlyWithRelay(t *testing.T) {
+	api := client.NewAPIClient("http://127.0.0.1:1", "tok")
+
+	withRelay := mcpserver.NewMCPServer("pushward-test", "0.0.0")
+	RegisterAll(withRelay, api, client.NewRelayClient("http://127.0.0.1:1", "tok"))
+	if withRelay.GetTool("relay_universal") == nil {
+		t.Error("relay_universal missing with a relay client")
+	}
+
+	noRelay := mcpserver.NewMCPServer("pushward-test", "0.0.0")
+	RegisterAll(noRelay, api, nil)
+	if noRelay.GetTool("relay_universal") != nil {
+		t.Error("relay_universal registered without a relay client")
 	}
 }
 

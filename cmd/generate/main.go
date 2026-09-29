@@ -783,6 +783,13 @@ func isFlat(spec *openAPISpec, schema schemaObj) bool {
 	return count <= 12
 }
 
+// handwrittenRelayRoutes are relay path segments whose tool name a hand-written
+// tool in internal/tools/composite.go already takes. /universal is hidden from
+// the relay's spec; if it ever appears, relay_universal must not be generated.
+var handwrittenRelayRoutes = map[string]bool{
+	"universal": true,
+}
+
 func buildRelayTools(spec *openAPISpec) []toolDef {
 	var tools []toolDef
 
@@ -797,9 +804,10 @@ func buildRelayTools(spec *openAPISpec) []toolDef {
 			// and its /{id} DELETE) carry path params the flat tool template
 			// cannot express, and their paths do not form valid Go identifiers.
 			// Providers are single-segment by convention; skip everything else.
-			// The root route (POST /) is no provider: it hands each payload to
-			// the route of whichever provider sent it, and those have tools.
-			if provider == "" || strings.ContainsAny(provider, "/{") {
+			// The root route (POST /) is no provider: it hands a payload to the
+			// route of the provider that sent it, or to the universal route, and
+			// the hand-written relay_universal posts there.
+			if provider == "" || strings.ContainsAny(provider, "/{") || handwrittenRelayRoutes[provider] {
 				continue
 			}
 			t := toolDef{

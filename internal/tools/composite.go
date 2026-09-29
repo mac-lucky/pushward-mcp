@@ -8,7 +8,9 @@ import (
 	"maps"
 	"math"
 	"net/http"
+	"net/url"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -279,7 +281,8 @@ func registerCompositeTools(s *mcpserver.MCPServer, api *client.APIClient, relay
 		},
 	)
 
-	// test_relay_provider - only registered when relay tools are enabled.
+	// test_relay_provider and relay_universal - only registered when relay
+	// tools are enabled.
 	if relayEnabled {
 		s.AddTool(
 			mcp.NewTool("test_relay_provider",
@@ -294,6 +297,41 @@ func registerCompositeTools(s *mcpserver.MCPServer, api *client.APIClient, relay
 			),
 			func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 				return handleTestRelayProvider(ctx, req, relay)
+			},
+		)
+
+		// relay_universal - hand-written: the relay's spec documents POST /
+		// with no provider name to build a tool from, so buildRelayTools skips
+		// it.
+		s.AddTool(
+			mcp.NewTool("relay_universal",
+				mcp.WithDescription("POST any JSON webhook payload to the relay root URL (https://relay.pushward.app/ in production), the one URL any service can be pointed at. Use it for a service with no relay_<provider> tool. A payload the relay recognises as one of its providers' is handled by that provider's route; detection sees only the body here, because this tool cannot send the Radarr, Sonarr or Prowlarr User-Agent or the Gitea and Forgejo event headers, so use relay_<provider> for those. Anything else goes to the universal webhook: a payload one of its presets knows (Alertmanager, PagerDuty, Opsgenie, GitHub, GitLab, Sentry and more) is mapped the way the preset says, some opening an alert or progress Live Activity that resolves or ends with a later event, and any other JSON becomes one plain notification with a title, body and link picked from its fields. Returns the relay's {status, detail}; a 404 means the relay has the universal webhook turned off, a 400 names a bad channels, priority or level value."),
+				mcp.WithDestructiveHintAnnotation(false),
+				mcp.WithOpenWorldHintAnnotation(true),
+				mcp.WithString("payload_json",
+					mcp.Required(),
+					mcp.Description("Full webhook JSON payload as a JSON object, any shape (the relay takes up to 1 MB)"),
+				),
+				mcp.WithString("source",
+					mcp.Description("Names the sender, sent as ?source= (lowercase letters, digits and -, up to 32). Only the universal webhook reads it: the sender's notifications get their own thread, it titles a payload that has no title, and some presets apply only when it names their service (betterstack, newrelic, watchtower, and a few lidarr, readarr, whisparr and netdata payloads)."),
+					mcp.MaxLength(32),
+					mcp.Pattern("^[a-z0-9-]*$"),
+				),
+				mcp.WithString("channels",
+					mcp.Description("Deliver on one surface only: notification never creates or updates a Live Activity, activity drops every push notification and keeps the Live Activity. A route with nothing for that surface sends nothing. Omit for both."),
+					mcp.Enum("activity", "notification"),
+				),
+				mcp.WithNumber("priority",
+					mcp.Description("Priority of the Live Activity the request opens, an integer (min: 0, max: 10)"),
+					mcp.Min(0), mcp.Max(10),
+				),
+				mcp.WithString("level",
+					mcp.Description("Interruption level of every notification the request sends"),
+					mcp.Enum("passive", "active", "time-sensitive", "critical"),
+				),
+			),
+			func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+				return handleRelayUniversal(ctx, req, relay)
 			},
 		)
 	}
@@ -971,6 +1009,32 @@ func handleTestRelayProvider(ctx context.Context, req mcp.CallToolRequest, relay
 		return mcp.NewToolResultError(fmt.Sprintf("relay %s: %v", provider, err)), nil
 	}
 	return mcp.NewToolResultText(fmt.Sprintf("relay %s: %s", provider, string(raw))), nil
+}
+
+func handleRelayUniversal(ctx context.Context, req mcp.CallToolRequest, relay *client.RelayClient) (*mcp.CallToolResult, error) {
+	payloadStr, err := req.RequireString("payload_json")
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
+	if !isJSONObject(payloadStr) {
+		return mcp.NewToolResultError("payload_json must be a JSON object"), nil
+	}
+	// Only what the caller set goes on the URL; the relay validates channels,
+	// priority and level itself and names the bad value in its 400.
+	q := url.Values{}
+	for _, name := range []string{"source", "channels", "level"} {
+		if v := req.GetString(name, ""); v != "" {
+			q.Set(name, v)
+		}
+	}
+	if v := req.GetFloat("priority", math.NaN()); !math.IsNaN(v) {
+		q.Set("priority", strconv.FormatFloat(v, 'f', -1, 64))
+	}
+	raw, err := relay.PostRoot(ctx, json.RawMessage(payloadStr), q)
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
+	return mcp.NewToolResultText(string(raw)), nil
 }
 
 // ---------- end_activity ----------

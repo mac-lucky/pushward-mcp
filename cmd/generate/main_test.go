@@ -317,6 +317,23 @@ func TestBuildRelayTools_SkipsRootRoute(t *testing.T) {
 	}
 }
 
+// relay_universal is hand-written. The relay hides /universal from its spec
+// today; if it stops hiding it, generation must still leave the name alone.
+func TestBuildRelayTools_SkipsHandwrittenRoutes(t *testing.T) {
+	spec := parseSpecJSON([]byte(`{"paths": {
+		"/universal": {"post": {"operationId": "post-universal-webhook", "summary": "Receive any JSON webhook"}},
+		"/grafana": {"post": {"operationId": "post-grafana-webhook", "summary": "Receive Grafana alert webhook"}}
+	}}`), "relay")
+	tools := buildRelayTools(spec)
+	if len(tools) != 1 || tools[0].Name != "relay_grafana" {
+		names := make([]string, 0, len(tools))
+		for _, tl := range tools {
+			names = append(names, tl.Name)
+		}
+		t.Errorf("buildRelayTools = %v, want only relay_grafana", names)
+	}
+}
+
 func TestBuildAPITools_ExpectedSet(t *testing.T) {
 	tools := buildAPITools(apiSpec(t))
 	if len(tools) == 0 {

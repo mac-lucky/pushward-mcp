@@ -139,6 +139,10 @@ Wiring an external service's webhook to PushWard through the relay
   the relay's provider endpoint (e.g. `POST /grafana`, `/sonarr`, `/proxmox`).
   The relay is multi-tenant: it extracts the caller's `hlk_` key from the
   `Authorization` header, so no per-user container or config is needed.
+- **A service with no endpoint of its own posts to the root**, `POST /`, with
+  `?source=<name>`. The relay maps payloads it has a preset for (Alertmanager,
+  PagerDuty, GitHub, GitLab, Sentry and more) and sends any other JSON as one
+  notification titled from its fields.
 - **Check the exact payload shape.** Each provider has its own request schema, so
   pull `get_pushward_docs(kind="relay_openapi")` and read the provider's
   `*Payload` schema before constructing test or production payloads. Some
@@ -152,8 +156,9 @@ Wiring an external service's webhook to PushWard through the relay
   one integration key per logical source and activities and limits stay scoped
   correctly.
 - **Test before shipping.** Use the MCP `test_relay_provider` tool (or
-  `relay_<provider>`) to send a representative payload and confirm the response
-  before pointing real traffic at it.
+  `relay_<provider>`, or `relay_universal` for the root) to send a
+  representative payload and confirm the response before pointing real traffic
+  at it.
 
 ## email
 
