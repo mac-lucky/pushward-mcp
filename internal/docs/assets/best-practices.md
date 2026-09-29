@@ -18,6 +18,11 @@ General rules for any code that talks to the PushWard REST API
   are prefixed `hlk_`. Never hard-code a key; read it from config/env (the
   bridges use the `PUSHWARD_*` env prefix, where env always overrides file
   config).
+- **Shell scripts and CI.** Before writing a bridge for a cron job, a script or a
+  workflow, check whether the `pushward` CLI
+  (github.com/mac-lucky/pushward-cli) or the GitHub Action
+  (`mac-lucky/pushward-action`) already covers it: both wrap every API
+  operation, with retries, the two-phase end and waiting for answers built in.
 - **Idempotency via slugs.** An activity is identified by a unique `slug`.
   `POST /activities` creates it; `PATCH /activities/{slug}` updates it. Make the
   slug deterministic from the source event (e.g. `grafana-<fingerprint>`,
@@ -95,8 +100,10 @@ Screen.
   to `state="ongoing"` with the *final* content (so the last visible frame is
   correct), pause briefly so the user sees it, then `PATCH` to `state="ended"` to
   dismiss. Ending in one step can flash a stale frame before dismissal. The MCP
-  `end_activity` tool follows this pattern and preserves the existing template,
-  updating only the state text. Mirror it.
+  `end_activity` tool does not do this: it is a single `PATCH` to `ended` that
+  keeps the stored content and sets only the state text, which is enough for a
+  manual end. The `pushward` CLI (`activity end --status`) does the full two
+  phases and is the one to mirror.
 - **State text.** On end, set a short human reason as the state text
   (e.g. "Completed", "Failed", "Cancelled") rather than leaving the last
   in-progress label.
