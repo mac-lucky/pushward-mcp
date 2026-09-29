@@ -26,6 +26,7 @@ agent's context.
 | Answers | `get_notification_answer` (can hold the request until the answer arrives), `wait_for_answer` (longer waits, for a notification or an approval Live Activity) |
 | Widgets | `create_widget`, `update_widget`, `get_widget`, `list_widgets`, `delete_widget` |
 | Account and health | `get_me`, `get_health`, `get_ready` |
+| Integration keys | `create_integration_key`, `list_integration_keys`, `update_integration_key`, `roll_integration_key`, `revoke_integration_key`. These only work with the account's default key: it can create keys up to its own scope and flags and manage the others, but not a default key. Keys it creates keep working after the default key is revoked or rolled, and after the MCP client is disconnected, so an agent connected with the default key can hand out credentials that outlive its session |
 | Email | `send_email`, `test_email` |
 | Composite tests | `test_activity_lifecycle`, `test_notification`, `test_health`, `test_relay_provider` |
 | Docs | `get_pushward_docs`, `get_pushward_best_practices` |
@@ -100,7 +101,8 @@ browser can't use the key. Relay tools stay off unless `PUSHWARD_MCP_RELAY_ENABL
 which also needs `PUSHWARD_RELAY_TOKEN`.
 
 Give the agent a dedicated integration key with only what it needs, for example
-notifications on and activity slugs limited to a prefix like `agent-*`.
+notifications on and activity slugs limited to a prefix like `agent-*`. That also keeps it
+away from the integration key tools, which need the default key.
 
 ## Generated code
 

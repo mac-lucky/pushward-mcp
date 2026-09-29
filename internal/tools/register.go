@@ -8,8 +8,8 @@ import (
 	"github.com/mac-lucky/pushward-mcp/internal/client"
 )
 
-// RegisterAll registers all MCP tools: API (generated), relay (generated), and
-// composite. A nil relay (the default in http/remote mode) skips the relay tools
+// RegisterAll registers all MCP tools: API (generated), relay (generated),
+// composite and integration key management. A nil relay (the default in http/remote mode) skips the relay tools
 // and the relay-dependent composite tools, so a multi-tenant endpoint never
 // exposes the shared server-side relay credential.
 func RegisterAll(s *mcpserver.MCPServer, api *client.APIClient, relay *client.RelayClient) {
@@ -18,5 +18,6 @@ func RegisterAll(s *mcpserver.MCPServer, api *client.APIClient, relay *client.Re
 		registerRelayTools(s, relay)
 	}
 	registerCompositeTools(s, api, relay)
+	registerIntegrationKeyTools(s, api)
 	registerDocsTools(s)
 }

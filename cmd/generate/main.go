@@ -336,6 +336,14 @@ var skipOperations = map[string]bool{
 	"listScheduledNotifications":  true,
 	"getNotificationAnswer":       true,
 	"cancelScheduledNotification": true,
+	// Integration key management, hand-written in integration_keys.go: the
+	// generator would drop the activity_slugs string array, cannot send the
+	// bodyless roll POST, and would mark roll as non-destructive.
+	"createIntegrationKey": true,
+	"listIntegrationKeys":  true,
+	"revokeIntegrationKey": true,
+	"updateIntegrationKey": true,
+	"rollIntegrationKey":   true,
 }
 
 // ignoredQueryParams lists query parameters a generated tool deliberately

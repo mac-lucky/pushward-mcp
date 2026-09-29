@@ -459,3 +459,79 @@ func (c *APIClient) DeleteWidget(ctx context.Context, slug string) error {
 	_, _, err := c.DoJSON(ctx, http.MethodDelete, "/widgets/"+slug, nil)
 	return err
 }
+
+var keyIDPattern = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`)
+
+// integrationKeyPath rejects anything but a hyphenated UUID before it is
+// spliced into the path.
+func integrationKeyPath(id string) (string, error) {
+	if !keyIDPattern.MatchString(id) {
+		return "", fmt.Errorf("invalid key id %q: must be a UUID from list_integration_keys", id)
+	}
+	return "/integrations/keys/" + id, nil
+}
+
+// IntegrationKeyFields are the settable fields of an integration key. Nil
+// fields are omitted: on create the server default applies, on update the
+// stored value stays. A non-nil ActivitySlugs pointing at an empty slice is
+// sent as [] and removes the key's slug restriction, which is different from
+// omitting it.
+type IntegrationKeyFields struct {
+	Scope         *string   `json:"scope,omitempty"`
+	ActivitySlugs *[]string `json:"activity_slugs,omitempty"`
+	Notifications *bool     `json:"notifications,omitempty"`
+	Widgets       *bool     `json:"widgets,omitempty"`
+	Emails        *bool     `json:"emails,omitempty"`
+}
+
+// CreateIntegrationKeyInput is the request body for POST /integrations/keys.
+// Only the account's default key may call it, and the new key cannot have a
+// higher scope or a capability the default key lacks.
+type CreateIntegrationKeyInput struct {
+	Name string `json:"name"`
+	IntegrationKeyFields
+}
+
+// CreateIntegrationKey creates a key; the response carries its secret once.
+func (c *APIClient) CreateIntegrationKey(ctx context.Context, input CreateIntegrationKeyInput) (json.RawMessage, error) {
+	raw, _, err := c.DoJSON(ctx, http.MethodPost, "/integrations/keys", input)
+	return raw, err
+}
+
+// ListIntegrationKeys lists the account's active keys, without secrets.
+func (c *APIClient) ListIntegrationKeys(ctx context.Context) (json.RawMessage, error) {
+	raw, _, err := c.DoJSON(ctx, http.MethodGet, "/integrations/keys", nil)
+	return raw, err
+}
+
+// RevokeIntegrationKey revokes a key.
+func (c *APIClient) RevokeIntegrationKey(ctx context.Context, id string) error {
+	path, err := integrationKeyPath(id)
+	if err != nil {
+		return err
+	}
+	_, _, err = c.DoJSON(ctx, http.MethodDelete, path, nil)
+	return err
+}
+
+// UpdateIntegrationKey changes a key's scope, slug restriction or capabilities
+// (PATCH /integrations/keys/{key_id}).
+func (c *APIClient) UpdateIntegrationKey(ctx context.Context, id string, fields IntegrationKeyFields) (json.RawMessage, error) {
+	path, err := integrationKeyPath(id)
+	if err != nil {
+		return nil, err
+	}
+	raw, _, err := c.DoJSON(ctx, http.MethodPatch, path, fields)
+	return raw, err
+}
+
+// RollIntegrationKey replaces a key's secret; the response carries the new
+// one once. The endpoint takes no body.
+func (c *APIClient) RollIntegrationKey(ctx context.Context, id string) (json.RawMessage, error) {
+	path, err := integrationKeyPath(id)
+	if err != nil {
+		return nil, err
+	}
+	raw, _, err := c.DoJSON(ctx, http.MethodPost, path+"/roll", nil)
+	return raw, err
+}

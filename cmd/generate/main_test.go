@@ -357,6 +357,11 @@ func TestBuildAPITools_ExpectedSet(t *testing.T) {
 	if _, ok := byName["get_activity"]; ok {
 		t.Error("get_activity should be skipped (handled by composite tool with include_log_backlog)")
 	}
+	for _, name := range []string{"create_integration_key", "list_integration_keys", "revoke_integration_key", "update_integration_key", "roll_integration_key"} {
+		if _, ok := byName[name]; ok {
+			t.Errorf("%s should be skipped (hand-written in integration_keys.go)", name)
+		}
+	}
 	// create_activity has no content field; only the widget/activity updates do.
 	if byName["create_activity"].ContentJSON {
 		t.Error("create_activity should not use content_json (no content field)")
