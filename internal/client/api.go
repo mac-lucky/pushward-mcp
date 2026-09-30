@@ -471,32 +471,24 @@ func integrationKeyPath(id string) (string, error) {
 	return "/integrations/keys/" + id, nil
 }
 
-// IntegrationKeyPermissions is the permissions member of a key create or
-// update: one level per resource. Nil levels are omitted; on create the server
-// gives them none, on update the stored level stays.
-type IntegrationKeyPermissions struct {
-	Activities    *string `json:"activities,omitempty"`
-	Notifications *string `json:"notifications,omitempty"`
-	Widgets       *string `json:"widgets,omitempty"`
-	Emails        *string `json:"emails,omitempty"`
-}
-
 // IntegrationKeyFields are the settable fields of an integration key. Nil
 // fields are omitted: on create the server default applies, on update the
-// stored value stays. A non-nil slug list pointing at an empty slice is sent
-// as [] and removes that restriction, which is different from omitting it.
+// stored value stays. Permissions maps a resource to its level; a resource
+// left out gets none on create and keeps its stored level on update. A
+// non-nil slug list pointing at an empty slice is sent as [] and removes that
+// restriction, which is different from omitting it.
 // ExpiresAt is sent verbatim when set: an RFC 3339 string, or null to remove
 // the expiry on update.
 type IntegrationKeyFields struct {
-	Permissions   *IntegrationKeyPermissions `json:"permissions,omitempty"`
-	ActivitySlugs *[]string                  `json:"activity_slugs,omitempty"`
-	WidgetSlugs   *[]string                  `json:"widget_slugs,omitempty"`
-	ExpiresAt     json.RawMessage            `json:"expires_at,omitempty"`
+	Permissions   map[string]string `json:"permissions,omitempty"`
+	ActivitySlugs *[]string         `json:"activity_slugs,omitempty"`
+	WidgetSlugs   *[]string         `json:"widget_slugs,omitempty"`
+	ExpiresAt     json.RawMessage   `json:"expires_at,omitempty"`
 }
 
 // IsZero reports whether no field is set.
 func (f IntegrationKeyFields) IsZero() bool {
-	return f.Permissions == nil && f.ActivitySlugs == nil && f.WidgetSlugs == nil && len(f.ExpiresAt) == 0
+	return len(f.Permissions) == 0 && f.ActivitySlugs == nil && f.WidgetSlugs == nil && len(f.ExpiresAt) == 0
 }
 
 // CreateIntegrationKeyInput is the request body for POST /integrations/keys.

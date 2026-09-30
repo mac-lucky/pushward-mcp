@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"maps"
 	"slices"
 	"time"
 
@@ -27,25 +28,24 @@ import (
 // notifications/widgets/emails booleans the API still accepts; the server
 // refuses a body that mixes the two.
 
-// keyResource is one resource of a key's permissions and its levels, weakest
-// first.
+// keyResource is one resource's levels, weakest first, and their description.
 type keyResource struct {
-	resource string
-	levels   []string
-	doc      string
+	levels []string
+	doc    string
 }
 
-var integrationKeyLevels = []keyResource{
-	{"activities", []string{"none", "read", "update", "manage"}, "read: list and get activities; update: also PATCH them; manage: also create and delete them"},
-	{"notifications", []string{"none", "send", "schedule"}, "send: POST /notifications and read answers; schedule: also scheduled notifications"},
-	{"widgets", []string{"none", "read", "write"}, "read: list and get widgets; write: also create, update and delete them"},
-	{"emails", []string{"none", "send"}, "send: send transactional emails to verified recipients"},
+// integrationKeyLevels maps each resource of a key's permissions to its levels.
+var integrationKeyLevels = map[string]keyResource{
+	"activities":    {[]string{"none", "read", "update", "manage"}, "read: list and get activities; update: also PATCH them; manage: also create and delete them"},
+	"notifications": {[]string{"none", "send", "schedule"}, "send: POST /notifications and read answers; schedule: also scheduled notifications"},
+	"widgets":       {[]string{"none", "read", "write"}, "read: list and get widgets; write: also create, update and delete them"},
+	"emails":        {[]string{"none", "send"}, "send: send transactional emails to verified recipients"},
 }
 
 func permissionsParam(doc string) mcp.ToolOption {
 	props := map[string]any{}
-	for _, l := range integrationKeyLevels {
-		props[l.resource] = map[string]any{"type": "string", "enum": l.levels, "description": l.doc}
+	for resource, l := range integrationKeyLevels {
+		props[resource] = map[string]any{"type": "string", "enum": l.levels, "description": l.doc}
 	}
 	return mcp.WithObject("permissions", mcp.Description(doc), mcp.Properties(props))
 }
@@ -228,7 +228,7 @@ func integrationKeyFields(req mcp.CallToolRequest) (f client.IntegrationKeyField
 // optionalPermissions returns nil when permissions is omitted and checks every
 // level against its resource's enum before it reaches the server. An empty
 // object is refused: on create it would silently mean "no access at all".
-func optionalPermissions(req mcp.CallToolRequest) (*client.IntegrationKeyPermissions, error) {
+func optionalPermissions(req mcp.CallToolRequest) (map[string]string, error) {
 	v, ok := req.GetArguments()["permissions"]
 	if !ok {
 		return nil, nil
@@ -240,23 +240,19 @@ func optionalPermissions(req mcp.CallToolRequest) (*client.IntegrationKeyPermiss
 	if len(m) == 0 {
 		return nil, fmt.Errorf("permissions is empty: name at least one of activities, notifications, widgets or emails")
 	}
-	p := &client.IntegrationKeyPermissions{}
-	targets := map[string]**string{"activities": &p.Activities, "notifications": &p.Notifications, "widgets": &p.Widgets, "emails": &p.Emails}
-	for _, r := range integrationKeyLevels {
-		raw, set := m[r.resource]
-		if !set {
-			continue
+	p := make(map[string]string, len(m))
+	// Sorted so an input with several bad entries always reports the same one.
+	for _, key := range slices.Sorted(maps.Keys(m)) {
+		raw := m[key]
+		r, known := integrationKeyLevels[key]
+		if !known {
+			return nil, fmt.Errorf("permissions.%s is not a resource: use activities, notifications, widgets or emails", key)
 		}
 		level, isString := raw.(string)
 		if !isString || !slices.Contains(r.levels, level) {
-			return nil, fmt.Errorf("permissions.%s must be one of %v, got %v", r.resource, r.levels, raw)
+			return nil, fmt.Errorf("permissions.%s must be one of %v, got %v", key, r.levels, raw)
 		}
-		*targets[r.resource] = &level
-	}
-	for key := range m {
-		if _, known := targets[key]; !known {
-			return nil, fmt.Errorf("permissions.%s is not a resource: use activities, notifications, widgets or emails", key)
-		}
+		p[key] = level
 	}
 	return p, nil
 }

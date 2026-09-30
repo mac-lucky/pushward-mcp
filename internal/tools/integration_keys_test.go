@@ -68,7 +68,7 @@ func TestCreateIntegrationKey_ForwardsFields(t *testing.T) {
 	}
 	want := map[string]string{
 		"name": `"ci"`, "activity_slugs": `["ci-*","deploy"]`, "widget_slugs": `["cpu"]`,
-		"permissions": `{"activities":"manage","notifications":"send","emails":"none"}`,
+		"permissions": `{"activities":"manage","emails":"none","notifications":"send"}`,
 		"expires_at":  `"2099-01-02T03:04:05Z"`,
 	}
 	if len(c.body) != len(want) {
