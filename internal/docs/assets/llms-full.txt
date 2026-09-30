@@ -2,7 +2,7 @@
 
 > Full Markdown bundle of every PushWard docs page, auto-generated from the prerendered HTML at build time. Source: https://pushward.app
 
-> Generated: 2026-09-29T07:53:04.989Z
+> Generated: 2026-09-30T15:32:50.920Z
 
 ---
 <!-- source: https://pushward.app/docs/getting-started -->
@@ -25,7 +25,7 @@ PushWard requires iOS 26+ for Live Activity support.
 
 ## 2\. Sign In and Get Your Key
 
-Open the app and sign in with your Apple ID. This creates your PushWard account and automatically generates a **default integration key** (`hlk_`) with full activity management access and every capability enabled - push [notifications](https://pushward.app/docs/notifications), [widgets](https://pushward.app/docs/widgets), and [email](https://pushward.app/docs/email) - so it works with every endpoint out of the box.
+Open the app and sign in with your Apple ID. This creates your PushWard account and automatically generates a **default integration key** (`hlk_`) with every permission at its highest level - push [notifications](https://pushward.app/docs/notifications), [widgets](https://pushward.app/docs/widgets), and [email](https://pushward.app/docs/email) - so it works with every endpoint out of the box.
 
 Copy your integration key from the app's settings screen. You'll need it for all API requests.
 
@@ -1860,7 +1860,7 @@ From Home Assistant, `pushward.get_notification_answer` does the same inside an 
 -   Only actions with no `url` and no `foreground` are recorded. A url-less `foreground` action still just opens the app, and an action with a `url` keeps calling that URL and is never recorded. One notification can mix all three.
 -   The first answer wins. Once one device has answered, later taps on any device change nothing.
 -   Answers are kept for 30 days.
--   An integration key can read only answers to notifications it sent. Reading an answer needs the `notifications` capability, like sending the notification did.
+-   An integration key can read only answers to notifications it sent. Reading an answer needs `notifications` at `send` or above, like sending the notification did.
 -   A notification with nothing to record (none of its actions was url-less and silent), an unknown `id` and an answer past its 30 days all return `404` with code `notification_answer.not_found`.
 -   Too many `wait` requests open at once for your account return `429` with code `answer_wait.limit_exceeded`. Retry shortly, or read without `wait`.
 -   The recording links count toward the 4 KB push payload. If a long notification leaves no room for them, plain url-less actions go out unrecorded and the response has no `answerable`; a url-less `text_input` action fails with `400` instead.
@@ -2105,12 +2105,12 @@ From Home Assistant, `pushward.send_notification` takes the same `send_at` and `
 -   Up to 25 scheduled notifications can be waiting per account. One more returns `409` with code `scheduled_notification.limit_exceeded`. A repeating schedule takes one of those slots for its whole series.
 -   Scheduling is free. The send counts toward your notification quota at the moment it goes out, like any other notification. If the quota is used up by then, the notification is not sent and its status becomes `failed` with `failure_reason` `quota_exceeded`. If your quota is already used up when you schedule, the request fails with the same `429` (`quota.exceeded`) as `POST /notifications`.
 -   If the activity named in `activity_slug` was deleted before the send, the notification still goes out, without the link.
--   Revoking the integration key that created a scheduled notification deletes its pending schedules outright (they do not show up as `canceled`; one already being sent still goes out). Removing the key's `notifications` capability instead makes each schedule fail with `key_revoked` when it comes due.
+-   Revoking the integration key that created a scheduled notification deletes its pending schedules outright (they do not show up as `canceled`; one already being sent still goes out). Lowering the key's `notifications` level below `schedule`, or letting the key expire, instead makes each schedule fail with `key_revoked` when it comes due.
 -   An integration key can list, read and cancel only the scheduled notifications it created.
 
 ℹ Info
 
-Scheduled notifications need the `notifications` capability on your integration key, the same as `POST /notifications`. Your default key already has it.
+Scheduled notifications need `notifications` at `schedule` on your integration key; `send` covers only `POST /notifications`. Your default key already has it.
 
 ## Status
 
@@ -2226,7 +2226,7 @@ Send a notification to a user's inbox, with optional APNs push delivery to their
 
 POST `/notifications`
 
-Create an in-app notification and optionally push it to all user devices. No subscription required - it counts toward your monthly notification quota (free tier included) and needs the notifications capability, which your default integration key already has.
+Create an in-app notification and optionally push it to all user devices. No subscription required - it counts toward your monthly notification quota (free tier included) and needs notifications at send or above, which your default integration key already has.
 
 ### Request Body
 
@@ -2335,7 +2335,7 @@ Errors use the RFC 9457 Problem Details shape (`Content-Type: application/proble
 | --- | --- |
 | `400` | Malformed JSON, or a field-level validation failure (media, action URL scheme, duplicate action `id`, metadata size, or `text_input` rules) |
 | `401` | Missing or invalid token |
-| `403` | Integration key lacks the `notifications` capability flag (insufficient permissions) |
+| `403` | Integration key's `notifications` level is `none` (`integration_key.permission_denied`), or it sets `activity_slug` without activity access |
 | `422` | Schema violation (wrong shape, `maxLength`, or `enum`), or an unknown `activity_slug` |
 | `429` | Per-IP rate limit (`code: rate_limit.exceeded`) or monthly notification quota exhausted (`code: quota.exceeded`) - pairs with `Retry-After` and `retry_after_ms`. See [Errors](https://pushward.app/docs/api/activities#errors) for the quota body shape. |
 | `500` | Internal server error |
@@ -2479,7 +2479,7 @@ Widgets don't require an integration to exist. There are two paths to the same b
 
 ## Authentication
 
-The widgets API is reachable with an [integration key](https://pushward.app/docs/api/authentication) (`hlk_`) that has the `widgets` flag enabled.
+The widgets API is reachable with an [integration key](https://pushward.app/docs/api/authentication) (`hlk_`) with `widgets` at `write` (or `read` for a key that only reads them).
 
 ---
 
@@ -2491,7 +2491,7 @@ Register, update, list, and delete widgets via REST. Widgets are push-driven - e
 
 ℹ Info
 
-Widget endpoints require an integration key (`hlk_`) with the `widgets` flag, which is off by default - turn it on per-key in the iOS app's integration-keys screen (see [Authentication](https://pushward.app/docs/api/authentication)). Each user can have a maximum of **50 widgets**; attempting to create more returns `429` with `code: "widget.limit_exceeded"`.
+Widget endpoints require an integration key (`hlk_`) with a `widgets` level: `read` to list and get widgets, `write` to also create, update and delete them. It is `none` on new keys by default - set it per key in the iOS app's integration-keys screen (see [Authentication](https://pushward.app/docs/api/authentication)). Each user can have a maximum of **50 widgets**; attempting to create more returns `429` with `code: "widget.limit_exceeded"`.
 
 ## Create Widget
 
@@ -2741,7 +2741,7 @@ Widget errors use the same [RFC 9457 Problem Details](https://pushward.app/docs/
 | --- | --- |
 | `400` | Malformed JSON or empty PATCH body. |
 | `401` | Missing or invalid token. |
-| `403` | Integration key does not have the `widgets` flag. |
+| `403` | Integration key's `widgets` level is below what the call needs (`integration_key.permission_denied`), or the slug is outside its `widget_slugs` (`integration_key.slug_invalid`). |
 | `404` | Widget slug not found. |
 | `422` | Validation failure - missing required content field for the template, value out of range, non-finite number, etc. |
 | `429` | Per-user widget cap reached (`code: widget.limit_exceeded`) or IP rate limit hit. |
@@ -3360,7 +3360,7 @@ PushWard's email channel is a **verified-recipient transactional email relay**: 
 
 ## Authentication
 
-Sending email needs the dedicated **emails** capability. Your auto-created **default integration key** already has it enabled. To use a scoped key instead, enable its `emails` flag per-key in the iOS app's integration-keys screen. The flag is independent of `notifications`, so a key can send email without being able to send push (and vice versa). See [Authentication](https://pushward.app/docs/api/authentication).
+Sending email needs `emails` at `send` on your integration key. Your auto-created **default integration key** already has it. To use a scoped key instead, set its **Emails** permission in the iOS app's integration-keys screen. It is independent of `notifications`, so a key can send email without being able to send push (and vice versa). See [Authentication](https://pushward.app/docs/api/authentication).
 
 ℹ Info
 
@@ -3562,7 +3562,7 @@ Turn Grafana alerts into Live Activities with timeline sparklines backfilled fro
 
 ### GitHub Actions
 
-Track CI/CD workflow progress with the steps template. Get real-time build status on your Lock Screen.
+Send notifications and show jobs as Live Activities with the PushWard action, or track every run with the polling bridge.
 
 
 
@@ -3984,7 +3984,7 @@ Grafana doesn't let third parties add native contact-point types - every integra
 ### Requirements
 
 -   Grafana **12.3 or newer** (unified alerting plus app-plugin IAM service accounts)
--   A PushWard integration key (`hlk_` prefix) - the `notifications` capability for test pushes, and `widgets` to publish widgets
+-   A PushWard integration key (`hlk_` prefix) - `notifications` at `send` for test pushes, and `widgets` at `write` to publish widgets
 -   A Prometheus or VictoriaMetrics datasource in Grafana (for the timeline history)
 
 ### 1\. Install the Plugin
@@ -4233,11 +4233,11 @@ On Home Assistant restart, any tracked entity already in a start state automatic
 
 ## Notifications, Widgets & Email
 
-Beyond mirroring entities to Live Activities, the integration exposes services for the rest of the PushWard surface. Each needs the matching capability on your integration key - your default key has all three enabled:
+Beyond mirroring entities to Live Activities, the integration exposes services for the rest of the PushWard surface. Each needs the matching [permission](https://pushward.app/docs/api/authentication#scopes) on your integration key - your default key has all of them:
 
--   **iOS widgets** - add a **tracked widget** sub-entry (event- or poll-triggered, 10-3600 s) to push Home Screen widgets in the `value`, `progress`, `gauge`, `status`, and `stat_list` templates, or call `pushward.widget_refresh` to force a refresh and `pushward.delete_widget` to remove one. Needs the `widgets` capability.
--   **Push notifications** - the `pushward.send_notification` service sends a regular (non-Live-Activity) [push](https://pushward.app/docs/notifications) with title, body, level (including `critical`), actions, and rich media. It can also send the notification [later or on a repeating schedule](#scheduled-notifications), and its buttons can [record an answer](#notification-answers) for the automation to act on. Needs the `notifications` capability.
--   **Transactional email** - the `pushward.send_email` service delivers [email](https://pushward.app/docs/email) to a verified recipient of your account. Needs the `emails` capability.
+-   **iOS widgets** - add a **tracked widget** sub-entry (event- or poll-triggered, 10-3600 s) to push Home Screen widgets in the `value`, `progress`, `gauge`, `status`, and `stat_list` templates, or call `pushward.widget_refresh` to force a refresh and `pushward.delete_widget` to remove one. Needs `widgets` at `write`.
+-   **Push notifications** - the `pushward.send_notification` service sends a regular (non-Live-Activity) [push](https://pushward.app/docs/notifications) with title, body, level (including `critical`), actions, and rich media. It can also send the notification [later or on a repeating schedule](#scheduled-notifications), and its buttons can [record an answer](#notification-answers) for the automation to act on. Needs `notifications` at `send`, or `schedule` for scheduled ones.
+-   **Transactional email** - the `pushward.send_email` service delivers [email](https://pushward.app/docs/email) to a verified recipient of your account. Needs `emails` at `send`.
 
 For driving an activity straight from an automation (rather than tracking an entity), the create, update, end, and delete services are all available. Update actions are template-specific - `pushward.update_activity_generic`, `..._steps`, `..._gauge`, and so on - so each action's form only shows the fields that template uses.
 
@@ -4411,11 +4411,184 @@ Track a washing machine using a sensor entity with a progress attribute:
 
 # GitHub Actions
 
-Track CI/CD workflow progress in real-time on your Lock Screen using the steps template.
+Send notifications, show a job as a Live Activity and wait for an answer from inside a workflow with the PushWard action, or track every run with the polling bridge.
 
 ![Live Activity demonstration](https://pushward.app/_app/immutable/assets/github-poster.CIGWInoZ.webp)
 
-## How It Works
+There are two ways in. The [PushWard action](#action) is a step in your workflow: you decide what it sends and when, and it can stop a job until you answer on your phone. The [polling bridge](#bridge) is a container that watches your repositories from outside and shows every run as a Live Activity without touching any workflow file.
+
+⚠ Warning
+
+If the bridge also watches a repository whose jobs show a Live Activity through the action, each run gets two cards, the bridge's and the action's. Use one or the other per repository.
+
+## PushWard action
+
+`mac-lucky/pushward-action@v1` sends notifications, shows a job as a Live Activity on your Lock Screen, updates Home Screen widgets, sends email, and stops a job until someone taps a button. It runs the [pushward CLI](https://pushward.app/docs/api/cli), so anything the CLI can do works here through the `command` input. Source: [mac-lucky/pushward-action](https://github.com/mac-lucky/pushward-action).
+
+### Setup
+
+Copy an integration key from the app and save it as a repository secret, say `PUSHWARD_TOKEN`. A key just for CI is better than your default one: give it only what the workflow uses, and restrict its activity slugs to `gha-*` (see [Creating scoped keys](https://pushward.app/docs/api/authentication#scoped-keys)).
+
+-   Notifications, and waiting for their answers, need `notifications` at `send`.
+-   Starting a Live Activity needs `activities` at `manage`, since `activity start` creates it.
+-   Widget updates need `widgets` at `write`, email needs `emails` at `send`.
+
+### Notify when a job fails
+
+```
+- uses: mac-lucky/pushward-action@v1
+  if: failure()
+  with:
+    token: ${{ secrets.PUSHWARD_TOKEN }}
+    title: ${{ github.workflow }} failed
+    body: ${{ github.repository }} on ${{ github.ref_name }}
+    level: time-sensitive
+```
+
+Tapping it opens the run. Notifications from one repository are grouped into a thread.
+
+### A job as a Live Activity
+
+```
+steps:
+  - uses: mac-lucky/pushward-action@v1
+    with:
+      token: ${{ secrets.PUSHWARD_TOKEN }}
+      command: activity start --template steps --step 1/3 --step-labels Build,Test,Deploy
+      text: Building
+
+  - run: make build
+
+  - uses: mac-lucky/pushward-action@v1
+    with:
+      token: ${{ secrets.PUSHWARD_TOKEN }}
+      command: activity update --step 2/3
+      text: Testing
+
+  - run: make test
+
+  - uses: mac-lucky/pushward-action@v1
+    with:
+      token: ${{ secrets.PUSHWARD_TOKEN }}
+      command: activity update --step 3/3
+      text: Deploying
+
+  - run: make deploy
+
+  - uses: mac-lucky/pushward-action@v1
+    if: always()
+    with:
+      token: ${{ secrets.PUSHWARD_TOKEN }}
+      command: activity end
+      status: ${{ job.status }}
+```
+
+The card is named after the workflow, shows `repo / job` underneath and links to the run. `if: always()` runs the last step even when an earlier step failed or the run was cancelled, and `status: ${{ job.status }}` makes `activity end` show a green check, red cross or grey stop for a few seconds before it ends the card. If the job failed before the start step ran, the end step only logs a warning.
+
+The slug defaults to `gha-<owner>-<repo>-<run_id>-<job>`. Matrix legs share the job id, so give each leg its own slug and set it on every PushWard step of the job:
+
+```
+    with:
+      slug: gha-${{ github.run_id }}-${{ strategy.job-index }}
+```
+
+### Wait for an answer
+
+```
+- id: ask
+  uses: mac-lucky/pushward-action@v1
+  with:
+    token: ${{ secrets.PUSHWARD_TOKEN }}
+    title: Deploy ${{ github.ref_name }} to production?
+    body: ${{ github.event.head_commit.message }}
+    actions: |
+      deploy=Deploy
+      skip=Skip
+    wait: 30m
+
+- if: steps.ask.outputs.answer == 'deploy'
+  run: ./deploy.sh
+```
+
+If nobody answers in time the step fails. With `fail-on-error: false` it passes instead, `answer` is empty and `status` is `pending`. The runner is billed the whole time it waits, so for anything longer than a few minutes a protected environment with required reviewers is the cheaper gate.
+
+The same works with an [approval](https://pushward.app/docs/live-activities/approval) card on the Lock Screen: `command: activity start --template approval` with `actions` as its options, then `command: activity wait` with `wait: 30m`.
+
+### Update a widget
+
+```
+- uses: mac-lucky/pushward-action@v1
+  with:
+    token: ${{ secrets.PUSHWARD_TOKEN }}
+    command: widget update
+    slug: coverage
+    fields: content.value=${{ steps.coverage.outputs.percent }}
+```
+
+Create the widget once, from the app or with `command: widget create --template gauge --min 0 --max 100 --unit %`.
+
+### Send an email
+
+```
+- uses: mac-lucky/pushward-action@v1
+  with:
+    token: ${{ secrets.PUSHWARD_TOKEN }}
+    command: email send --to ops@example.com --subject "Nightly report"
+    text: ${{ steps.report.outputs.summary }}
+```
+
+Email only goes to addresses you have [verified in the app](https://pushward.app/docs/email).
+
+### Inputs
+
+`token` is the only required input. `command` takes any pushward command with its flags (the [CLI page](https://pushward.app/docs/api/cli) lists them); the other inputs are shortcuts for the common flags. An input the command has no use for is ignored with a warning.
+
+| Input | Description | Default |
+| --- | --- | --- |
+| `token` | Integration key (`hlk_`). Pass it from a secret. | required |
+| `command` | pushward command to run, e.g. `activity start`, `widget update`. Split like a shell line. | `notify` |
+| `slug` | Activity or widget slug. Activity commands default to `gha-<owner>-<repo>-<run_id>-<job>`. | \-- |
+| `title` | Notification title | \-- |
+| `body` | Notification body | \-- |
+| `subtitle` | Secondary line of a notification, activity or widget | \-- |
+| `level` | Notification interruption level: `passive`, `active`, `time-sensitive` or `critical` | \-- |
+| `url` | URL opened on tap. Notifications and started activities default to the run's page. | \-- |
+| `name` | Activity or widget display name. `activity start` defaults to the workflow name. | \-- |
+| `template` | Activity or widget template, e.g. `generic`, `steps`, `approval`, `gauge` | \-- |
+| `text` | Status text of an activity, or the plain-text body of an email | \-- |
+| `progress` | Activity progress from 0 to 1 | \-- |
+| `icon` | SF Symbol name, or `mdi:<name>` | \-- |
+| `color` | Accent color, a name (`green`, `red`, ...) or `#RRGGBB` | \-- |
+| `status` | For `activity end`: `success`, `failure` or `cancelled`. Pass `job.status`. | \-- |
+| `wait` | How long to wait for an answer, e.g. `15m`. For `notify` this needs `actions`; for `activity wait` it is the timeout. | \-- |
+| `actions` | Answer buttons, one `id=Title` per line: notification actions, or the options of an approval activity | \-- |
+| `fields` | Extra typed fields, one `key=value` per line, with dotted keys (`content.total_steps=4`, `push=false`) | \-- |
+| `json` | Request body as JSON. Inputs and fields are applied on top of it. | \-- |
+| `api-url` | API base URL | \-- |
+| `fail-on-error` | Fail the step when the call fails. `false` turns the error annotation into a warning. | `true` |
+
+⚠ Warning
+
+Keep untrusted text (branch names, commit messages, PR titles) in the shortcut inputs, never in `command`. `command` is split like a shell line, so a crafted value there can add flags.
+
+### Outputs
+
+| Output | Value |
+| --- | --- |
+| `response` | The API response as JSON |
+| `id` | Notification or scheduled notification id |
+| `slug` | Activity or widget slug |
+| `answer` | Id of the tapped action, or the chosen option of an approval card |
+| `answer-text` | Text typed with the answer, if any |
+| `status` | Delivery of a notification or email (`all`, `partial`, `none`), activity state (`ongoing`, `ended`), answer status (`pending`, `answered`), or the status of a scheduled notification |
+
+### Runners and versions
+
+This is a Docker container action, so it runs on Linux runners only. On macOS or Windows runners, install the CLI (`brew install mac-lucky/tap/pushward`, or a release archive) and call it from a `run` step.
+
+`@v1` follows the newest 1.x release. Every release pins an exact pushward-cli image, so pinning `@v1.2.3` or a commit SHA also pins the CLI.
+
+## Polling bridge
 
 The `pushward-github` bridge container polls the GitHub Actions API for in-progress workflow runs and maps workflow progress to Live Activities using the steps template.
 
@@ -4423,17 +4596,15 @@ The `pushward-github` bridge container polls the GitHub Actions API for in-progr
 2.  **Active tracking** -- on each poll cycle the bridge fetches the tracked run's jobs and updates progress
 3.  **Cleanup** -- after the workflow completes, the activity is cleaned up after a configurable delay (default 15 min)
 
-## Setup
-
-### 1\. Get Your Integration Key
+### 1\. Get your integration key
 
 Use your default integration key from the PushWard app under **Settings -> Integration Key**, or [create a scoped key](https://pushward.app/docs/api/authentication#scoped-keys) for this integration.
 
-### 2\. Create a GitHub Personal Access Token
+### 2\. Create a GitHub personal access token
 
 Create a fine-grained PAT with `actions:read` permission on the repos you want to track.
 
-### 3\. Deploy the Bridge
+### 3\. Deploy the bridge
 
 docker-compose.yml 
 
@@ -4451,7 +4622,7 @@ services:
     restart: unless-stopped
 ```
 
-## Configuration
+### Configuration
 
 | Environment Variable | Description | Default |
 | --- | --- | --- |
@@ -4468,7 +4639,7 @@ services:
 
 Use `PUSHWARD_GITHUB_OWNER` to auto-discover all your repos. The bridge refreshes the repo list every 5 minutes, skipping archived and disabled repos.
 
-## Activity Slug Format
+### Activity slug format
 
 Activities are created with the slug `gh-<8 hex chars>`, derived from `SHA-256(owner/repo)` (e.g. `gh-1a2b3c4d`). One run is tracked per repository at a time.
 
@@ -4712,7 +4883,7 @@ The monitor only reads status - it never touches Unraid or the source plugins - 
 
 Use your default integration key from the PushWard app under **Settings -> Integration Key**, or [create a scoped key](https://pushward.app/docs/api/authentication#scoped-keys) for this integration.
 
-One `hlk_` key covers both features. Notifications need the `notifications` capability and work on any plan; Live Activities need the `activity:manage` scope and an active PushWard subscription.
+One `hlk_` key covers both features. Notifications need `notifications` at `send` or above and work on any plan; Live Activities need `activities` at `manage` and an active PushWard subscription.
 
 ### 2\. Install the Plugin
 
@@ -4913,7 +5084,7 @@ All endpoints (except `/health`) require a Bearer token in the `Authorization` h
 Authorization: Bearer hlk_aBcDeFgHiJkLmNoPqRsTuVwXyZ012345
 ```
 
-Tokens are `hlk_` integration keys created in the iOS app's settings screen - see [Authentication](https://pushward.app/docs/api/authentication) for the key format, scopes, and slug-restriction rules.
+Tokens are `hlk_` integration keys created in the iOS app's settings screen - see [Authentication](https://pushward.app/docs/api/authentication) for the key format, permissions, and slug-restriction rules.
 
 ## Activity State Machine
 
@@ -4966,27 +5137,46 @@ A key is `hlk_` followed by 32 base62 characters (~36 characters total). Only th
 Authorization: Bearer hlk_aBcDeFgHiJkLmNoPqRsTuVwXyZ012345
 ```
 
-## Scopes
+## Permissions
 
-| Scope | Access |
-| --- | --- |
-| `activity:update` (default) | Update existing activities and read state. Cannot create or delete activities. |
-| `activity:manage` | Everything `activity:update` can do, plus create and delete activities. |
+Each key has one permission level per resource. A higher level includes the lower ones.
 
-Each key can additionally restrict access to specific activity slugs or prefix patterns (trailing `*`) and toggle three independent permission flags:
+| Resource | Levels | Access |
+| --- | --- | --- |
+| `activities` | `none`, `read`, `update`, `manage` | `read`: list and get activities. `update`: also update existing ones. `manage`: also create and delete them, and `PATCH ?upsert=true`. |
+| `notifications` | `none`, `send`, `schedule` | `send`: `POST /notifications` and reading answers. `schedule`: also the [scheduled notifications](https://pushward.app/docs/notifications/scheduled) endpoints. |
+| `widgets` | `none`, `read`, `write` | `read`: list and get widgets. `write`: also create, update and delete them ([widgets API](https://pushward.app/docs/widgets/api)). |
+| `emails` | `none`, `send` | `send`: [send email](https://pushward.app/docs/email) (`POST /emails`) to verified recipients. |
 
--   `notifications` - permit `POST /notifications`.
--   `widgets` - permit the [widgets API](https://pushward.app/docs/widgets/api) (`POST/GET/PATCH/DELETE /widgets`). Off by default; toggle per key in the iOS app's integration-keys screen.
--   `emails` - permit [sending email](https://pushward.app/docs/email) (`POST /emails`). Independent of `notifications`; toggle per key in the iOS app's integration-keys screen.
+A key can also be limited to specific activity slugs (`activity_slugs`) and widget slugs (`widget_slugs`), exact or as a prefix with a trailing `*`, and can have an expiry (`expires_at`). An expired key gets `401` with code `integration_key.expired`; a request above the key's levels gets `403` with code `integration_key.permission_denied` and a `detail` naming the level it needs, such as `requires widgets:write`. `GET /auth/me` works with every key and reports the calling key's permissions under `integration_key`.
+
+ℹ Info
+
+Keys created before permission levels existed keep exactly the access they had. The older fields are still returned and accepted. In responses, `scope` is `activity:<level>`, and `notifications` is `true` at `send` or above, `widgets` at `write` and `emails` at `send`. In a create or update, `true` means the resource's highest level and `false` means `none`; send either those fields or `permissions`, not both.
 
 ## Creating scoped keys
 
-The default key is `activity:manage` with every capability enabled, which is all most integrations need. To limit a service to just its own activities, create a dedicated key restricted to a scope and slug pattern:
+The default key has every resource at its highest level, which is all most integrations need. To limit a service to what it uses, create a dedicated key:
 
 1.  Open **Settings -> Manage Keys** in the iOS app - the same screen revokes existing keys.
 2.  Tap **+**.
-3.  Set a name, pick a scope (`activity:update` or `activity:manage`), toggle the capability flags the service needs, and optionally restrict the key to a slug pattern such as `grafana-*`.
+3.  Set a name, choose what the key may do, and optionally limit it to slugs such as `grafana-*`.
 4.  Copy the generated `hlk_` key and store it securely -- it is shown only once.
+
+_Requires PushWard iOS app 1.16.0 or later._
+
+The app sets a level for each resource, with presets such as **Notifications only**, and can limit a key to widget slugs and give it an expiry.
+
+The default key can also create keys over the API (`POST /integrations/keys`, [pushward key create](https://pushward.app/docs/api/cli)), for example a notifications-only key for an alerting bridge:
+
+```
+curl -X POST https://api.pushward.app/integrations/keys \
+  -H "Authorization: Bearer $PUSHWARD_DEFAULT_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"name": "alerts", "permissions": {"notifications": "send"}, "expires_at": "2027-01-01T00:00:00Z"}'
+```
+
+A resource left out of `permissions` gets `none`. A key created this way can never have a level above the default key's own.
 
 ## Endpoints
 
@@ -5011,7 +5201,14 @@ Get the current user's profile, activity count, and current quota usage.
   "widget_updates_limit": 50,
   "emails_used": 3,
   "emails_limit": 50,
-  "quota_resets_at": "2026-07-01T00:00:00Z"
+  "quota_resets_at": "2026-07-01T00:00:00Z",
+  "integration_key": {
+    "id": "0b6f0c1e-5a3d-4c1f-9d0a-6f2e8b7c4a11",
+    "name": "Grafana",
+    "is_default": false,
+    "permissions": {"activities": "none", "notifications": "send", "widgets": "write", "emails": "none"},
+    "widget_slugs": ["grafana-*"]
+  }
 }
 ```
 
@@ -5033,16 +5230,22 @@ Integration keys read their own live usage here - the iOS app polls `/auth/me` f
 | `widget_updates_used` / `widget_updates_limit` | integer | Widget updates this month and your tier's cap |
 | `emails_used` / `emails_limit` | integer | Emails sent this month and your tier's cap (free 50, paid 200) |
 | `quota_resets_at` | string | ISO 8601 instant the active counters reset |
+| `integration_key` | object | The key that made the request: `id`, `name`, `is_default`, `permissions`, and `activity_slugs`, `widget_slugs` and `expires_at` when set |
 
 ## Access Control
 
 | Access Level | Endpoints |
 | --- | --- |
 | **No auth** | `GET /health` |
-| **`hlk_` with `activity:update`** | `PATCH /activities/{slug}` (owned activities only), `GET /activities`, `GET /activities/{slug}`, `POST /notifications` (if the key has the `notifications` flag), `GET /auth/me` |
-| **`hlk_` with `activity:manage`** | All of the above, plus `POST /activities`, `DELETE /activities/{slug}` |
-| **`hlk_` with `widgets` flag** | `POST /widgets`, `GET /widgets`, `GET /widgets/{slug}`, `PATCH /widgets/{slug}`, `DELETE /widgets/{slug}` |
-| **`hlk_` with `emails` flag** | `POST /emails` |
+| **Any `hlk_` key** | `GET /auth/me` |
+| **`activities: read`** | `GET /activities`, `GET /activities/{slug}` |
+| **`activities: update`** | Everything `read` allows, plus `PATCH /activities/{slug}` |
+| **`activities: manage`** | Everything `update` allows, plus `POST /activities`, `DELETE /activities/{slug}`, `PATCH /activities/{slug}?upsert=true` |
+| **`notifications: send`** | `POST /notifications`, `GET /notifications/answers/{id}` |
+| **`notifications: schedule`** | Everything `send` allows, plus `POST /notifications/scheduled`, `GET /notifications/scheduled`, `GET /notifications/scheduled/{id}`, `DELETE /notifications/scheduled/{id}` |
+| **`widgets: read`** | `GET /widgets`, `GET /widgets/{slug}` |
+| **`widgets: write`** | Everything `read` allows, plus `POST /widgets`, `PATCH /widgets/{slug}`, `DELETE /widgets/{slug}` |
+| **`emails: send`** | `POST /emails` |
 
 ---
 
@@ -5253,7 +5456,7 @@ Updates follow [RFC 7396 JSON Merge Patch](https://www.rfc-editor.org/rfc/rfc739
 
 ℹ Info
 
-An upsert-created slug returns `201 Created` with `X-Resource-Action: created`; an existing slug behaves like a normal patch (`200 OK`). Creation requires the `activity:manage` [scope](https://pushward.app/docs/api/authentication#scopes) - an `activity:update` key gets `403` (`activity.upsert_forbidden`) for a missing slug. Alternatively, `POST /activities` is itself an idempotent upsert, so **POST then PATCH** achieves the same in two requests without the flag.
+An upsert-created slug returns `201 Created` with `X-Resource-Action: created`; an existing slug behaves like a normal patch (`200 OK`). Creation requires `activities` at `manage` ([permissions](https://pushward.app/docs/api/authentication#scopes)) - a key at `update` gets `403` (`activity.upsert_forbidden`) for a missing slug. Alternatively, `POST /activities` is itself an idempotent upsert, so **POST then PATCH** achieves the same in two requests without the flag.
 
 Create-and-update in one call 
 
@@ -5528,7 +5731,7 @@ Match on the stable `code` field - not the human-readable `detail` string (rewor
 | --- | --- |
 | `400` | Malformed JSON or wrong shape. Semantic validation now uses `422`. |
 | `401` | Missing or invalid token |
-| `403` | Integration key not allowed for this activity, or insufficient scope |
+| `403` | Integration key not allowed for this activity, or its `activities` level is too low |
 | `404` | Activity not found |
 | `409` | Conflict - e.g. activity limit reached or demo cooldown active. Pairs with a `Retry-After` response header and a `retry_after_ms` extension. |
 | `422` | Unprocessable: semantic validation failure (e.g. arming `alarm: true` without `end_date`, or `POST /notifications` referencing an unknown `activity_slug`). |
@@ -5579,7 +5782,7 @@ Drive PushWard from Claude and other AI agents over the Model Context Protocol. 
 
 ℹ Info
 
-The [MCP](https://modelcontextprotocol.io) server is the same PushWard REST API behind a tool interface for AI agents. It uses your `hlk_` integration key, so an agent can only do what that key's scopes and capabilities allow.
+The [MCP](https://modelcontextprotocol.io) server is the same PushWard REST API behind a tool interface for AI agents. It uses your `hlk_` integration key, so an agent can only do what that key's permissions allow.
 
 ## Connect from Claude Code
 
@@ -5603,11 +5806,11 @@ The client discovers the OAuth endpoints automatically and walks you through aut
 
 The first time you connect, a browser opens a PushWard consent screen. Paste your `hlk_` integration key once and approve access. The server validates the key, stores it encrypted, and issues short-lived tokens for the session - your raw key is never shared with the MCP client.
 
-Get your integration key from the iOS app's settings screen. See [Authentication](https://pushward.app/docs/api/authentication) for how keys, scopes, and capability flags work.
+Get your integration key from the iOS app's settings screen. See [Authentication](https://pushward.app/docs/api/authentication) for how keys and their permissions work.
 
 💡 Tip
 
-Create a dedicated integration key for the MCP server instead of reusing your default key. Scope it to just the capabilities the agent needs (notifications, widgets, email) so you can revoke it independently.
+Create a dedicated integration key for the MCP server instead of reusing your default key. Give it only the permissions the agent needs (for example notifications at `send`), and an expiry, so you can revoke it independently.
 
 ## What you can do
 
@@ -5633,6 +5836,171 @@ Relay webhook-simulation tools (Grafana, Sonarr, ArgoCD, and the rest) are only 
 | Endpoint | `https://mcp.pushward.app/mcp` |
 | Transport | Streamable HTTP |
 | Authentication | OAuth 2.1, authorized with an `hlk_` integration key |
+
+---
+
+<!-- source: https://pushward.app/docs/api/cli -->
+
+# Command-Line Client
+
+Send notifications, drive Live Activities, update widgets and wait for answers from a shell script, a cron job or CI with the pushward command-line client.
+
+ℹ Info
+
+`pushward` is a client for the same REST API, authenticated with your `hlk_` integration key. It covers every operation in the public API, and anything newer is reachable through `pushward api`. Source and releases: [mac-lucky/pushward-cli](https://github.com/mac-lucky/pushward-cli).
+
+## Install
+
+```
+brew install mac-lucky/tap/pushward
+```
+
+Homebrew also installs the shell completions (`pushward completion bash|zsh|fish|powershell` prints them otherwise). With Go:
+
+```
+go install github.com/mac-lucky/pushward-cli/cmd/pushward@latest
+```
+
+Or grab an archive from [Releases](https://github.com/mac-lucky/pushward-cli/releases). The macOS binaries in those archives are not signed, so a copy downloaded with a browser needs `xattr -d com.apple.quarantine pushward` first; Homebrew and `go install` are not affected. There is also a container image, `ghcr.io/mac-lucky/pushward-cli`:
+
+```
+docker run --rm -e PUSHWARD_API_TOKEN ghcr.io/mac-lucky/pushward-cli notify --title Hi --body There
+```
+
+## Key
+
+Copy an integration key from the app, then either export it or store it once:
+
+```
+export PUSHWARD_API_TOKEN=hlk_...
+
+pushward auth login     # prompts, checks the key, writes ~/.config/pushward/config.json (0600)
+pushward auth status
+```
+
+The environment variable wins over the stored key. There is no `--token` flag on purpose, so the key stays out of shell history and `ps`. `pushward auth login --with-token` reads the key from stdin, for piping it out of a password manager.
+
+A key only does what its [permissions](https://pushward.app/docs/api/authentication#scopes) allow: starting a Live Activity needs `activities` at `manage`, and notifications, widgets and email each need their own level. See [Creating scoped keys](https://pushward.app/docs/api/authentication#scoped-keys).
+
+## Notifications
+
+```
+pushward notify --title "Backup done" --body "412 GB in 38m"
+make 2>&1 | tail -20 | pushward notify --title "Build log" --body -
+pushward notify --title "Disk" --body "/data at 91%" --level time-sensitive --url https://grafana.example.com
+```
+
+`--body -` reads the body from stdin. Add buttons with `--action id=Title` (repeatable), and `--wait` blocks until one is tapped:
+
+```
+answer=$(pushward notify --title "Deploy to prod?" --body v2.4.0 \
+  --action deploy=Deploy --action skip=Skip --wait 15m --jq .action_id)
+[ "$answer" = deploy ] && ./deploy.sh
+```
+
+Nobody answering in time exits `7`. `pushward notification answer <id> --wait 5m` picks up the same answer later. How answers are recorded is covered in [Answers](https://pushward.app/docs/notifications/answers).
+
+## Live Activities
+
+```
+pushward activity start deploy --name "Deploy api" --template steps --step 1/3 --step-labels Build,Test,Ship --text Building
+pushward activity update deploy --step 2/3 --text Testing
+pushward activity end deploy --status success
+```
+
+`activity start` creates the activity if needed and sets it ongoing with its first content; starting a slug that already exists restarts it.
+
+`activity end --status success|failure|cancelled` shows a final frame first (green check, red cross or grey stop, with the progress filled on success), holds it for `--display-time` (4s by default) and then ends the card, so the Lock Screen shows the outcome instead of a card that just vanishes. `--text`, `--icon` and `--color` override the preset.
+
+All ten templates work. For the ones without a dedicated flag, set content fields directly:
+
+```
+pushward activity update ci -F content.progress=0.4 -f content.state="Compiling"
+pushward activity update board --data @board.json
+```
+
+### Approval
+
+An [approval](https://pushward.app/docs/live-activities/approval) card waits for a decision the same way a notification does. `activity wait` gives up after `--timeout` (10 minutes by default) and exits `7`:
+
+```
+pushward activity start release --template approval --text "Ship 2.4?" --option ship=Ship --option hold=Hold
+pushward activity wait release --timeout 30m --jq .content.answer.option
+```
+
+ℹ Info
+
+`activity start` makes two calls, a create and then the first update, and both count against your Live Activity quota (see [Limits](https://pushward.app/docs/limits)). The API has no single call that creates an activity with a name and shows it.
+
+## Widgets, schedules, email
+
+```
+pushward widget create cpu --template gauge --min 0 --max 100 --unit % --value 12
+pushward widget update cpu --value 57
+
+pushward schedule create --in 2h --title "Stand up" --body Stretch
+pushward schedule create --cron "0 9 * * 1-5" --tz Europe/Warsaw --title Standup --body "In 5 minutes"
+pushward schedule list
+pushward schedule cancel 1234 --purge
+
+pushward email send --to ops@example.com --subject "Nightly report" --text-file report.txt
+```
+
+See [Widgets](https://pushward.app/docs/widgets), [Scheduled notifications](https://pushward.app/docs/notifications/scheduled) and [Email](https://pushward.app/docs/email) for what each field does. Email only goes to recipients you have verified in the app.
+
+## Request bodies
+
+Every write command builds its body from four layers, later ones winning:
+
+1.  `--data` (`-d`): a JSON literal, `@file`, or `-` for stdin.
+2.  The command's own flags.
+3.  `-f key=value`: always a string.
+4.  `-F key=value`: typed, so numbers, `true`/`false`/`null`, JSON literals and `@file`.
+
+Keys are dotted paths; `key[]` appends to an array and `key[2]` sets an index.
+
+```
+pushward notify --title T --body B -F push=false -f metadata.host=web-1
+pushward activity update rack -F content.template=board \
+  -F 'content.tiles[]={"label":"CPU","value":"12","unit":"%"}' -F 'content.tiles[]={"label":"Fans","value":"on"}'
+```
+
+For endpoints or fields the other commands do not cover, `pushward api` calls any path with the same key and the same `-f`/`-F`/`--data` handling:
+
+```
+pushward api /activities?state=ongoing
+pushward api -X PATCH /activities/build -F content.progress=0.5
+```
+
+## Output
+
+On a terminal you get a short summary or a table. Piped, or with `--json`, you get the API response as JSON; `--jq` filters it and `-q` prints nothing.
+
+```
+pushward activity list --state ongoing --jq '.items[].slug'
+pushward me --jq .live_activity_updates_used
+```
+
+### Exit codes
+
+Exit codes are stable, so scripts can branch on them:
+
+| Code | Meaning |
+| --- | --- |
+| `0` | OK |
+| `1` | Any other error, such as a `422` validation failure |
+| `2` | Bad usage |
+| `3` | Missing, invalid or unauthorized key |
+| `4` | Not found |
+| `5` | Rate limited or out of quota |
+| `6` | Server error or network failure |
+| `7` | `--wait` (or `activity wait`) ran out |
+
+Rate limits (`429`) and `503`s are retried for up to a minute, honoring `Retry-After`. Other server errors and network failures are only retried for reads and deletes: retrying a POST could send a notification twice.
+
+## GitHub Actions
+
+The same binary runs the `mac-lucky/pushward-action` GitHub Action, which turns these commands into workflow steps with the run's context filled in. See [GitHub Actions](https://pushward.app/docs/integrations/github-actions).
 
 ---
 
@@ -6666,23 +7034,24 @@ Settings come from a YAML config file (`-config` flag, default `config.yml`) **o
 | `PUSHWARD_SERVER_METRICS_ADDRESS` | `server.metrics_address` | Listen address for the internal-only Prometheus metrics server (`GET /metrics`). Must differ from `server.address` or config load fails. Set empty to disable. | `:9090` |
 | `PUSHWARD_DATABASE_PASSWORD_FILE` | `database.password_file` | Path to a file holding the DB password; overrides the password in the DSN and is watched via fsnotify for live rotation (pool resets on change). | _(empty)_ |
 | `PUSHWARD_TRUSTED_PROXY_CIDRS` | `trusted_proxy_cidrs` | CIDRs of trusted reverse proxies. Only when `RemoteAddr` falls in one of these are `CF-Connecting-IP` / `X-Real-IP` / `X-Forwarded-For` honored for per-IP rate limiting. Comma-separated as env; a YAML list in the file. | _(empty)_ |
-| `PUSHWARD_STATE_KEY_MODE` | `state.key_mode` | How the tenant key is stored in `relay_state`: `compat` (the raw `hlk_` key, as 0.14 and earlier did) or `hashed` (its SHA-256). Switch to `hashed` once no 0.14 pod is left, see [State keys](#state-keys). | `compat` |
 | _(none)_ | `circuit_breaker.threshold` | Consecutive outbound-API failures before the breaker opens. Must be `>= 1`. | `5` |
 | _(none)_ | `circuit_breaker.cooldown` | How long the breaker stays open before allowing a probe. Must be `>= 1s`. | `30s` |
 
 ### State keys
 
-Up to 0.14 the relay stored the raw `hlk_` key in the `user_key` column of `relay_state`, so anyone who could read the table could send as any tenant. The `hashed` mode stores the key's SHA-256 instead. Either mode still reads rows the other one wrote and deletes the leftover copy when it rewrites a row, so pods in different modes can share the table:
+Up to 0.14 the relay stored the raw `hlk_` key in the `user_key` column of `relay_state`, so anyone who could read the table could send as any tenant. 0.15 added a mode that stores the key's SHA-256 instead, and since 0.16 that is the only form written or read. A row still keyed by a raw `hlk_` key is never read or deleted; the periodic cleanup drops it once it expires.
 
-1. Deploy this release as it comes. It defaults to `compat` and keeps writing raw keys, so 0.14 pods still running next to it during the rolling update find every row.
-2. Once no 0.14 pod is left, set `PUSHWARD_STATE_KEY_MODE=hashed`, or wait for a release that makes `hashed` the default. Raw rows stay readable until they expire.
-3. A later release stops reading raw rows at all. It must come at least 24 h after step 2: with the default `stale_timeout` values every row has a TTL of 24 h or less (check yours if you raised one).
+So the way from 0.14 or earlier to 0.16 goes through a 0.15.x release. On 0.15.x already, start at step 2, or at step 3 if it runs `hashed`:
 
-To roll back from step 2, go back to `compat` on this release, never straight to 0.14: a 0.14 pod reads raw keys only, so every row written in `hashed` mode is invisible to it until it expires.
+1. Deploy 0.15.x. It defaults to `compat` and keeps writing raw keys, so 0.14 pods still running next to it during the rolling update find every row.
+2. Once no 0.14 pod is left, set `PUSHWARD_STATE_KEY_MODE=hashed` on 0.15.x.
+3. Deploy 0.16 at least 24 h after step 2. With the default `stale_timeout` values no row lives longer than that (check yours if you raised one). It is also safe as soon as `SELECT count(*) FROM relay_state WHERE starts_with(user_key, 'hlk_')` returns 0, which can happen sooner.
 
-Until step 3 the store makes about twice the queries it used to: every write deletes the other copy first, and a read that misses tries the other key too.
+Skip the wait and 0.16 starts without whatever the raw rows held: a card or alert group that was in flight at the upgrade is handled as if the relay had never seen it.
 
-`SELECT count(*) FROM relay_state WHERE starts_with(user_key, 'hlk_')` shows how many raw rows are left.
+Rolling back from 0.16 to 0.15.x needs `PUSHWARD_STATE_KEY_MODE=hashed` on the 0.15.x pods. Without it they fall back to `compat` and write raw keys again, which 0.16 will not read when you roll forward. Never roll back to 0.14: it reads raw keys only, so every row 0.16 wrote is invisible to it.
+
+0.16 no longer reads `state.key_mode` or `PUSHWARD_STATE_KEY_MODE`. A leftover value in the config file or the environment is ignored, and you can drop it whenever.
 
 ### Telemetry (OpenTelemetry, optional)
 
@@ -7860,6 +8229,8 @@ Part of the public [pushward-integrations](https://github.com/mac-lucky/pushward
 Polls the GitHub Actions API for in-progress workflow runs and pushes their live progress to [PushWard](https://pushward.app) as iOS Live Activities on the Dynamic Island and Lock Screen.
 
 `pushward-github` is a standalone, outbound-only poller: it reads the GitHub REST API and writes to the PushWard activities API. It runs no HTTP server of its own and serves a single PushWard account (one `hlk_` key per instance).
+
+If you would rather not run a poller, [pushward-action](https://github.com/mac-lucky/pushward-action) does the same from inside a workflow: a step starts the card, a final `if: always()` step ends it, and it can also send notifications and wait for an approval. Pick one per repository, since both at once give every run two cards.
 
 > **New to PushWard?** Learn more at **[pushward.app](https://pushward.app)** and get the iOS app on the **[App Store](https://apps.apple.com/app/id6759689999)**.
 

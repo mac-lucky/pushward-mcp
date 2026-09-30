@@ -74,7 +74,7 @@ A fully-expanded Markdown bundle of every docs page lives at [/llms-full.txt](ht
 - [Universal Webhook](https://pushward.app/docs/integrations/universal-webhook): Point any service's JSON webhook at the relay and get a notification on your iPhone. Services PushWard knows get a preset, with Live Activities for alerts.
 - [Grafana](https://pushward.app/docs/integrations/grafana): Turn Grafana alerts into a timeline Live Activity on your iPhone Lock Screen. See metric history at a glance with real-time updates while alerts are firing.
 - [Home Assistant](https://pushward.app/docs/integrations/home-assistant): A native HACS integration that bridges Home Assistant entity state changes to PushWard Live Activities on your iPhone.
-- [GitHub Actions](https://pushward.app/docs/integrations/github-actions): Track CI/CD workflow progress in real-time on your Lock Screen using the steps template.
+- [GitHub Actions](https://pushward.app/docs/integrations/github-actions): Send notifications, show a job as a Live Activity and wait for an answer from inside a workflow with the PushWard action, or track every run with the polling bridge.
 - [SABnzbd](https://pushward.app/docs/integrations/sabnzbd): Track SABnzbd download progress as a Live Activity on your iPhone Lock Screen. See file names, speed, ETA, and post-processing phases in real-time.
 - [Bambu Lab](https://pushward.app/docs/integrations/bambulab): Track Bambu Lab 3D print progress as a Live Activity on your iPhone Lock Screen - layer counts, nozzle temperature, and ETA via local MQTT.
 - [Unraid](https://pushward.app/docs/integrations/unraid): A native Unraid plugin that forwards every Unraid notification to your iPhone and shows parity checks, backups, mover, and UPS events as Live Activities on your Lock Screen.
@@ -86,6 +86,7 @@ A fully-expanded Markdown bundle of every docs page lives at [/llms-full.txt](ht
 - [Authentication](https://pushward.app/docs/api/authentication): Bearer authentication with integration keys (hlk_): signing in with Apple ID creates a default key, and you can add scoped keys per service.
 - [Activities](https://pushward.app/docs/api/activities): Create, update, and end the activities behind every Live Activity with plain REST calls: POST to start, PATCH to update, DELETE to end.
 - [MCP Server](https://pushward.app/docs/api/mcp): Drive PushWard from Claude and other AI agents over the Model Context Protocol. The hosted MCP server lets an agent create Live Activities, send notifications, and manage widgets through your integration key.
+- [Command-Line Client](https://pushward.app/docs/api/cli): Send notifications, drive Live Activities, update widgets and wait for answers from a shell script, a cron job or CI with the pushward command-line client.
 
 ## Examples & Limits
 
