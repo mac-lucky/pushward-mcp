@@ -471,22 +471,37 @@ func integrationKeyPath(id string) (string, error) {
 	return "/integrations/keys/" + id, nil
 }
 
+// IntegrationKeyPermissions is the permissions member of a key create or
+// update: one level per resource. Nil levels are omitted; on create the server
+// gives them none, on update the stored level stays.
+type IntegrationKeyPermissions struct {
+	Activities    *string `json:"activities,omitempty"`
+	Notifications *string `json:"notifications,omitempty"`
+	Widgets       *string `json:"widgets,omitempty"`
+	Emails        *string `json:"emails,omitempty"`
+}
+
 // IntegrationKeyFields are the settable fields of an integration key. Nil
 // fields are omitted: on create the server default applies, on update the
-// stored value stays. A non-nil ActivitySlugs pointing at an empty slice is
-// sent as [] and removes the key's slug restriction, which is different from
-// omitting it.
+// stored value stays. A non-nil slug list pointing at an empty slice is sent
+// as [] and removes that restriction, which is different from omitting it.
+// ExpiresAt is sent verbatim when set: an RFC 3339 string, or null to remove
+// the expiry on update.
 type IntegrationKeyFields struct {
-	Scope         *string   `json:"scope,omitempty"`
-	ActivitySlugs *[]string `json:"activity_slugs,omitempty"`
-	Notifications *bool     `json:"notifications,omitempty"`
-	Widgets       *bool     `json:"widgets,omitempty"`
-	Emails        *bool     `json:"emails,omitempty"`
+	Permissions   *IntegrationKeyPermissions `json:"permissions,omitempty"`
+	ActivitySlugs *[]string                  `json:"activity_slugs,omitempty"`
+	WidgetSlugs   *[]string                  `json:"widget_slugs,omitempty"`
+	ExpiresAt     json.RawMessage            `json:"expires_at,omitempty"`
+}
+
+// IsZero reports whether no field is set.
+func (f IntegrationKeyFields) IsZero() bool {
+	return f.Permissions == nil && f.ActivitySlugs == nil && f.WidgetSlugs == nil && len(f.ExpiresAt) == 0
 }
 
 // CreateIntegrationKeyInput is the request body for POST /integrations/keys.
 // Only the account's default key may call it, and the new key cannot have a
-// higher scope or a capability the default key lacks.
+// permission above the default key's own.
 type CreateIntegrationKeyInput struct {
 	Name string `json:"name"`
 	IntegrationKeyFields

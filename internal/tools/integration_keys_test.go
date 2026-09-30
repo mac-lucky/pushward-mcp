@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"testing"
 
@@ -51,8 +52,9 @@ func keyServer(t *testing.T, status int, resp string) (*client.APIClient, *[]key
 func TestCreateIntegrationKey_ForwardsFields(t *testing.T) {
 	api, calls := keyServer(t, http.StatusCreated, `{"id":"`+testKeyID+`","key":"hlk_new"}`)
 	result, err := handleCreateIntegrationKey(context.Background(), newReq(map[string]any{
-		"name": "ci", "scope": "activity:manage", "activity_slugs": []any{"ci-*", "deploy"},
-		"notifications": true, "emails": false,
+		"name": "ci", "activity_slugs": []any{"ci-*", "deploy"}, "widget_slugs": []any{"cpu"},
+		"permissions": map[string]any{"activities": "manage", "notifications": "send", "emails": "none"},
+		"expires_at":  "2099-01-02T03:04:05Z",
 	}), api)
 	if err != nil || result.IsError {
 		t.Fatalf("unexpected result: %v %s", err, resultText(t, result))
@@ -65,8 +67,9 @@ func TestCreateIntegrationKey_ForwardsFields(t *testing.T) {
 		t.Fatalf("request = %s %s", c.method, c.path)
 	}
 	want := map[string]string{
-		"name": `"ci"`, "scope": `"activity:manage"`, "activity_slugs": `["ci-*","deploy"]`,
-		"notifications": "true", "emails": "false",
+		"name": `"ci"`, "activity_slugs": `["ci-*","deploy"]`, "widget_slugs": `["cpu"]`,
+		"permissions": `{"activities":"manage","notifications":"send","emails":"none"}`,
+		"expires_at":  `"2099-01-02T03:04:05Z"`,
 	}
 	if len(c.body) != len(want) {
 		t.Errorf("body keys = %v, want %v", c.body, want)
@@ -110,11 +113,20 @@ func TestIntegrationKeyTools_RejectMalformedArgs(t *testing.T) {
 		{"mixed slugs", map[string]any{"activity_slugs": []any{"a", 1}}},
 		{"string slugs", map[string]any{"activity_slugs": "a"}},
 		{"null slugs", map[string]any{"activity_slugs": nil}},
-		{"numeric flag", map[string]any{"emails": 1}},
-		{"string flag", map[string]any{"widgets": "true"}},
-		{"null flag", map[string]any{"notifications": nil}},
-		{"unknown scope", map[string]any{"scope": "admin"}},
-		{"null scope", map[string]any{"scope": nil}},
+		{"number widget slug", map[string]any{"widget_slugs": []any{1}}},
+		{"null widget slugs", map[string]any{"widget_slugs": nil}},
+		// The pre-levels parameters: dropping them silently would change what the key can do.
+		{"legacy bool", map[string]any{"notifications": true}},
+		{"legacy scope", map[string]any{"scope": "activity:manage"}},
+		{"permissions not an object", map[string]any{"permissions": "send"}},
+		{"empty permissions", map[string]any{"permissions": map[string]any{}}},
+		{"unknown level", map[string]any{"permissions": map[string]any{"widgets": "admin"}}},
+		{"level of another resource", map[string]any{"permissions": map[string]any{"emails": "schedule"}}},
+		{"unknown resource", map[string]any{"permissions": map[string]any{"billing": "read"}}},
+		{"numeric level", map[string]any{"permissions": map[string]any{"activities": 1}}},
+		{"bad expiry", map[string]any{"expires_at": "next week"}},
+		{"past expiry", map[string]any{"expires_at": "2001-01-01T00:00:00Z"}},
+		{"numeric expiry", map[string]any{"expires_at": 1893456000}},
 	}
 	for _, tc := range bad {
 		t.Run("create/"+tc.name, func(t *testing.T) {
@@ -145,7 +157,7 @@ func TestIntegrationKeyTools_RejectMalformedArgs(t *testing.T) {
 func TestUpdateIntegrationKey_SlugsOmittedVsEmpty(t *testing.T) {
 	api, calls := keyServer(t, http.StatusOK, `{}`)
 	ctx := context.Background()
-	if r, _ := handleUpdateIntegrationKey(ctx, newReq(map[string]any{"key_id": testKeyID, "emails": false}), api); r.IsError {
+	if r, _ := handleUpdateIntegrationKey(ctx, newReq(map[string]any{"key_id": testKeyID, "permissions": map[string]any{"emails": "none"}}), api); r.IsError {
 		t.Fatalf("tool error: %s", resultText(t, r))
 	}
 	if r, _ := handleUpdateIntegrationKey(ctx, newReq(map[string]any{"key_id": testKeyID, "activity_slugs": []any{}}), api); r.IsError {
@@ -159,6 +171,36 @@ func TestUpdateIntegrationKey_SlugsOmittedVsEmpty(t *testing.T) {
 	}
 	if c := (*calls)[1]; c.method != http.MethodPatch || c.path != "/integrations/keys/"+testKeyID {
 		t.Errorf("request = %s %s", c.method, c.path)
+	}
+}
+
+// expires_at "never" becomes JSON null on update (removing the expiry) and is
+// refused on create, where omitting it already means never.
+// widget_slugs behaves like activity_slugs: [] is refused on create (it would
+// not restrict anything) and sent as [] on update, where it clears the list.
+func TestIntegrationKey_WidgetSlugsEmpty(t *testing.T) {
+	api, calls := keyServer(t, http.StatusOK, `{}`)
+	if r, _ := handleCreateIntegrationKey(context.Background(), newReq(map[string]any{"name": "ci", "widget_slugs": []any{}}), api); !r.IsError || len(*calls) != 0 {
+		t.Fatalf("create with []: IsError=%v calls=%d, want a tool error and no request", r.IsError, len(*calls))
+	}
+	if r, _ := handleUpdateIntegrationKey(context.Background(), newReq(map[string]any{"key_id": testKeyID, "widget_slugs": []any{}}), api); r.IsError {
+		t.Fatalf("update with []: %s", resultText(t, r))
+	}
+	if got := string((*calls)[0].body["widget_slugs"]); got != "[]" {
+		t.Errorf("widget_slugs=[] sent as %q, want []", got)
+	}
+}
+
+func TestIntegrationKey_ExpiryNever(t *testing.T) {
+	api, calls := keyServer(t, http.StatusOK, `{}`)
+	if r, _ := handleUpdateIntegrationKey(context.Background(), newReq(map[string]any{"key_id": testKeyID, "expires_at": "never"}), api); r.IsError {
+		t.Fatalf("tool error: %s", resultText(t, r))
+	}
+	if got := string((*calls)[0].body["expires_at"]); got != "null" {
+		t.Errorf("expires_at never sent as %q, want null", got)
+	}
+	if r, _ := handleCreateIntegrationKey(context.Background(), newReq(map[string]any{"name": "ci", "expires_at": "never"}), api); !r.IsError || len(*calls) != 1 {
+		t.Errorf("create with never: IsError=%v calls=%d, want a tool error and no request", r.IsError, len(*calls))
 	}
 }
 
@@ -298,7 +340,8 @@ func TestIntegrationKeyTools_SpecParity(t *testing.T) {
 		}
 		params := st.Tool.InputSchema.Properties
 		for name := range props {
-			if name == "$schema" {
+			// The legacy fields are refused by the tools on purpose; see legacyKeyArgs.
+			if name == "$schema" || slices.Contains(legacyKeyArgs, name) {
 				continue
 			}
 			if _, ok := params[name]; !ok {
