@@ -45,6 +45,32 @@ You authenticate on first connect: the consent screen asks for your PushWard int
 short-lived token. The key never reaches the client. The hosted endpoint exposes the API
 tools only, not the relay tools (a multi-tenant endpoint can't share one relay credential).
 
+## Claude Code plugin
+
+```
+/plugin marketplace add mac-lucky/pushward-mcp
+/plugin install pushward@pushward
+```
+
+The plugin registers the hosted server above and adds the `pushward-mcp` skill. Then run
+`/mcp`, pick the pushward server and sign in once with your key. Third-party marketplaces don't
+auto-update by default, so pick up later skill changes with
+`/plugin marketplace update pushward`.
+
+## Agent skill
+
+For other agents, or a server you added yourself:
+
+```sh
+npx skills add mac-lucky/pushward-mcp --skill pushward-mcp
+```
+
+Tools tell an agent what it can call; the skill tells it when. With it installed, "ping me
+when the migration finishes" becomes one notification at the end instead of one per step, an
+approval waits on `wait_for_answer` instead of a sleep loop, and every Live Activity it starts
+gets ended, including on failure. It also keeps the agent away from the integration key tools
+unless you ask, since keys it creates outlive the session.
+
 ## Running it locally (stdio)
 
 For local development the server talks to a single client over stdio with one identity from

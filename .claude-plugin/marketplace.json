@@ -1,0 +1,15 @@
+{
+  "name": "pushward",
+  "description": "PushWard for Claude Code: push notifications, Live Activities and widgets on your iPhone.",
+  "owner": {
+    "name": "mac-lucky",
+    "url": "https://github.com/mac-lucky"
+  },
+  "plugins": [
+    {
+      "name": "pushward",
+      "source": "./",
+      "description": "The hosted PushWard MCP server and the pushward-mcp skill."
+    }
+  ]
+}

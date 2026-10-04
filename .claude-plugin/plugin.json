@@ -1,0 +1,18 @@
+{
+  "name": "pushward",
+  "description": "Push notifications, Live Activities and widgets on your iPhone from your agent: the hosted PushWard MCP server, plus a skill for what to send and when.",
+  "author": {
+    "name": "mac-lucky",
+    "url": "https://github.com/mac-lucky"
+  },
+  "homepage": "https://pushward.app/docs/api/mcp",
+  "repository": "https://github.com/mac-lucky/pushward-mcp",
+  "license": "MIT",
+  "keywords": ["push-notifications", "live-activities", "ios", "widgets", "mcp"],
+  "mcpServers": {
+    "pushward": {
+      "type": "http",
+      "url": "https://mcp.pushward.app/mcp"
+    }
+  }
+}
