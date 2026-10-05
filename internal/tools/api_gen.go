@@ -45,6 +45,10 @@ func registerAPITools(s *mcpserver.MCPServer, api *client.APIClient) {
 			mcp.WithNumber("stale_ttl",
 				mcp.Description("Seconds of inactivity before auto-ending (1s to 30 days) (min: 1, max: 2592000)"),
 			),
+			mcp.WithObject("target",
+				mcp.Description("Organization keys only: who the Live Activity reaches, narrowing the organization's routing rules. Omit to reach everyone the rules allow (or, for a key limited to some groups and tags, all of those). Re-POSTing an existing slug without it keeps the stored target."),
+				mcp.Properties(map[string]any{"groups": map[string]any{"description": "Names of the organization's groups whose members receive it.", "items": map[string]any{"type": "string"}, "maxItems": 20, "type": "array"}, "members": map[string]any{"description": "User ids of members who receive it on all their devices.", "items": map[string]any{"type": "string"}, "maxItems": 100, "type": "array"}, "tags": map[string]any{"description": "Names of the organization's device tags; devices with any of them receive it.", "items": map[string]any{"type": "string"}, "maxItems": 20, "type": "array"}}),
+			),
 		),
 		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 			return handleCreateActivity(ctx, req, api)
@@ -84,6 +88,7 @@ func registerAPITools(s *mcpserver.MCPServer, api *client.APIClient) {
 			),
 			mcp.WithObject("media",
 				mcp.Description("Rich media attachment (image, video, or audio). HTTPS only."),
+				mcp.Properties(map[string]any{"type": map[string]any{"description": "Media type", "enum": []string{"image", "video", "audio"}, "type": "string"}, "url": map[string]any{"description": "HTTPS URL of the media file", "type": "string"}}),
 			),
 			mcp.WithBoolean("push",
 				mcp.Description("Send as an APNs push to the user's devices. Defaults to true; set false to store in the inbox only."),
@@ -96,6 +101,10 @@ func registerAPITools(s *mcpserver.MCPServer, api *client.APIClient) {
 			),
 			mcp.WithString("subtitle",
 				mcp.Description("Notification subtitle"),
+			),
+			mcp.WithObject("target",
+				mcp.Description("Organization keys only: who receives it, narrowing the organization's routing rules. Omit to reach everyone the rules allow (or, for a key limited to some groups and tags, all of those)."),
+				mcp.Properties(map[string]any{"groups": map[string]any{"description": "Names of the organization's groups whose members receive it.", "items": map[string]any{"type": "string"}, "maxItems": 20, "type": "array"}, "members": map[string]any{"description": "User ids of members who receive it on all their devices.", "items": map[string]any{"type": "string"}, "maxItems": 100, "type": "array"}, "tags": map[string]any{"description": "Names of the organization's device tags; devices with any of them receive it.", "items": map[string]any{"type": "string"}, "maxItems": 20, "type": "array"}}),
 			),
 			mcp.WithString("thread_id",
 				mcp.Description("Thread identifier for grouping"),
@@ -149,12 +158,14 @@ func registerAPITools(s *mcpserver.MCPServer, api *client.APIClient) {
 			),
 			mcp.WithObject("media",
 				mcp.Description("Rich media attachment (image, video, or audio). HTTPS only."),
+				mcp.Properties(map[string]any{"type": map[string]any{"description": "Media type", "enum": []string{"image", "video", "audio"}, "type": "string"}, "url": map[string]any{"description": "HTTPS URL of the media file", "type": "string"}}),
 			),
 			mcp.WithBoolean("push",
 				mcp.Description("Send as an APNs push to the user's devices. Defaults to true; set false to store in the inbox only."),
 			),
 			mcp.WithObject("recurrence",
 				mcp.Description("Repeat the notification on a cron schedule: {cron, timezone, until, count}. cron is a 5-field expression (minute hour day-of-month month day-of-week, e.g. \"0 8 * * 1-5\" for weekdays at 08:00) or @daily/@weekly/@monthly, evaluated in timezone (IANA, required); sends must be at least 15 minutes apart. until (RFC 3339, inclusive) or count ends the series. The schedule keeps one id for the whole series and holds one pending slot; canceling it stops the series."),
+				mcp.Properties(map[string]any{"count": map[string]any{"description": "Total number of sends, max 1000; a skipped send (quota used up) does not count. Cannot be combined with until.", "type": "integer"}, "cron": map[string]any{"description": "Standard 5-field cron expression (minute hour day-of-month month day-of-week), or @daily, @weekly, @monthly, @yearly, @hourly. Evaluated in timezone. Sends must be at least 15 minutes apart.", "type": "string"}, "timezone": map[string]any{"description": "IANA time zone the cron expression is evaluated in; its times are local wall-clock times, kept across DST changes.", "type": "string"}, "until": map[string]any{"description": "Last allowed send time (inclusive). Cannot be combined with count.", "type": "string"}}),
 			),
 			mcp.WithString("send_at",
 				mcp.Description("When to send the notification (RFC 3339). Must be in the future and at most 365 days ahead. Required unless recurrence is set; with recurrence, the first send is the first cron match at or after send_at (default: now)."),
@@ -167,6 +178,10 @@ func registerAPITools(s *mcpserver.MCPServer, api *client.APIClient) {
 			),
 			mcp.WithString("subtitle",
 				mcp.Description("Notification subtitle"),
+			),
+			mcp.WithObject("target",
+				mcp.Description("Organization keys only: who receives it, narrowing the organization's routing rules. Omit to reach everyone the rules allow (or, for a key limited to some groups and tags, all of those)."),
+				mcp.Properties(map[string]any{"groups": map[string]any{"description": "Names of the organization's groups whose members receive it.", "items": map[string]any{"type": "string"}, "maxItems": 20, "type": "array"}, "members": map[string]any{"description": "User ids of members who receive it on all their devices.", "items": map[string]any{"type": "string"}, "maxItems": 100, "type": "array"}, "tags": map[string]any{"description": "Names of the organization's device tags; devices with any of them receive it.", "items": map[string]any{"type": "string"}, "maxItems": 20, "type": "array"}}),
 			),
 			mcp.WithString("thread_id",
 				mcp.Description("Thread identifier for grouping"),
@@ -403,6 +418,13 @@ func registerAPITools(s *mcpserver.MCPServer, api *client.APIClient) {
 			mcp.WithString("state",
 				mcp.Description("Target state. Accepts ongoing or ended (case-insensitive). Optional - if omitted, the current stored state is kept. Setting ended on an ongoing activity ends the Live Activity; the card then stays on the Lock Screen for dismissal_ttl seconds (or ended_ttl capped at 4h when dismissal_ttl is unset)."),
 			),
+			mcp.WithObject("target",
+				mcp.Description("Organization keys only: who the Live Activity reaches, narrowing the organization's routing rules. Tri-state: omit to keep, clear_target: true to clear (everyone the rules allow), object to replace. Devices that lose it end it; devices that gain it start it."),
+				mcp.Properties(map[string]any{"groups": map[string]any{"description": "Names of the organization's groups whose members receive it.", "items": map[string]any{"type": "string"}, "maxItems": 20, "type": "array"}, "members": map[string]any{"description": "User ids of members who receive it on all their devices.", "items": map[string]any{"type": "string"}, "maxItems": 100, "type": "array"}, "tags": map[string]any{"description": "Names of the organization's device tags; devices with any of them receive it.", "items": map[string]any{"type": "string"}, "maxItems": 20, "type": "array"}}),
+			),
+			mcp.WithBoolean("clear_target",
+				mcp.Description("Set true to clear target (null in the API). Cannot be combined with target."),
+			),
 			mcp.WithString("content_json",
 				mcp.Required(),
 				mcp.Description("Activity content as JSON object. PATCH applies RFC 7396 JSON Merge Patch semantics - only send the fields you want to change, null clears a field, absent preserves. Fields: template (generic|countdown|steps|alert|gauge|timeline|board|log|media|approval), progress (0.0-1.0), state, icon, subtitle, compact_label (up to 4 characters shown on the left of the compact Dynamic Island in place of the icon, steps ring or timeline stack; trimmed server-side; needs app 1.14.0), remaining_time (seconds), accent_color, background_color, text_color, plus three tap targets every template takes: tap_action {url, foreground, method, headers, body} makes the whole card tappable, url_action and secondary_url_action take that shape plus title and icon and draw buttons, and the legacy url / secondary_url strings still work but lose to them. Timing (generic, countdown, steps): end_date [unix timestamp], start_date, duration as integer seconds (60) or string (\"60s\", \"1h30m\") which sets both from now; end_date wins when both are sent. live_progress (generic, steps) animates the bar and ETA on device between pushes instead of a static fill, needs end_date, and has to be re-anchored on each step change. Template-specific: countdown (warning_threshold, completion_message, alarm, snooze_seconds (60-3600, default 300; how far the /snooze action and iOS AlarmKit snooze extend the timer, only with alarm)), steps (current_step, total_steps, step_labels, step_rows [per-step row index, 1-10, for multi-row layouts], step_weights [relative widths, one positive number per step], step_colors [named or hex, empty entries fall back to accent_color]), alert (severity: critical|warning|info, fired_at, severity_label), gauge (value, min_value, max_value, unit, decimals), timeline (value as {key:number}, history as {key:[{timestamp,value}]}, unit, units [per series, keyed to value keys], primary_series [the series driving the headline number], scale, decimals, smoothing, thresholds), board (tiles: 1-4 labeled tiles, each {label, value [string], unit, icon, color, trend [up|down|flat], url_action [button shape above]}, replaced wholesale per update), log (lines: 1-20 newest-first entries, each {text, at [unix seconds], level [info|warn|error]}, replaced wholesale per update; the server also keeps a read-only rolling log_backlog, fetch it via get_activity include_log_backlog), media (remote player card, needs iOS 1.9.0, older builds show the generic card; these fields are 422 on any other template: media_title [track/episode, the big line; subtitle is the artist/show, the activity name the source device], playback_state [playing|paused|stopped|buffering, default paused; only playing ticks the scrubber on device], position_seconds [0-604800 (7 days), playhead at position_at, which defaults to the receive time and has to fall within the last 12h and at most 5min ahead; a patch carrying only position is a low-priority coalescable update], duration_seconds [0-604800, omit for live streams and radio: indeterminate bar, elapsed still ticks], volume [0-1, thin bar between the volume buttons], favorite [bool, filled heart], controls [{previous, play_pause, play, pause, next, stop, favorite, volume_down, volume_up: each {url, method, headers, body}, plus extra: up to 3 {url, icon (required), title}}; http(s) control URLs are always silent webhooks (method defaults to POST, foreground is rejected), custom schemes open that app; on PATCH controls deep-merges, a null slot removes that button, extra is replaced wholesale]). approval (a question card, the question rides state; these fields are 422 on any other template: options [required, 2-4 answer buttons, each {id (unique slug, max 64), title (max 24, required), style (primary|secondary|destructive, default first-primary-rest-secondary), icon (required at 3+ options), url, method, headers, body}; an http(s) option is always a silent webhook, foreground rejected, empty method filled with POST; OMIT url for the server-recorded form - the server fills a signed answer URL, records the first tap in the read-only answer {option, at, by} field, pushes it to every device and ends the activity shortly after (dismissal_ttl sets how long the answered card lingers); poll get_activity or use wait_for_answer to read the outcome], source [producer badge, max 24], details [max 2 rows {label (max 24), value (max 64)}], on_expire [an option id or none, needs end_date; recorded as the answer with by=expired when the deadline passes]; options and details replace wholesale on PATCH and re-sending options clears the stored answer; url_action, secondary_url_action, alarm and snooze_seconds are rejected on this template). Images (generic|media|steps only, 422 elsewhere; each works alone): image_url (https, max 2048, host required, no user:pass@; fetched by the device, not the server, so it must be publicly reachable), image_shape (poster|square|circle, default square), image_thumbhash (padded standard-alphabet base64 ThumbHash, ~28 chars, max 64; the blur until the image loads)."),
@@ -475,6 +497,19 @@ func handleCreateActivity(ctx context.Context, req mcp.CallToolRequest, api *cli
 	if v := req.GetFloat("stale_ttl", math.NaN()); !math.IsNaN(v) {
 		input.StaleTTL = &v
 	}
+	if v, ok := req.GetArguments()["target"]; ok && v != nil {
+		// An empty object is skipped like an omitted one: some clients fill
+		// every optional object param, and the API refuses an empty one.
+		if m, isMap := v.(map[string]any); !isMap || len(m) > 0 {
+			buf, err := json.Marshal(v)
+			if err != nil {
+				return mcp.NewToolResultError("encoding target: " + err.Error()), nil
+			}
+			// Forward opaque JSON - server is the source of truth for the
+			// target schema, so new fields don't require an MCP rebuild.
+			input.Target = json.RawMessage(buf)
+		}
+	}
 	raw, err := api.CreateActivity(ctx, input)
 	if err != nil {
 		return mcp.NewToolResultError(err.Error()), nil
@@ -542,6 +577,19 @@ func handleCreateNotification(ctx context.Context, req mcp.CallToolRequest, api 
 	}
 	if v := req.GetString("subtitle", ""); v != "" {
 		input.Subtitle = v
+	}
+	if v, ok := req.GetArguments()["target"]; ok && v != nil {
+		// An empty object is skipped like an omitted one: some clients fill
+		// every optional object param, and the API refuses an empty one.
+		if m, isMap := v.(map[string]any); !isMap || len(m) > 0 {
+			buf, err := json.Marshal(v)
+			if err != nil {
+				return mcp.NewToolResultError("encoding target: " + err.Error()), nil
+			}
+			// Forward opaque JSON - server is the source of truth for the
+			// target schema, so new fields don't require an MCP rebuild.
+			input.Target = json.RawMessage(buf)
+		}
 	}
 	if v := req.GetString("thread_id", ""); v != "" {
 		input.ThreadID = v
@@ -633,6 +681,19 @@ func handleCreateScheduledNotification(ctx context.Context, req mcp.CallToolRequ
 	}
 	if v := req.GetString("subtitle", ""); v != "" {
 		input.Subtitle = v
+	}
+	if v, ok := req.GetArguments()["target"]; ok && v != nil {
+		// An empty object is skipped like an omitted one: some clients fill
+		// every optional object param, and the API refuses an empty one.
+		if m, isMap := v.(map[string]any); !isMap || len(m) > 0 {
+			buf, err := json.Marshal(v)
+			if err != nil {
+				return mcp.NewToolResultError("encoding target: " + err.Error()), nil
+			}
+			// Forward opaque JSON - server is the source of truth for the
+			// target schema, so new fields don't require an MCP rebuild.
+			input.Target = json.RawMessage(buf)
+		}
 	}
 	if v := req.GetString("thread_id", ""); v != "" {
 		input.ThreadID = v
@@ -814,6 +875,38 @@ func handleUpdateActivity(ctx context.Context, req mcp.CallToolRequest, api *cli
 	}
 	if v := req.GetString("state", ""); v != "" {
 		input.State = v
+	}
+	if v, ok := req.GetArguments()["target"]; ok && v != nil {
+		// An empty object is skipped like an omitted one: some clients fill
+		// every optional object param, and the API refuses an empty one.
+		if m, isMap := v.(map[string]any); !isMap || len(m) > 0 {
+			buf, err := json.Marshal(v)
+			if err != nil {
+				return mcp.NewToolResultError("encoding target: " + err.Error()), nil
+			}
+			// Forward opaque JSON - server is the source of truth for the
+			// target schema, so new fields don't require an MCP rebuild.
+			input.Target = json.RawMessage(buf)
+		}
+	}
+	{
+		// clear_target (or a literal null) sends null, which clears the
+		// field in the merge patch; omitted keeps it.
+		v, present := req.GetArguments()["target"]
+		clearIt := false
+		if _, set := req.GetArguments()["clear_target"]; set {
+			b, err := req.RequireBool("clear_target")
+			if err != nil {
+				return mcp.NewToolResultError("clear_target must be true or false"), nil
+			}
+			clearIt = b
+		}
+		if clearIt && len(input.Target) > 0 {
+			return mcp.NewToolResultError("target and clear_target cannot be used together"), nil
+		}
+		if clearIt || (present && v == nil) {
+			input.Target = json.RawMessage("null")
+		}
 	}
 	raw, err := api.UpdateActivity(ctx, paramSlug, input)
 	if err != nil {

@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -913,4 +914,85 @@ func TestUnhandledQueryParams(t *testing.T) {
 	if got := unhandledQueryParams(spec); len(got) != 1 || got[0] != "listThings?cursor" {
 		t.Fatalf("got %v, want [listThings?cursor]", got)
 	}
+}
+
+// TestBuildAPITools_TargetParams: target is forwarded opaque (the server
+// validates it), carries its fields as properties, and only update_activity
+// (a merge patch) forwards an explicit null. Typed object params keep their
+// struct and gain properties too.
+func TestBuildAPITools_TargetParams(t *testing.T) {
+	byName := make(map[string]toolDef)
+	for _, tl := range buildAPITools(apiSpec(t)) {
+		byName[tl.Name] = tl
+	}
+	param := func(tool, name string) paramDef {
+		t.Helper()
+		for _, p := range byName[tool].Params {
+			if p.Name == name {
+				return p
+			}
+		}
+		t.Fatalf("%s has no %s param", tool, name)
+		return paramDef{}
+	}
+	for _, tool := range []string{"create_activity", "update_activity", "create_notification", "create_scheduled_notification"} {
+		p := param(tool, "target")
+		if p.MCPType != "Object" || !p.Opaque || p.GoType != "json.RawMessage" {
+			t.Errorf("%s target = %+v, want an opaque object", tool, p)
+		}
+		if p.Nullable != (tool == "update_activity") {
+			t.Errorf("%s target nullable = %v", tool, p.Nullable)
+		}
+		if p.Nullable && (!strings.Contains(p.Desc, "clear_target: true to clear") || strings.Contains(p.Desc, "null to clear")) {
+			t.Errorf("%s target description %q, want clear_target named instead of null", tool, p.Desc)
+		}
+		for _, field := range []string{"groups", "tags", "members"} {
+			if _, ok := p.Props[field]; !ok {
+				t.Errorf("%s target props %v miss %s", tool, p.Props, field)
+			}
+		}
+	}
+	if m := param("create_notification", "media"); m.Opaque || m.Nullable || m.GoType != "*client.MediaAttachment" || m.Props["url"] == nil {
+		t.Errorf("media = %+v, want the typed struct with its properties", m)
+	}
+}
+
+func TestGoLiteral(t *testing.T) {
+	got := goLiteral(map[string]any{"b": 2, "a": map[string]any{"type": "array", "enum": []string{"x", "y"}}})
+	want := `map[string]any{"a": map[string]any{"enum": []string{"x", "y"}, "type": "array"}, "b": 2}`
+	if got != want {
+		t.Errorf("goLiteral = %s, want %s", got, want)
+	}
+}
+
+// A content_json tool's handler reads its array params too (the branch once
+// read only strings, numbers and booleans, and dropped the rest), and a
+// param it cannot read stops generation instead of being advertised.
+func TestContentJSONToolParams(t *testing.T) {
+	spec := func(required ...string) *openAPISpec {
+		s := &openAPISpec{Paths: map[string]pathItem{"/things/{slug}": {"patch": operation{
+			OperationID: "updateThing",
+			RequestBody: &requestBody{Required: true, Content: map[string]mediaTypeObject{"application/merge-patch+json": {Schema: schemaObj{
+				Required: required,
+				Properties: map[string]schemaObj{
+					"content": {Type: "object", Properties: map[string]schemaObj{"x": {Type: "string"}}},
+					"items":   {Type: "array", Items: &schemaObj{Ref: "#/components/schemas/Thing"}},
+					"prio":    {Type: "integer"},
+				},
+			}}}},
+		}}}}
+		s.Components.Schemas = map[string]schemaObj{"Thing": {Type: "object", Properties: map[string]schemaObj{"id": {Type: "string"}}}}
+		return s
+	}
+	out := string(renderTemplate(apiToolsTemplate, buildAPITools(spec())))
+	handler := out[strings.Index(out, "func handleUpdateThing("):]
+	if !strings.Contains(handler, "input.Items = parsed") {
+		t.Errorf("the content_json handler does not read the items array:\n%s", handler)
+	}
+	defer func() {
+		if r := recover(); r == nil || !strings.Contains(fmt.Sprint(r), `required Number param "prio"`) {
+			t.Errorf("a required number on a content_json tool: recovered %v, want a panic naming it", r)
+		}
+	}()
+	buildAPITools(spec("prio"))
 }

@@ -144,6 +144,9 @@ type CreateActivityInput struct {
 	EndedTTL     *float64 `json:"ended_ttl,omitempty"`
 	StaleTTL     *float64 `json:"stale_ttl,omitempty"`
 	DismissalTTL *float64 `json:"dismissal_ttl,omitempty"`
+	// Target (organization keys) is who the activity reaches, forwarded as
+	// the caller sent it: {groups, tags, members}.
+	Target json.RawMessage `json:"target,omitempty"`
 }
 
 // CreateActivity creates a new activity.
@@ -185,7 +188,9 @@ func (c *APIClient) DeleteActivity(ctx context.Context, slug string) error {
 // UpdateActivityInput is the request body for PATCH /activities/{slug}.
 // State is optional under RFC 7396 merge-patch semantics - omit to inherit
 // the stored state (unless the activity is preempted). The TTLs are
-// merge-patchable too: send one to change it, omit to preserve.
+// merge-patchable too: send one to change it, omit to preserve. Target
+// (organization keys) is nil to keep it, the JSON null to clear it, or an
+// object to replace it.
 type UpdateActivityInput struct {
 	State        string          `json:"state,omitempty"`
 	Content      json.RawMessage `json:"content"`
@@ -194,6 +199,7 @@ type UpdateActivityInput struct {
 	EndedTTL     *float64        `json:"ended_ttl,omitempty"`
 	StaleTTL     *float64        `json:"stale_ttl,omitempty"`
 	DismissalTTL *float64        `json:"dismissal_ttl,omitempty"`
+	Target       json.RawMessage `json:"target,omitempty"`
 }
 
 // UpdateActivity updates an activity's state and content.
@@ -253,6 +259,7 @@ type CreateNotificationInput struct {
 	Actions           json.RawMessage   `json:"actions,omitempty"`
 	Push              *bool             `json:"push,omitempty"`
 	Volume            *float64          `json:"volume,omitempty"`
+	Target            json.RawMessage   `json:"target,omitempty"` // organization keys: who gets it
 }
 
 // CreateNotification creates an in-app notification with optional APNs push.
@@ -284,6 +291,7 @@ type CreateScheduledNotificationInput struct {
 	Actions           json.RawMessage   `json:"actions,omitempty"`
 	Push              *bool             `json:"push,omitempty"`
 	Volume            *float64          `json:"volume,omitempty"`
+	Target            json.RawMessage   `json:"target,omitempty"` // organization keys: who gets it
 }
 
 // Recurrence repeats a scheduled notification on a cron schedule evaluated in

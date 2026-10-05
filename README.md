@@ -32,6 +32,10 @@ agent's context.
 | Docs | `get_pushward_docs`, `get_pushward_best_practices` |
 | Relay (stdio only) | `relay_<provider>` for ArgoCD, Backrest, Bazarr, Changedetection.io, Forgejo, Gatus, Gitea, Grafana, Jellyfin, Komodo, Overseerr, Paperless-ngx, Prowlarr, Proxmox VE, Radarr, Sonarr, Unmanic and Uptime Kuma; `relay_universal` POSTs any other JSON to the relay root URL, which hands a payload it recognises to that provider's route and maps the rest through the universal presets or into one plain notification (`source`, `channels`, `priority` and `level` go on the query string) |
 
+With a key from a PushWard organization (a team account), `create_notification`,
+`create_scheduled_notification`, `create_activity` and `update_activity` also take `target`:
+group names, device tag names or member user ids that narrow who receives it.
+
 ## Using the hosted server
 
 The easiest path is the hosted remote endpoint. Point an OAuth-capable MCP client at:

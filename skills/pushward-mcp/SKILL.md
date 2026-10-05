@@ -151,6 +151,28 @@ Scheduled notifications are held by the server, so nothing has to keep running. 
 at least 15 minutes apart and an account can have 25 pending; keep the returned `id` for
 `cancel_scheduled_notification` (`purge: true` leaves no canceled record).
 
+## Organization keys
+
+With a key that belongs to a PushWard organization (a team account), everything goes to the
+members' devices, filtered by the organization's routing rules. `create_notification`,
+`create_scheduled_notification`, `create_activity` and `update_activity` take an optional
+`target` that narrows it further, by group name, device tag name or member user id:
+
+```
+create_notification {"title": "db-1 disk at 95%", "body": "Paging on-call", "level": "time-sensitive", "target": {"groups": ["oncall"]}}
+create_activity {"slug": "agent-deploy-api", "name": "Deploy api", "ended_ttl": 1800, "target": {"tags": ["wall"]}}
+update_activity {"slug": "agent-deploy-api", "content_json": "{}", "target": {"groups": ["oncall", "sre"]}}
+update_activity {"slug": "agent-deploy-api", "content_json": "{}", "clear_target": true}
+```
+
+On `update_activity` a new `target` replaces the stored one and `clear_target` sends the
+activity back to everyone the rules allow; devices that lose it end it, devices that gain it
+start it. A key the admins limited to some groups and tags must stay inside them (403
+otherwise, and for `clear_target` too) and only sees activities sent inside them: anything else
+answers 404, as if it did not exist. A personal key gets 422 for a target. The API cannot list
+group or tag names or member user ids: they live in the organization's console, so ask the
+user for them.
+
 ## Writing code against the API
 
 When the task is building an integration rather than notifying the user, ground it first:

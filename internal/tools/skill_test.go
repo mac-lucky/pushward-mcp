@@ -233,9 +233,31 @@ func checkValue(prop map[string]any, v any) error {
 	case "boolean":
 		_, ok = v.(bool)
 	case "object":
-		_, ok = v.(map[string]any)
+		var m map[string]any
+		m, ok = v.(map[string]any)
+		// An object param that publishes its properties is checked inside
+		// too: the API refuses unknown keys there.
+		if props, _ := prop["properties"].(map[string]any); ok && len(props) > 0 {
+			for k, sub := range m {
+				p, known := props[k].(map[string]any)
+				if !known {
+					return fmt.Errorf("unknown field %q", k)
+				}
+				if err := checkValue(p, sub); err != nil {
+					return fmt.Errorf("%s: %w", k, err)
+				}
+			}
+		}
 	case "array":
-		_, ok = v.([]any)
+		var items []any
+		items, ok = v.([]any)
+		if schema, _ := prop["items"].(map[string]any); ok && schema != nil {
+			for i, e := range items {
+				if err := checkValue(schema, e); err != nil {
+					return fmt.Errorf("item %d: %w", i, err)
+				}
+			}
+		}
 	default:
 		ok = true
 	}

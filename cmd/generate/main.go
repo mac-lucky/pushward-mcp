@@ -69,6 +69,7 @@ type schemaObj struct {
 	Maximum              *float64             `json:"maximum" yaml:"maximum"`
 	Minimum              *float64             `json:"minimum" yaml:"minimum"`
 	MaxLength            *int                 `json:"maxLength" yaml:"maxLength"`
+	MaxItems             *int                 `json:"maxItems" yaml:"maxItems"`
 	MinLength            *int                 `json:"minLength" yaml:"minLength"`
 	Pattern              string               `json:"pattern" yaml:"pattern"`
 	ReadOnly             bool                 `json:"readOnly" yaml:"readOnly"`
@@ -115,14 +116,22 @@ type paramDef struct {
 	GoType    string // Go type used in client struct for Object/Array params (e.g. "*client.MediaAttachment", "[]client.NotificationAction")
 	ItemsType string // Item type description (used for array property items schema)
 	Opaque    bool   // forward as json.RawMessage instead of typed unmarshal - for fields whose schema drifts faster than the MCP rebuilds
+	// Nullable forwards an explicit null (a merge-patch clear) instead of
+	// dropping it. Only opaque params can carry it: a typed pointer cannot.
+	Nullable bool
+	// Props is an object param's properties as a JSON Schema map, so the model
+	// sees the fields instead of a bare "object".
+	Props map[string]any
 }
 
-// opaqueArrayFields lists request-body field names that must be forwarded as
-// raw JSON instead of unmarshalled into a typed slice. The server is the
-// source of truth for these schemas - typed parsing silently dropped unknown
-// fields the server had added since the last MCP rebuild (see commit 33912d9).
-var opaqueArrayFields = map[string]bool{
+// opaqueFields lists request-body field names that must be forwarded as raw
+// JSON instead of unmarshalled into a typed value. The server is the source of
+// truth for these schemas - typed parsing silently dropped unknown fields the
+// server had added since the last MCP rebuild (see commit 33912d9) - and
+// validates them itself.
+var opaqueFields = map[string]bool{
 	"actions": true,
+	"target":  true,
 }
 
 // Live OpenAPI spec URLs.
@@ -407,6 +416,19 @@ func buildAPITools(spec *openAPISpec) []toolDef {
 					schema := resolveRef(spec, ct.Schema)
 					t.HasBody = true
 					t.Params = schemaToParams(spec, schema, op.RequestBody.Required)
+					// A merge patch clears a field with null. An object param's
+					// schema type cannot say "or null" for every client, so a
+					// clear_<name> boolean sends the null (a literal null is
+					// taken too).
+					if t.Method == "PATCH" {
+						for i := range t.Params {
+							p := &t.Params[i]
+							if p.MCPType == "Object" && p.Opaque {
+								p.Nullable = true
+								p.Desc = strings.Replace(p.Desc, "null to clear", "clear_"+p.Name+": true to clear", 1)
+							}
+						}
+					}
 
 					// If the schema has a "content" field that is a complex object,
 					// use content_json approach. The description differs by content
@@ -416,6 +438,14 @@ func buildAPITools(spec *openAPISpec) []toolDef {
 					if cp, hasContent := schema.Properties["content"]; hasContent {
 						t.ContentJSON = true
 						t.ContentDesc = contentJSONDesc(refTypeName(cp.Ref) == widgetContentSchema, t.Method)
+						// The content_json handler reads optional numbers and
+						// booleans only; anything else would be advertised and
+						// silently dropped.
+						for _, p := range t.Params {
+							if p.Required && (p.MCPType == "Number" || p.MCPType == "Boolean") {
+								panic(fmt.Sprintf("%s: the content_json handler cannot read required %s param %q", t.Name, p.MCPType, p.Name))
+							}
+						}
 					}
 				}
 			}
@@ -511,6 +541,11 @@ func schemaToParams(spec *openAPISpec, schema schemaObj, bodyRequired bool) []pa
 		if propRef != "" && schemaType(prop) == "object" {
 			p.MCPType = "Object"
 			p.GoType = "*client." + refTypeName(propRef)
+			if opaqueFields[name] {
+				p.Opaque = true
+				p.GoType = "json.RawMessage"
+			}
+			p.Props = objectProps(spec, prop)
 			if p.Desc == "" {
 				p.Desc = name
 			}
@@ -521,7 +556,7 @@ func schemaToParams(spec *openAPISpec, schema schemaObj, bodyRequired bool) []pa
 		// Handle array-of-ref'd-object schemas as MCP array params.
 		if schemaType(prop) == "array" && itemsRef != "" {
 			p.MCPType = "Array"
-			if opaqueArrayFields[name] {
+			if opaqueFields[name] {
 				p.Opaque = true
 				p.GoType = "json.RawMessage"
 			} else {
@@ -700,6 +735,69 @@ func contentJSONDesc(isWidget bool, method string) string {
 		activityApprovalClause + activityImageClause
 }
 
+// objectProps is an object schema's properties as a JSON Schema map for
+// mcp.Properties: each property's type, array item type, item cap and
+// description. One level deep; nested objects stay a bare "object".
+func objectProps(spec *openAPISpec, s schemaObj) map[string]any {
+	if len(s.Properties) == 0 {
+		return nil
+	}
+	props := make(map[string]any, len(s.Properties))
+	for name, raw := range s.Properties {
+		if raw.ReadOnly || name == "$schema" {
+			continue
+		}
+		prop := resolveRef(spec, raw)
+		def := map[string]any{"type": schemaType(prop)}
+		if prop.Items != nil {
+			def["items"] = map[string]any{"type": schemaType(resolveRef(spec, *prop.Items))}
+		}
+		if prop.MaxItems != nil {
+			def["maxItems"] = *prop.MaxItems
+		}
+		if desc := raw.Desc; desc != "" {
+			def["description"] = asciiReplacer.Replace(desc)
+		} else if prop.Desc != "" {
+			def["description"] = asciiReplacer.Replace(prop.Desc)
+		}
+		if len(prop.Enum) > 0 {
+			def["enum"] = prop.Enum
+		}
+		props[name] = def
+	}
+	return props
+}
+
+// goLiteral renders v (the maps, slices, strings and ints objectProps builds)
+// as Go source with sorted map keys, so the generated file is deterministic.
+func goLiteral(v any) string {
+	switch v := v.(type) {
+	case map[string]any:
+		keys := make([]string, 0, len(v))
+		for k := range v {
+			keys = append(keys, k)
+		}
+		sort.Strings(keys)
+		parts := make([]string, 0, len(keys))
+		for _, k := range keys {
+			parts = append(parts, fmt.Sprintf("%q: %s", k, goLiteral(v[k])))
+		}
+		return "map[string]any{" + strings.Join(parts, ", ") + "}"
+	case []string:
+		parts := make([]string, len(v))
+		for i, e := range v {
+			parts[i] = fmt.Sprintf("%q", e)
+		}
+		return "[]string{" + strings.Join(parts, ", ") + "}"
+	case string:
+		return fmt.Sprintf("%q", v)
+	case int:
+		return strconv.Itoa(v)
+	default:
+		panic(fmt.Sprintf("goLiteral: unsupported %T", v))
+	}
+}
+
 func resolveRef(spec *openAPISpec, s schemaObj) schemaObj {
 	if s.Ref == "" {
 		return s
@@ -876,8 +974,9 @@ var asciiReplacer = strings.NewReplacer(
 )
 
 var funcMap = template.FuncMap{
-	"quote":   func(s string) string { return fmt.Sprintf("%q", asciiReplacer.Replace(s)) },
-	"hasEnum": func(p paramDef) bool { return len(p.Enum) > 0 },
+	"quote":     func(s string) string { return fmt.Sprintf("%q", asciiReplacer.Replace(s)) },
+	"hasEnum":   func(p paramDef) bool { return len(p.Enum) > 0 },
+	"goLiteral": func(v map[string]any) string { return goLiteral(v) },
 	"enumList": func(p paramDef) string {
 		quoted := make([]string, len(p.Enum))
 		for i, e := range p.Enum {
@@ -917,6 +1016,83 @@ import (
 
 	"github.com/mac-lucky/pushward-mcp/internal/client"
 )
+{{ define "objectField" -}}
+{{- if .Required }}
+	if _, ok := req.GetArguments()[{{ quote .Name }}]; !ok {
+		return mcp.NewToolResultError("missing required parameter: {{ .Name }}"), nil
+	}
+{{- end }}
+	if v, ok := req.GetArguments()[{{ quote .Name }}]; ok && v != nil {
+{{- if .Opaque }}
+		// An empty object is skipped like an omitted one: some clients fill
+		// every optional object param, and the API refuses an empty one.
+		if m, isMap := v.(map[string]any); !isMap || len(m) > 0 {
+			buf, err := json.Marshal(v)
+			if err != nil {
+				return mcp.NewToolResultError("encoding {{ .Name }}: " + err.Error()), nil
+			}
+			// Forward opaque JSON - server is the source of truth for the
+			// {{ .Name }} schema, so new fields don't require an MCP rebuild.
+			input.{{ .GoName }} = json.RawMessage(buf)
+		}
+{{- else }}
+		buf, err := json.Marshal(v)
+		if err != nil {
+			return mcp.NewToolResultError("encoding {{ .Name }}: " + err.Error()), nil
+		}
+		var parsed {{ .GoType }}
+		if err := json.Unmarshal(buf, &parsed); err != nil {
+			return mcp.NewToolResultError("parsing {{ .Name }}: " + err.Error()), nil
+		}
+		input.{{ .GoName }} = parsed
+{{- end }}
+	}
+{{- if .Nullable }}
+	{
+		// clear_{{ .Name }} (or a literal null) sends null, which clears the
+		// field in the merge patch; omitted keeps it.
+		v, present := req.GetArguments()[{{ quote .Name }}]
+		clearIt := false
+		if _, set := req.GetArguments()[{{ quote (print "clear_" .Name) }}]; set {
+			b, err := req.RequireBool({{ quote (print "clear_" .Name) }})
+			if err != nil {
+				return mcp.NewToolResultError("clear_{{ .Name }} must be true or false"), nil
+			}
+			clearIt = b
+		}
+		if clearIt && len(input.{{ .GoName }}) > 0 {
+			return mcp.NewToolResultError("{{ .Name }} and clear_{{ .Name }} cannot be used together"), nil
+		}
+		if clearIt || (present && v == nil) {
+			input.{{ .GoName }} = json.RawMessage("null")
+		}
+	}
+{{- end }}
+{{- end }}
+{{ define "arrayField" -}}
+{{- if .Required }}
+	if _, ok := req.GetArguments()[{{ quote .Name }}]; !ok {
+		return mcp.NewToolResultError("missing required parameter: {{ .Name }}"), nil
+	}
+{{- end }}
+	if v, ok := req.GetArguments()[{{ quote .Name }}]; ok && v != nil {
+		buf, err := json.Marshal(v)
+		if err != nil {
+			return mcp.NewToolResultError("encoding {{ .Name }}: " + err.Error()), nil
+		}
+{{- if .Opaque }}
+		// Forward opaque JSON - server is the source of truth for the
+		// {{ .Name }} schema, so new fields don't require an MCP rebuild.
+		input.{{ .GoName }} = json.RawMessage(buf)
+{{- else }}
+		var parsed {{ .GoType }}
+		if err := json.Unmarshal(buf, &parsed); err != nil {
+			return mcp.NewToolResultError("parsing {{ .Name }}: " + err.Error()), nil
+		}
+		input.{{ .GoName }} = parsed
+{{- end }}
+	}
+{{- end }}
 {{ define "boolField" -}}
 // Send the field only when the caller supplied a real boolean, so an omitted
 // (or null) value inherits the server-side default - e.g. push defaults to
@@ -974,7 +1150,15 @@ func registerAPITools(s *mcpserver.MCPServer, api *client.APIClient) {
 				mcp.Required(),
 {{- end }}
 				mcp.Description({{ quote .Desc }}),
+{{- if .Props }}
+				mcp.Properties({{ goLiteral .Props }}),
+{{- end }}
 			),
+{{- if .Nullable }}
+			mcp.WithBoolean({{ quote (print "clear_" .Name) }},
+				mcp.Description({{ quote (print "Set true to clear " .Name " (null in the API). Cannot be combined with " .Name ".") }}),
+			),
+{{- end }}
 {{- else }}
 			mcp.With{{ .MCPType }}({{ quote .Name }},
 {{- if .Required }}
@@ -1046,45 +1230,9 @@ func handle{{ .FuncName }}(ctx context.Context, req mcp.CallToolRequest, api *cl
 {{- else if eq .MCPType "Boolean" }}
 	{{ template "boolField" . }}
 {{- else if eq .MCPType "Object" }}
-{{- if .Required }}
-	if _, ok := req.GetArguments()[{{ quote .Name }}]; !ok {
-		return mcp.NewToolResultError("missing required parameter: {{ .Name }}"), nil
-	}
-{{- end }}
-	if v, ok := req.GetArguments()[{{ quote .Name }}]; ok && v != nil {
-		buf, err := json.Marshal(v)
-		if err != nil {
-			return mcp.NewToolResultError("encoding {{ .Name }}: " + err.Error()), nil
-		}
-		var parsed {{ .GoType }}
-		if err := json.Unmarshal(buf, &parsed); err != nil {
-			return mcp.NewToolResultError("parsing {{ .Name }}: " + err.Error()), nil
-		}
-		input.{{ .GoName }} = parsed
-	}
+	{{- template "objectField" . }}
 {{- else if eq .MCPType "Array" }}
-{{- if .Required }}
-	if _, ok := req.GetArguments()[{{ quote .Name }}]; !ok {
-		return mcp.NewToolResultError("missing required parameter: {{ .Name }}"), nil
-	}
-{{- end }}
-	if v, ok := req.GetArguments()[{{ quote .Name }}]; ok && v != nil {
-		buf, err := json.Marshal(v)
-		if err != nil {
-			return mcp.NewToolResultError("encoding {{ .Name }}: " + err.Error()), nil
-		}
-{{- if .Opaque }}
-		// Forward opaque JSON - server is the source of truth for the
-		// {{ .Name }} schema, so new fields don't require an MCP rebuild.
-		input.{{ .GoName }} = json.RawMessage(buf)
-{{- else }}
-		var parsed {{ .GoType }}
-		if err := json.Unmarshal(buf, &parsed); err != nil {
-			return mcp.NewToolResultError("parsing {{ .Name }}: " + err.Error()), nil
-		}
-		input.{{ .GoName }} = parsed
-{{- end }}
-	}
+	{{- template "arrayField" . }}
 {{- end }}
 {{- end }}
 {{- end }}
@@ -1125,6 +1273,10 @@ func handle{{ .FuncName }}(ctx context.Context, req mcp.CallToolRequest, api *cl
 	}
 {{- else if and (not .Required) (eq .MCPType "Boolean") }}
 	{{ template "boolField" . }}
+{{- else if eq .MCPType "Object" }}
+	{{- template "objectField" . }}
+{{- else if eq .MCPType "Array" }}
+	{{- template "arrayField" . }}
 {{- end }}
 {{- end }}
 {{- end }}
