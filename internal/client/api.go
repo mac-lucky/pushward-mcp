@@ -292,6 +292,17 @@ type CreateNotificationInput struct {
 	// which are then left empty. SetE2EKey fills it in; a caller may also
 	// pass one it sealed itself.
 	Encrypted string `json:"encrypted,omitempty"`
+	// Acknowledge repeats the push until someone answers it: {repeat_seconds,
+	// expire_seconds, action_title}, each optional. Forwarded opaque like
+	// actions. The response then carries a receipt. The API takes {} for all
+	// defaults, but the tools drop an empty object (some clients fill every
+	// optional object param), so a tool call names at least one field.
+	Acknowledge json.RawMessage `json:"acknowledge,omitempty"`
+	// Tags and CallbackURL need Acknowledge. Tags name the alert for
+	// CancelNotificationReceiptsByTag; the callback URL gets a signed POST
+	// once the alert is acknowledged or expires.
+	Tags        []string `json:"tags,omitempty"`
+	CallbackURL string   `json:"callback_url,omitempty"`
 }
 
 // CreateNotification creates an in-app notification with optional APNs push.
@@ -328,6 +339,9 @@ type CreateScheduledNotificationInput struct {
 	Volume            *float64          `json:"volume,omitempty"`
 	Target            json.RawMessage   `json:"target,omitempty"` // organization keys: who gets it
 	Encrypted         string            `json:"encrypted,omitempty"`
+	Acknowledge       json.RawMessage   `json:"acknowledge,omitempty"`
+	Tags              []string          `json:"tags,omitempty"`
+	CallbackURL       string            `json:"callback_url,omitempty"`
 }
 
 // Recurrence repeats a scheduled notification on a cron schedule evaluated in

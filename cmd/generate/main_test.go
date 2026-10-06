@@ -957,6 +957,60 @@ func TestBuildAPITools_TargetParams(t *testing.T) {
 	}
 }
 
+// The acknowledged-alert and encryption fields of a notification send reach
+// the client struct once the spec carries them: acknowledge as an opaque
+// object, tags as a string array, callback_url and encrypted as strings.
+func TestBuildAPITools_NotificationAckParams(t *testing.T) {
+	spec := &openAPISpec{Paths: map[string]pathItem{"/notifications": {"post": operation{
+		OperationID: "createNotification",
+		RequestBody: &requestBody{Required: true, Content: map[string]mediaTypeObject{"application/json": {Schema: schemaObj{
+			Required: []string{"title"},
+			Properties: map[string]schemaObj{
+				"title":        {Type: "string"},
+				"acknowledge":  {Ref: "#/components/schemas/NotificationAcknowledge"},
+				"tags":         {Type: []any{"array", "null"}, Items: &schemaObj{Type: "string"}},
+				"callback_url": {Type: "string"},
+				"encrypted":    {Type: "string"},
+				"step_rows":    {Type: "array", Items: &schemaObj{Type: "integer"}},
+			},
+		}}}},
+	}}}}
+	spec.Components.Schemas = map[string]schemaObj{"NotificationAcknowledge": {Type: "object", Properties: map[string]schemaObj{
+		"repeat_seconds": {Type: "integer"},
+		"expire_seconds": {Type: "integer"},
+		"action_title":   {Type: "string"},
+	}}}
+	tools := buildAPITools(spec)
+	if len(tools) != 1 {
+		t.Fatalf("got %d tools", len(tools))
+	}
+	params := map[string]paramDef{}
+	for _, p := range tools[0].Params {
+		params[p.Name] = p
+	}
+	if p := params["acknowledge"]; p.MCPType != "Object" || !p.Opaque || p.GoType != "json.RawMessage" || p.Props["repeat_seconds"] == nil {
+		t.Errorf("acknowledge = %+v, want an opaque object with its properties", p)
+	}
+	if p := params["tags"]; p.MCPType != "Array" || p.GoType != "[]string" || p.ItemsType != "string" {
+		t.Errorf("tags = %+v, want a string array", p)
+	}
+	if _, ok := params["step_rows"]; ok {
+		t.Error("an integer array became a param; only string arrays have a client type")
+	}
+	out := string(renderTemplate(apiToolsTemplate, tools))
+	for _, want := range []string{
+		"input.Acknowledge = json.RawMessage(buf)",
+		`mcp.Items(map[string]any{"type": "string"})`,
+		"input.Tags = parsed",
+		"input.CallbackURL = v",
+		"input.Encrypted = v",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("generated code lacks %q", want)
+		}
+	}
+}
+
 func TestGoLiteral(t *testing.T) {
 	got := goLiteral(map[string]any{"b": 2, "a": map[string]any{"type": "array", "enum": []string{"x", "y"}}})
 	want := `map[string]any{"a": map[string]any{"enum": []string{"x", "y"}, "type": "array"}, "b": 2}`

@@ -113,8 +113,8 @@ type paramDef struct {
 	Desc      string
 	Required  bool
 	Enum      []string
-	GoType    string // Go type used in client struct for Object/Array params (e.g. "*client.MediaAttachment", "[]client.NotificationAction")
-	ItemsType string // Item type description (used for array property items schema)
+	GoType    string // Go type used in client struct for Object/Array params (e.g. "*client.MediaAttachment", "[]client.NotificationAction", "[]string")
+	ItemsType string // JSON Schema type of an Array param's items ("object" or "string")
 	Opaque    bool   // forward as json.RawMessage instead of typed unmarshal - for fields whose schema drifts faster than the MCP rebuilds
 	// Nullable forwards an explicit null (a merge-patch clear) instead of
 	// dropping it. Only opaque params can carry it: a typed pointer cannot.
@@ -130,8 +130,9 @@ type paramDef struct {
 // server had added since the last MCP rebuild (see commit 33912d9) - and
 // validates them itself.
 var opaqueFields = map[string]bool{
-	"actions": true,
-	"target":  true,
+	"actions":     true,
+	"target":      true,
+	"acknowledge": true,
 }
 
 // Live OpenAPI spec URLs.
@@ -345,6 +346,12 @@ var skipOperations = map[string]bool{
 	"listScheduledNotifications":  true,
 	"getNotificationAnswer":       true,
 	"cancelScheduledNotification": true,
+	// Acknowledged-alert receipts, hand-written in receipts.go: the read
+	// takes ?wait=, one cancel is a POST without a body, and a generated
+	// POST would be annotated as non-destructive.
+	"getNotificationReceipt":          true,
+	"cancelNotificationReceipt":       true,
+	"cancelNotificationReceiptsByTag": true,
 	// Integration key management, hand-written in integration_keys.go: the
 	// generator would drop the activity_slugs string array, cannot send the
 	// bodyless roll POST, and would mark roll as non-destructive.
@@ -562,7 +569,21 @@ func schemaToParams(spec *openAPISpec, schema schemaObj, bodyRequired bool) []pa
 			} else {
 				p.GoType = "[]client." + refTypeName(itemsRef)
 			}
-			p.ItemsType = refTypeName(itemsRef)
+			p.ItemsType = "object"
+			if p.Desc == "" {
+				p.Desc = name
+			}
+			params = append(params, p)
+			continue
+		}
+
+		// A string array is a []string on the client struct (tags on a
+		// notification). Arrays of other primitives have no use yet and stay
+		// skipped below.
+		if schemaType(prop) == "array" && prop.Items != nil && schemaType(resolveRef(spec, *prop.Items)) == "string" {
+			p.MCPType = "Array"
+			p.GoType = "[]string"
+			p.ItemsType = "string"
 			if p.Desc == "" {
 				p.Desc = name
 			}
@@ -928,7 +949,10 @@ func buildRelayTools(spec *openAPISpec) []toolDef {
 				if ct, ok := op.RequestBody.Content["application/json"]; ok {
 					schema := resolveRef(spec, ct.Schema)
 					if isFlat(spec, schema) {
-						t.Params = schemaToParams(spec, schema, false)
+						// The relay handler builds its body from strings,
+						// numbers and booleans only; an array param would be
+						// advertised and then dropped.
+						t.Params = slices.DeleteFunc(schemaToParams(spec, schema, false), func(p paramDef) bool { return p.MCPType == "Array" })
 					} else {
 						t.PayloadJSON = true
 						// Build a description hint from schema
@@ -1142,7 +1166,7 @@ func registerAPITools(s *mcpserver.MCPServer, api *client.APIClient) {
 				mcp.Required(),
 {{- end }}
 				mcp.Description({{ quote .Desc }}),
-				mcp.Items(map[string]any{"type": "object"}),
+				mcp.Items(map[string]any{"type": {{ quote .ItemsType }}}),
 			),
 {{- else if eq .MCPType "Object" }}
 			mcp.WithObject({{ quote .Name }},
