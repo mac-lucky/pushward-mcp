@@ -187,3 +187,30 @@ func TestLoad_StdioIgnoresHTTPAuth(t *testing.T) {
 		t.Fatal("stdio mode is never single-user http")
 	}
 }
+
+func TestLoad_E2EKeyByHTTPAuth(t *testing.T) {
+	t.Setenv("PUSHWARD_MCP_TRANSPORT", "http")
+	t.Setenv("PUSHWARD_API_TOKEN", "hlk_single")
+	t.Setenv("PUSHWARD_E2E_KEY", testE2EKey)
+
+	t.Setenv("PUSHWARD_MCP_HTTP_AUTH", "none")
+	cfg, err := Load()
+	if err != nil || cfg.E2EKey == nil {
+		t.Fatalf("single-user http keeps the key: cfg.E2EKey = %v, err = %v", cfg.E2EKey, err)
+	}
+
+	t.Setenv("PUSHWARD_MCP_HTTP_AUTH", "")
+	cfg, err = Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.E2EKey != nil {
+		t.Fatal("OAuth mode must drop a process-wide PUSHWARD_E2E_KEY")
+	}
+
+	// Dropped before parsing, so a bad value cannot stop the hosted server.
+	t.Setenv("PUSHWARD_E2E_KEY", "not a key")
+	if _, err := Load(); err != nil {
+		t.Fatalf("OAuth mode with a malformed key: %v", err)
+	}
+}

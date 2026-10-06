@@ -7,6 +7,8 @@ import (
 	"os"
 	"strconv"
 	"strings"
+
+	"github.com/mac-lucky/pushward-mcp/internal/e2e"
 )
 
 // Transport selects how the MCP server communicates with clients.
@@ -57,6 +59,10 @@ type Config struct {
 	// not carry a shared relay credential); override with
 	// PUSHWARD_MCP_RELAY_ENABLED.
 	RelayEnabled bool
+	// E2EKey, from PUSHWARD_E2E_KEY, seals notification title, subtitle,
+	// body and url end to end. Nil when unset, and always nil in OAuth http
+	// mode.
+	E2EKey *e2e.Key
 }
 
 // IsRemote reports whether the server runs in network-exposed (http) mode.
@@ -87,6 +93,10 @@ func (c *Config) RedactUpstreamErrors() bool {
 // PUSHWARD_API_URL defaults to https://api.pushward.app and
 // PUSHWARD_RELAY_URL to https://relay.pushward.app. Upstream URLs must be https
 // unless the host is loopback (local development).
+//
+// PUSHWARD_E2E_KEY (optional, 64 hex characters) turns on end-to-end
+// encryption in stdio and single-user http mode; OAuth http mode ignores it
+// like PUSHWARD_API_TOKEN.
 func Load() (*Config, error) {
 	cfg := &Config{
 		APIToken:    os.Getenv("PUSHWARD_API_TOKEN"),
@@ -96,6 +106,7 @@ func Load() (*Config, error) {
 		ListenAddr:  os.Getenv("PUSHWARD_MCP_LISTEN_ADDR"),
 		MetricsAddr: os.Getenv("PUSHWARD_MCP_METRICS_ADDR"),
 	}
+	e2eKey := os.Getenv("PUSHWARD_E2E_KEY")
 
 	switch t := strings.ToLower(strings.TrimSpace(os.Getenv("PUSHWARD_MCP_TRANSPORT"))); t {
 	case "", string(TransportStdio):
@@ -155,6 +166,9 @@ func Load() (*Config, error) {
 			// foot-gun) if a request ever reaches the API client without a
 			// context token.
 			cfg.APIToken = ""
+			// Same for the encryption key: every user's notifications would
+			// be sealed to the devices of whoever set it.
+			e2eKey = ""
 		}
 		if cfg.ListenAddr == "" {
 			cfg.ListenAddr = ":8080"
@@ -183,6 +197,14 @@ func Load() (*Config, error) {
 	}
 	if cfg.RelayEnabled && cfg.RelayToken == "" {
 		return nil, fmt.Errorf("PUSHWARD_RELAY_TOKEN is required when relay tools are enabled")
+	}
+
+	if e2eKey != "" {
+		k, err := e2e.ParseKey(e2eKey)
+		if err != nil {
+			return nil, fmt.Errorf("invalid PUSHWARD_E2E_KEY: %w", err)
+		}
+		cfg.E2EKey = k
 	}
 
 	return cfg, nil

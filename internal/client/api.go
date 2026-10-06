@@ -2,6 +2,7 @@ package client
 
 import (
 	"context"
+	"crypto/rand"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -10,6 +11,8 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+
+	"github.com/mac-lucky/pushward-mcp/internal/e2e"
 )
 
 var slugPattern = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$`)
@@ -35,7 +38,10 @@ func withQuery(path string, q url.Values) string {
 }
 
 // APIClient wraps the PushWard API (api.pushward.app).
-type APIClient struct{ *Base }
+type APIClient struct {
+	*Base
+	e2eKey *e2e.Key
+}
 
 // NewAPIClient creates a new PushWard API client. The API client prefers a
 // per-request token carried in the context (HTTP/remote mode) over the token
@@ -43,7 +49,29 @@ type APIClient struct{ *Base }
 func NewAPIClient(baseURL, token string) *APIClient {
 	b := NewBase(baseURL, token)
 	b.useContextToken = true
-	return &APIClient{b}
+	return &APIClient{Base: b}
+}
+
+// SetE2EKey turns on end-to-end encryption: CreateNotification and
+// CreateScheduledNotification seal title, subtitle, body and url with k
+// before the request leaves the process. Call it once at startup, before
+// serving; only stdio and single-user http mode have a key.
+func (c *APIClient) SetE2EKey(k *e2e.Key) { c.e2eKey = k }
+
+// sealText replaces the four text fields with an encrypted envelope when a
+// key is set. A caller that passed its own encrypted value keeps it as is;
+// the server refuses it if plaintext came along too.
+func (c *APIClient) sealText(encrypted, title, subtitle, body, link *string) error {
+	if c.e2eKey == nil || *encrypted != "" {
+		return nil
+	}
+	env, err := e2e.Seal(c.e2eKey, e2e.Message{Title: *title, Subtitle: *subtitle, Body: *body, URL: *link}, rand.Reader)
+	if err != nil {
+		return fmt.Errorf("encrypting notification: %w", err)
+	}
+	*encrypted = env
+	*title, *subtitle, *body, *link = "", "", "", ""
+	return nil
 }
 
 // ActivitiesPage is the paginated envelope returned by GET /activities (AIP-158).
@@ -243,8 +271,8 @@ type MediaAttachment struct {
 // rebuild. A typed struct silently dropped unknown fields on JSON unmarshal,
 // re-marshalling them away before the request reached the server.
 type CreateNotificationInput struct {
-	Title             string            `json:"title"`
-	Body              string            `json:"body"`
+	Title             string            `json:"title,omitempty"`
+	Body              string            `json:"body,omitempty"`
 	Subtitle          string            `json:"subtitle,omitempty"`
 	Source            string            `json:"source,omitempty"`
 	SourceDisplayName string            `json:"source_display_name,omitempty"`
@@ -260,10 +288,17 @@ type CreateNotificationInput struct {
 	Push              *bool             `json:"push,omitempty"`
 	Volume            *float64          `json:"volume,omitempty"`
 	Target            json.RawMessage   `json:"target,omitempty"` // organization keys: who gets it
+	// Encrypted is a pw1 envelope sealing title, subtitle, body and url,
+	// which are then left empty. SetE2EKey fills it in; a caller may also
+	// pass one it sealed itself.
+	Encrypted string `json:"encrypted,omitempty"`
 }
 
 // CreateNotification creates an in-app notification with optional APNs push.
 func (c *APIClient) CreateNotification(ctx context.Context, input CreateNotificationInput) (json.RawMessage, error) {
+	if err := c.sealText(&input.Encrypted, &input.Title, &input.Subtitle, &input.Body, &input.URL); err != nil {
+		return nil, err
+	}
 	raw, _, err := c.DoJSON(ctx, http.MethodPost, "/notifications", input)
 	return raw, err
 }
@@ -271,10 +306,10 @@ func (c *APIClient) CreateNotification(ctx context.Context, input CreateNotifica
 // CreateScheduledNotificationInput is the request body for
 // POST /notifications/scheduled: a notification plus `send_at` (RFC 3339, in
 // the future and at most 365 days ahead). Same field handling as
-// CreateNotificationInput, including opaque `actions`.
+// CreateNotificationInput, including opaque `actions` and the encryption.
 type CreateScheduledNotificationInput struct {
-	Title             string            `json:"title"`
-	Body              string            `json:"body"`
+	Title             string            `json:"title,omitempty"`
+	Body              string            `json:"body,omitempty"`
 	SendAt            string            `json:"send_at,omitempty"`
 	Recurrence        *Recurrence       `json:"recurrence,omitempty"`
 	Subtitle          string            `json:"subtitle,omitempty"`
@@ -292,6 +327,7 @@ type CreateScheduledNotificationInput struct {
 	Push              *bool             `json:"push,omitempty"`
 	Volume            *float64          `json:"volume,omitempty"`
 	Target            json.RawMessage   `json:"target,omitempty"` // organization keys: who gets it
+	Encrypted         string            `json:"encrypted,omitempty"`
 }
 
 // Recurrence repeats a scheduled notification on a cron schedule evaluated in
@@ -307,6 +343,9 @@ type Recurrence struct {
 // cron schedule with Recurrence. Each send counts against the notification
 // quota when it happens.
 func (c *APIClient) CreateScheduledNotification(ctx context.Context, input CreateScheduledNotificationInput) (json.RawMessage, error) {
+	if err := c.sealText(&input.Encrypted, &input.Title, &input.Subtitle, &input.Body, &input.URL); err != nil {
+		return nil, err
+	}
 	raw, _, err := c.DoJSON(ctx, http.MethodPost, "/notifications/scheduled", input)
 	return raw, err
 }

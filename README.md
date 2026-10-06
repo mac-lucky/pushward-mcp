@@ -105,6 +105,12 @@ Environment variables (stdio mode):
   in stdio mode).
 - `PUSHWARD_API_URL` / `PUSHWARD_RELAY_URL` - default to the production hosts; override to
   point at a staging server. Non-loopback hosts must be https.
+- `PUSHWARD_E2E_KEY` - optional, the 64-hex-character key from Settings > Encryption in the
+  app. With it set, the notification tools encrypt title, subtitle, body and url before they
+  leave the process, so the PushWard server only ever sees ciphertext; your devices decrypt
+  them. Everything else (level, sound, actions, metadata) still goes in the clear.
+  Organization keys can't send encrypted notifications. Also read in single-user http mode
+  below; the hosted OAuth server ignores it.
 
 The `http` transport (OAuth, multi-tenant) is what backs the hosted endpoint above; it needs
 a signing key and a few more variables and is meant to run behind a proxy. See

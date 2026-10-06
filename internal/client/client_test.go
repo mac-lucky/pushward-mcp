@@ -10,6 +10,8 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"github.com/mac-lucky/pushward-mcp/internal/e2e"
 )
 
 // ---- Base.DoJSON tests ----
@@ -950,5 +952,81 @@ func TestAnswerAndScheduledQueryParams(t *testing.T) {
 	}
 	if strings.Join(got, "\n") != strings.Join(want, "\n") {
 		t.Errorf("requests =\n%s\nwant\n%s", strings.Join(got, "\n"), strings.Join(want, "\n"))
+	}
+}
+
+func TestAPIClient_E2ESealsNotificationText(t *testing.T) {
+	var bodies []map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var m map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&m); err != nil {
+			t.Fatal(err)
+		}
+		bodies = append(bodies, m)
+		_, _ = w.Write([]byte(`{}`))
+	}))
+	defer srv.Close()
+
+	k, err := e2e.ParseKey("000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f")
+	if err != nil {
+		t.Fatal(err)
+	}
+	api := NewAPIClient(srv.URL, "tok")
+	api.SetE2EKey(k)
+	ctx := context.Background()
+
+	if _, err := api.CreateNotification(ctx, CreateNotificationInput{
+		Title: "Disk full", Subtitle: "db01", Body: "/var at 97%", URL: "https://grafana.example.com/d/1", Level: "critical",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := api.CreateScheduledNotification(ctx, CreateScheduledNotificationInput{
+		Title: "Standup", Body: "in 5 minutes", SendAt: "2030-01-01T09:00:00Z",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	// An envelope the caller sealed itself goes out untouched, and the
+	// plaintext next to it too: the server refuses that mix.
+	if _, err := api.CreateNotification(ctx, CreateNotificationInput{Title: "T", Body: "B", Encrypted: "pw1.caller"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := api.CreateNotification(ctx, CreateNotificationInput{Title: "T", Body: "B", URL: "javascript:alert(1)"}); err == nil {
+		t.Error("a url the apps would drop must fail before sealing")
+	}
+
+	if len(bodies) != 3 {
+		t.Fatalf("got %d requests, want 3", len(bodies))
+	}
+	for i, m := range bodies[:2] {
+		env, _ := m["encrypted"].(string)
+		if !strings.HasPrefix(env, "pw1.767c0806.") {
+			t.Errorf("request %d: encrypted = %q, want a pw1 envelope under kid 767c0806", i, env)
+		}
+		for _, f := range []string{"title", "subtitle", "body", "url"} {
+			if _, ok := m[f]; ok {
+				t.Errorf("request %d: %s sent in the clear: %v", i, f, m)
+			}
+		}
+	}
+	if bodies[0]["level"] != "critical" || bodies[1]["send_at"] != "2030-01-01T09:00:00Z" {
+		t.Errorf("fields outside the envelope must stay: %v, %v", bodies[0], bodies[1])
+	}
+	if bodies[2]["encrypted"] != "pw1.caller" || bodies[2]["title"] != "T" {
+		t.Errorf("caller envelope = %v, want it passed through as is", bodies[2])
+	}
+}
+
+func TestAPIClient_NoE2EKeySendsPlaintext(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var m map[string]any
+		_ = json.NewDecoder(r.Body).Decode(&m)
+		if _, ok := m["encrypted"]; ok || m["title"] != "T" || m["body"] != "B" {
+			t.Errorf("body = %v, want plaintext with no encrypted key", m)
+		}
+		_, _ = w.Write([]byte(`{}`))
+	}))
+	defer srv.Close()
+	if _, err := NewAPIClient(srv.URL, "tok").CreateNotification(context.Background(), CreateNotificationInput{Title: "T", Body: "B"}); err != nil {
+		t.Fatal(err)
 	}
 }

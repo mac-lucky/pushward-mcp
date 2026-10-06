@@ -1,6 +1,9 @@
 package config
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestLoad_RequiresAPIToken(t *testing.T) {
 	t.Setenv("PUSHWARD_API_TOKEN", "")
@@ -54,5 +57,29 @@ func TestLoad_OverridesAndTokens(t *testing.T) {
 	}
 	if cfg.APIToken != "atok" || cfg.RelayToken != "rtok" {
 		t.Errorf("tokens not loaded correctly: %+v", cfg)
+	}
+}
+
+const testE2EKey = "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f"
+
+func TestLoad_E2EKey(t *testing.T) {
+	t.Setenv("PUSHWARD_API_TOKEN", "atok")
+	t.Setenv("PUSHWARD_RELAY_TOKEN", "rtok")
+
+	t.Setenv("PUSHWARD_E2E_KEY", "")
+	cfg, err := Load()
+	if err != nil || cfg.E2EKey != nil {
+		t.Fatalf("unset key: cfg.E2EKey = %v, err = %v", cfg.E2EKey, err)
+	}
+
+	t.Setenv("PUSHWARD_E2E_KEY", testE2EKey)
+	cfg, err = Load()
+	if err != nil || cfg.E2EKey == nil || cfg.E2EKey.KID() != "767c0806" {
+		t.Fatalf("stdio key: cfg.E2EKey = %v, err = %v", cfg.E2EKey, err)
+	}
+
+	t.Setenv("PUSHWARD_E2E_KEY", "hlk_0123456789abcdef0123456789abcdef")
+	if _, err := Load(); err == nil || !strings.Contains(err.Error(), "integration key") {
+		t.Fatalf("an hlk_ key must fail to load, got %v", err)
 	}
 }

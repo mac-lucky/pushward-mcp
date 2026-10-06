@@ -46,6 +46,9 @@ func main() {
 		apiToken = ""
 	}
 	apiClient := client.NewAPIClient(cfg.APIURL, apiToken)
+	if cfg.E2EKey != nil {
+		apiClient.SetE2EKey(cfg.E2EKey)
+	}
 	// relayClient stays nil when relay tools are disabled (http/remote default),
 	// so a multi-tenant endpoint never carries the shared relay credential.
 	var relayClient *client.RelayClient
