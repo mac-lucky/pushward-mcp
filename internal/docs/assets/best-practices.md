@@ -67,6 +67,50 @@ General rules for any code that talks to the PushWard REST API
   `GET /notifications/answers/{id}?wait=20`, which holds the request until the
   tap lands. The first answer wins. Foreground actions without a `url` still
   just open the app.
+- **Alerts that must not be missed: `acknowledge`.** Add
+  `"acknowledge": {"repeat_seconds": 300, "expire_seconds": 7200}` to
+  `POST /notifications` (each field optional: 30-3600 s between repeats,
+  default 60; 60-10800 s until it gives up, default 3600) and the push repeats
+  under the same collapse id until someone taps an action without a `url`. If
+  the request has none, the server adds an Acknowledge button (`pw_ack`,
+  labeled by `action_title`). Not with `push: false` or `level: passive`.
+  Repeats are free of quota, capped at 50. The response carries a `receipt`;
+  follow it with `GET /notifications/receipts/{id}?wait=20` (the
+  `wait_for_ack` tool) and stop it with
+  `POST /notifications/receipts/{id}/cancel` once the condition clears on its
+  own. `tags` (up to 10) let you stop a group in one call:
+  `POST /notifications/receipts/cancel` with `{"tag": "..."}`. An integration
+  key reaches only the receipts of what it sent; an app token, the whole
+  account. An account can have 25 repeating at once, an organization's sends
+  counting against the organization (`409 notification_receipt.limit_exceeded`
+  beyond that), and a new acknowledged send from the same key with the same
+  `collapse_id` replaces the older one's repeats, so a flapping check does not
+  pile up alerts.
+- **Acknowledgement callbacks.** With an `hlk_` key, `callback_url` (https,
+  public host) gets one signed POST when the alert is acknowledged or expires:
+  `{"type": "notification.acknowledged" | "notification.expired", "timestamp",
+  "data": <receipt>}` with Standard Webhooks headers `webhook-id`,
+  `webhook-timestamp` and `webhook-signature: v1,<base64>`. The signing secret
+  comes from the sending key, so there is nothing new to store: secret =
+  HMAC-SHA256(key = SHA-256(the full hlk_ key), message
+  `pushward/callback/v1`), which Standard Webhooks libraries take as
+  `whsec_` + base64(secret) (`pushward receipt secret` prints it). Sign
+  `id.timestamp.body` with it, compare in constant time, and refuse timestamps
+  more than 5 minutes off. Delivery is at least once and retried for about an
+  hour; a 410 stops it. Rolling the key re-keys the signature.
+- **End-to-end encryption.** When the user has an encryption key (Settings >
+  Encryption in the app), seal `title`, `subtitle`, `body` and `url` into one
+  `encrypted` field and leave those four empty: the server stores and pushes a
+  placeholder, and only the user's devices holding the key can read the text.
+  Format `pw1.<key id>.<base64url>`: AES-256-GCM under a key derived with
+  HKDF-SHA256, at most 3072 characters (about 2,200 bytes of text). Level,
+  sound, thread and collapse ids, source, media, metadata, actions and target
+  stay readable to the server and to Apple, so keep secrets out of them.
+  Organization keys cannot send encrypted (`422
+  notification.encryption_unavailable`). Spec and test vectors:
+  pushward.app/docs/notifications/encryption. A stdio or single-user MCP
+  server with `PUSHWARD_E2E_KEY` set, and the CLI with a saved key, seal for
+  you; never put the key itself in a request.
 
 ## live-activity
 

@@ -44,6 +44,7 @@ below use that prefix.
 | to know when something finished or failed | `create_notification` |
 | to be told right away that you are blocked | `create_notification` with `level: "time-sensitive"` |
 | to approve, pick an option, or type a reply | `create_notification` with url-less `actions`, then `wait_for_answer`; or an approval Live Activity |
+| an alert that keeps coming back until they react | `create_notification` with `acknowledge`, then `wait_for_ack` |
 | to watch a long task move | `create_activity`, then `update_activity` a few times, then `end_activity` |
 | a number to glance at later | `create_widget` once, then `update_widget` |
 | a reminder later or on a repeat | `create_scheduled_notification` |
@@ -95,6 +96,34 @@ The answer is `answer.option`. If you set a deadline with `end_date` and `on_exp
 `answer.by` too: `user` for a real tap, `expired` for the default. The server ends an answered approval card by itself shortly
 after the tap. If you give up waiting, end the card yourself so a stale question does not sit
 on the Lock Screen.
+
+## Alerts that repeat until acknowledged
+
+Sending `create_notification` with an `acknowledge` object (for example
+`{"repeat_seconds": 300, "expire_seconds": 7200}`; every field is optional, but pass at least
+one, since an empty object is dropped) makes the push come back every minute by default until
+someone taps an action without a url, or until it expires after an hour. Without such an action
+the server adds an Acknowledge button. Keep it for problems that must not be missed: a failed
+backup, a production outage, a decision blocking a release. A finished task is not one. It
+cannot be `passive` or sent with `push: false`.
+
+The create response carries a `receipt`. Wait on it, or stop it once the problem clears:
+
+```
+wait_for_ack {"notification_id": 1234, "timeout_seconds": 600}
+cancel_notification_receipt {"notification_id": 1234}
+cancel_notification_receipts_by_tag {"tag": "nas-1"}
+get_notification_receipt {"notification_id": 1234}
+```
+
+`wait_for_ack` returns `acknowledged: true` with the receipt (its `action_id` says which action
+was tapped), or `acknowledged: false` with a reason when the alert expired, was canceled, or the
+wait ran out while it kept repeating. Send it with `tags` to cancel a group by tag later. An
+account can have 25 repeating at once, an organization's sends counting against the
+organization; a new one with the same `collapse_id` replaces the older one's repeats. With an
+integration key, the cancels and reads reach only what that key sent. A callback URL on the
+send gets a signed POST when the alert is acknowledged or expires; that is for the user's own
+webhook receivers, so only set one when asked.
 
 ## Progress on the Lock Screen
 
@@ -172,6 +201,17 @@ otherwise, and for `clear_target` too) and only sees activities sent inside them
 answers 404, as if it did not exist. A personal key gets 422 for a target. The API cannot list
 group or tag names or member user ids: they live in the organization's console, so ask the
 user for them.
+
+## Encrypted notifications
+
+A local stdio or single-user server started with `PUSHWARD_E2E_KEY` encrypts the title,
+subtitle, body and url of `create_notification` and `create_scheduled_notification` before they
+leave the process; the hosted server never does. The response then has an `encrypted` envelope
+and placeholder text, and only the user's devices holding the key can read the real text. Level,
+actions, metadata, thread, source and target stay readable to the server and to Apple, so keep
+secrets out of those. Encrypted text has room for about 2,200 bytes in total. An organization
+key cannot send encrypted (`notification.encryption_unavailable`): tell the user, only they can
+unset the key. Never ask for the key itself.
 
 ## Writing code against the API
 
