@@ -415,6 +415,35 @@ func (c *APIClient) GetNotificationAnswer(ctx context.Context, id int64, wait in
 	return c.DoJSON(ctx, http.MethodGet, withQuery("/notifications/answers/"+strconv.FormatInt(id, 10), waitQuery(wait)), nil)
 }
 
+// GetNotificationReceipt reads the receipt of a notification sent with
+// acknowledge. wait > 0 long-polls: the server holds the request up to that
+// many seconds (max 25) while the receipt is still active. The status code is
+// returned so callers can tell a transient failure from a hard miss.
+func (c *APIClient) GetNotificationReceipt(ctx context.Context, id int64, wait int) (json.RawMessage, int, error) {
+	return c.DoJSON(ctx, http.MethodGet, withQuery(receiptPath(id), waitQuery(wait)), nil)
+}
+
+// CancelNotificationReceipt stops an acknowledged notification from
+// repeating and returns its receipt. Its callback is not sent. A receipt that
+// already finished comes back unchanged.
+func (c *APIClient) CancelNotificationReceipt(ctx context.Context, id int64) (json.RawMessage, error) {
+	raw, _, err := c.DoJSON(ctx, http.MethodPost, receiptPath(id)+"/cancel", nil)
+	return raw, err
+}
+
+// CancelNotificationReceiptsByTag stops every active acknowledged
+// notification sent with tag that the caller can reach: an integration key
+// only its own sends, an app token the whole account. The response is
+// {"canceled": n}.
+func (c *APIClient) CancelNotificationReceiptsByTag(ctx context.Context, tag string) (json.RawMessage, error) {
+	raw, _, err := c.DoJSON(ctx, http.MethodPost, "/notifications/receipts/cancel", map[string]string{"tag": tag})
+	return raw, err
+}
+
+func receiptPath(id int64) string {
+	return "/notifications/receipts/" + strconv.FormatInt(id, 10)
+}
+
 // WaitActivity reads an activity like GetActivity, holding the request up to
 // wait seconds (max 25) while it is an approval still waiting for its answer.
 // Servers that predate ?wait= answer at once.

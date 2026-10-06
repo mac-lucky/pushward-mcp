@@ -517,7 +517,7 @@ func transientPollFailure(status int) bool {
 }
 
 // answerProgress returns a per-tick reporter for the poll loop. Nothing else
-// streams while wait_for_answer sleeps between polls, and both the gateway and
+// streams while a wait tool sleeps between polls, and both the gateway and
 // Cloudflare cut a response that stays byteless for too long, so something has
 // to flow - mcp-go upgrades the streamable-HTTP response to SSE as soon as the
 // server sends any notification. With a progressToken in the request the
@@ -528,7 +528,7 @@ func transientPollFailure(status int) bool {
 // which defaults to error, and a dropped keepalive keeps nothing alive. Send
 // failures never abort the wait, and without a server in ctx (tests, direct
 // calls) the reporter is a no-op.
-func answerProgress(ctx context.Context, req mcp.CallToolRequest, target string, total float64) func(elapsed float64) {
+func answerProgress(ctx context.Context, req mcp.CallToolRequest, tool, target string, total float64) func(elapsed float64) {
 	srv := mcpserver.ServerFromContext(ctx)
 	if srv == nil {
 		return func(float64) {}
@@ -547,7 +547,7 @@ func answerProgress(ctx context.Context, req mcp.CallToolRequest, target string,
 	keepalive := func(elapsed float64) {
 		_ = srv.SendNotificationToClient(ctx, string(mcp.MethodNotificationMessage), map[string]any{
 			"level":  "info",
-			"logger": "wait_for_answer",
+			"logger": tool,
 			"data":   fmt.Sprintf("still waiting for an answer on %s (%.0fs of %.0fs)", target, elapsed, total),
 		})
 	}
@@ -675,6 +675,19 @@ func handleWaitForAnswer(ctx context.Context, req mcp.CallToolRequest, api *clie
 		fetch = func(wait int) (json.RawMessage, int, error) { return api.WaitActivity(ctx, slug, wait) }
 		judge = judgeApprovalAnswer(slug)
 	}
+	return runWait(ctx, req, "wait_for_answer", target, fetch, judge, func(state string, timeout float64) *mcp.CallToolResult {
+		return waitResult(waitOutcome{State: state, Answered: false,
+			Reason: fmt.Sprintf("no answer within %.0fs", timeout)})
+	}), nil
+}
+
+// runWait is the poll loop behind the wait tools: fetch long-polls the
+// target until judge ends the wait, timeout_seconds passes (timedOut builds
+// that result from the last state seen), or the context is canceled.
+func runWait(ctx context.Context, req mcp.CallToolRequest, tool, target string,
+	fetch func(wait int) (json.RawMessage, int, error), judge waitJudge,
+	timedOut func(state string, timeout float64) *mcp.CallToolResult,
+) *mcp.CallToolResult {
 	timeout := req.GetFloat("timeout_seconds", answerWaitDefault)
 	if timeout <= 0 {
 		timeout = answerWaitDefault
@@ -682,7 +695,7 @@ func handleWaitForAnswer(ctx context.Context, req mcp.CallToolRequest, api *clie
 	timeout = min(timeout, answerWaitMax)
 	start := time.Now()
 	deadline := start.Add(time.Duration(timeout * float64(time.Second)))
-	report := answerProgress(ctx, req, target, timeout)
+	report := answerProgress(ctx, req, tool, target, timeout)
 
 	failures := 0
 	lastState := ""
@@ -691,31 +704,30 @@ func handleWaitForAnswer(ctx context.Context, req mcp.CallToolRequest, api *clie
 		raw, status, err := fetch(longPollSeconds(deadline))
 		switch {
 		case err != nil && ctx.Err() != nil:
-			return mcp.NewToolResultError("cancelled while waiting for an answer"), nil
+			return mcp.NewToolResultError("cancelled while waiting for an answer")
 		case err != nil:
 			failures++
 			if !transientPollFailure(status) || failures >= answerPollFailureBudget {
-				return mcp.NewToolResultError(fmt.Sprintf("get %s: %v", target, err)), nil
+				return mcp.NewToolResultError(fmt.Sprintf("get %s: %v", target, err))
 			}
 		default:
 			failures = 0
 			state, result := judge(raw)
 			if result != nil {
-				return result, nil
+				return result
 			}
 			lastState = state
 		}
 		elapsed := time.Since(start)
 		if time.Now().After(deadline) {
-			return waitResult(waitOutcome{State: lastState, Answered: false,
-				Reason: fmt.Sprintf("no answer within %.0fs", timeout)}), nil
+			return timedOut(lastState, timeout)
 		}
 		report(elapsed.Seconds())
 		// A long-poll that held its full hold goes straight into the next one;
 		// only an early pending reply waits out the rest of the poll interval.
 		select {
 		case <-ctx.Done():
-			return mcp.NewToolResultError("cancelled while waiting for an answer"), nil
+			return mcp.NewToolResultError("cancelled while waiting for an answer")
 		case <-time.After(answerPollInterval - time.Since(pollStart)):
 		}
 	}
