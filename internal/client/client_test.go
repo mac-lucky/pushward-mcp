@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"testing"
 
@@ -985,9 +986,9 @@ func TestAPIClient_E2ESealsNotificationText(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	// An envelope the caller sealed itself goes out untouched, and the
-	// plaintext next to it too: the server refuses that mix.
-	if _, err := api.CreateNotification(ctx, CreateNotificationInput{Title: "T", Body: "B", Encrypted: "pw1.caller"}); err != nil {
+	// An envelope the caller sealed itself goes out untouched.
+	env := vectorEnvelope(t)
+	if _, err := api.CreateNotification(ctx, CreateNotificationInput{Encrypted: env, Level: "passive"}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := api.CreateNotification(ctx, CreateNotificationInput{Title: "T", Body: "B", URL: "javascript:alert(1)"}); err == nil {
@@ -1011,8 +1012,61 @@ func TestAPIClient_E2ESealsNotificationText(t *testing.T) {
 	if bodies[0]["level"] != "critical" || bodies[1]["send_at"] != "2030-01-01T09:00:00Z" {
 		t.Errorf("fields outside the envelope must stay: %v, %v", bodies[0], bodies[1])
 	}
-	if bodies[2]["encrypted"] != "pw1.caller" || bodies[2]["title"] != "T" {
+	if bodies[2]["encrypted"] != env || len(bodies[2]) != 2 {
 		t.Errorf("caller envelope = %v, want it passed through as is", bodies[2])
+	}
+}
+
+// vectorEnvelope is the first sealed envelope of the shared vectors.
+func vectorEnvelope(t *testing.T) string {
+	t.Helper()
+	data, err := os.ReadFile("../e2e/testdata/vectors-v1.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var v struct {
+		Seal []struct {
+			Envelope string `json:"envelope"`
+		} `json:"seal"`
+	}
+	if err := json.Unmarshal(data, &v); err != nil || len(v.Seal) == 0 {
+		t.Fatalf("vectors: %v", err)
+	}
+	return v.Seal[0].Envelope
+}
+
+// A caller's own envelope is checked with or without a key: one that is not
+// an envelope, or that has readable text next to it, never leaves.
+func TestAPIClient_PresealedEnvelopeChecks(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Errorf("unexpected request %s %s", r.Method, r.URL.Path)
+	}))
+	defer srv.Close()
+	k, err := e2e.ParseKey("000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f")
+	if err != nil {
+		t.Fatal(err)
+	}
+	keyed := NewAPIClient(srv.URL, "tok")
+	keyed.SetE2EKey(k)
+	env := vectorEnvelope(t)
+	for _, api := range []*APIClient{keyed, NewAPIClient(srv.URL, "tok")} {
+		for name, tc := range map[string]struct {
+			in   CreateNotificationInput
+			want string
+		}{
+			"not an envelope": {CreateNotificationInput{Encrypted: "pw1.sealed-elsewhere"}, "pw1 envelope"},
+			"padded base64":   {CreateNotificationInput{Encrypted: env + "="}, "pw1 envelope"},
+			"title next to":   {CreateNotificationInput{Encrypted: env, Title: "readable"}, "title is set next to encrypted"},
+			"url next to":     {CreateNotificationInput{Encrypted: env, URL: "https://x.example"}, "url is set next to encrypted"},
+		} {
+			if _, err := api.CreateNotification(context.Background(), tc.in); err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Errorf("%s: err = %v, want %q", name, err, tc.want)
+			}
+		}
+		_, err := api.CreateScheduledNotification(context.Background(), CreateScheduledNotificationInput{Encrypted: env, Body: "readable", SendAt: "2030-01-01T09:00:00Z"})
+		if err == nil || !strings.Contains(err.Error(), "body is set next to encrypted") {
+			t.Errorf("scheduled: err = %v", err)
+		}
 	}
 }
 
@@ -1028,5 +1082,30 @@ func TestAPIClient_NoE2EKeySendsPlaintext(t *testing.T) {
 	defer srv.Close()
 	if _, err := NewAPIClient(srv.URL, "tok").CreateNotification(context.Background(), CreateNotificationInput{Title: "T", Body: "B"}); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// An organization key cannot send encrypted, and the agent cannot see that a
+// key is configured, so the refusal names PUSHWARD_E2E_KEY.
+func TestAPIClient_E2EOrgRefusalExplained(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/problem+json")
+		w.WriteHeader(http.StatusUnprocessableEntity)
+		_, _ = w.Write([]byte(`{"title":"Unprocessable Entity","status":422,"detail":"organization keys cannot send encrypted notifications","code":"notification.encryption_unavailable"}`))
+	}))
+	defer srv.Close()
+	k, err := e2e.ParseKey("000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f")
+	if err != nil {
+		t.Fatal(err)
+	}
+	api := NewAPIClient(srv.URL, "tok")
+	api.SetE2EKey(k)
+	_, err = api.CreateNotification(context.Background(), CreateNotificationInput{Title: "T", Body: "B"})
+	if err == nil || !strings.Contains(err.Error(), "PUSHWARD_E2E_KEY is set") {
+		t.Errorf("err = %v, want the key named", err)
+	}
+	_, err = api.CreateNotification(context.Background(), CreateNotificationInput{Encrypted: vectorEnvelope(t)})
+	if err == nil || strings.Contains(err.Error(), "PUSHWARD_E2E_KEY") {
+		t.Errorf("caller-sealed: err = %v, want the bare server error", err)
 	}
 }

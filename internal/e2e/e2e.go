@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"io"
 	"net/url"
+	"regexp"
 	"strings"
 	"unicode/utf8"
 )
@@ -35,6 +36,7 @@ const (
 	maxURL   = 2048
 
 	nonceSize = 12
+	tagSize   = 16
 	padBlock  = 64
 )
 
@@ -147,7 +149,30 @@ func pad(p []byte) []byte {
 // envelopeLen is the length of the envelope for a plaintext of n bytes:
 // "pw1." + kid + "." + base64url(nonce || ciphertext || 16-byte tag).
 func envelopeLen(n int) int {
-	return len(version) + 1 + 8 + 1 + base64.RawURLEncoding.EncodedLen(nonceSize+n+16)
+	return len(version) + 1 + 8 + 1 + base64.RawURLEncoding.EncodedLen(nonceSize+n+tagSize)
+}
+
+var envelopeShape = regexp.MustCompile(`^pw1\.([0-9a-f]{8})\.([A-Za-z0-9_-]{40,})$`)
+
+// ParseEnvelope runs the server's checks on an envelope sealed elsewhere and
+// returns its Key ID and the sealed bytes (nonce, ciphertext, tag). It cannot
+// tell whether the envelope opens; only a key can.
+func ParseEnvelope(s string) (kid string, sealed []byte, err error) {
+	if s == "" || len(s) > MaxEnvelope {
+		return "", nil, fmt.Errorf("an envelope is 1 to %d characters, got %d", MaxEnvelope, len(s))
+	}
+	m := envelopeShape.FindStringSubmatch(s)
+	if m == nil {
+		return "", nil, errors.New("not a pw1 envelope (pw1.<key id>.<base64url>)")
+	}
+	sealed, err = base64.RawURLEncoding.Strict().DecodeString(m[2])
+	if err != nil {
+		return "", nil, errors.New("envelope is not valid unpadded base64url")
+	}
+	if len(sealed) < nonceSize+2+tagSize {
+		return "", nil, errors.New("envelope is too short")
+	}
+	return m[1], sealed, nil
 }
 
 func (m Message) validate() error {

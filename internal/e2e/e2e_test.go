@@ -5,12 +5,10 @@ import (
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/rand"
-	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"os"
-	"regexp"
 	"strings"
 	"testing"
 	"unicode/utf8"
@@ -75,24 +73,10 @@ func mustHex(t *testing.T, s string) []byte {
 // The sender only seals, but the vectors are checked end to end: open is the
 // receiver side of the spec, kept here so a sealed envelope is proven to
 // open to what the apps will show.
-var envelopePattern = regexp.MustCompile(`^pw1\.[0-9a-f]{8}\.[A-Za-z0-9_-]{40,}$`)
-
 var errLocked = errors.New("no key for this kid")
 
-func parse(env string) (kid string, raw []byte, err error) {
-	if len(env) > MaxEnvelope || !envelopePattern.MatchString(env) {
-		return "", nil, errors.New("malformed envelope")
-	}
-	parts := strings.Split(env, ".")
-	raw, err = base64.RawURLEncoding.Strict().DecodeString(parts[2])
-	if err != nil || len(raw) < nonceSize+2+16 {
-		return "", nil, errors.New("malformed envelope payload")
-	}
-	return parts[1], raw, nil
-}
-
 func open(keys map[string]*Key, env string) (Message, error) {
-	kid, raw, err := parse(env)
+	kid, raw, err := ParseEnvelope(env)
 	if err != nil {
 		return Message{}, err
 	}
@@ -199,7 +183,7 @@ func TestVectorsOpenFail(t *testing.T) {
 func TestVectorsParseFail(t *testing.T) {
 	for _, v := range loadVectors(t).ParseFail {
 		t.Run(v.Name, func(t *testing.T) {
-			if _, _, err := parse(v.Envelope); err == nil {
+			if _, _, err := ParseEnvelope(v.Envelope); err == nil {
 				t.Error("parsed, want a failure")
 			}
 		})
@@ -238,7 +222,7 @@ func TestSealRoundTripsAndPads(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Seal(%+v): %v", m, err)
 		}
-		_, raw, err := parse(env)
+		_, raw, err := ParseEnvelope(env)
 		if err != nil {
 			t.Fatalf("sealed envelope does not parse: %v", err)
 		}

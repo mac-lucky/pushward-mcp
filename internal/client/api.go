@@ -59,19 +59,41 @@ func NewAPIClient(baseURL, token string) *APIClient {
 func (c *APIClient) SetE2EKey(k *e2e.Key) { c.e2eKey = k }
 
 // sealText replaces the four text fields with an encrypted envelope when a
-// key is set. A caller that passed its own encrypted value keeps it as is;
-// the server refuses it if plaintext came along too.
-func (c *APIClient) sealText(encrypted, title, subtitle, body, link *string) error {
-	if c.e2eKey == nil || *encrypted != "" {
-		return nil
+// key is set, and reports whether it did. An encrypted value the caller
+// sealed itself is sent as it is, key or not, once it parses as an envelope
+// and none of the four fields would travel readable next to it.
+func (c *APIClient) sealText(encrypted, title, subtitle, body, link *string) (bool, error) {
+	if *encrypted != "" {
+		if _, _, err := e2e.ParseEnvelope(*encrypted); err != nil {
+			return false, fmt.Errorf("encrypted must be a pw1 envelope: %w", err)
+		}
+		for _, f := range []struct{ name, v string }{{"title", *title}, {"subtitle", *subtitle}, {"body", *body}, {"url", *link}} {
+			if f.v != "" {
+				return false, fmt.Errorf("%s is set next to encrypted and would be sent readable; put it inside the envelope", f.name)
+			}
+		}
+		return false, nil
+	}
+	if c.e2eKey == nil {
+		return false, nil
 	}
 	env, err := e2e.Seal(c.e2eKey, e2e.Message{Title: *title, Subtitle: *subtitle, Body: *body, URL: *link}, rand.Reader)
 	if err != nil {
-		return fmt.Errorf("encrypting notification: %w", err)
+		return false, fmt.Errorf("encrypting notification: %w", err)
 	}
 	*encrypted = env
 	*title, *subtitle, *body, *link = "", "", "", ""
-	return nil
+	return true, nil
+}
+
+// explainSealed names the cause when the server refuses a notification this
+// client encrypted because the token is an organization key: the agent
+// cannot see that PUSHWARD_E2E_KEY is set, and only the user can unset it.
+func explainSealed(sealed bool, err error) error {
+	if sealed && err != nil && strings.Contains(err.Error(), "notification.encryption_unavailable") {
+		return fmt.Errorf("%w (PUSHWARD_E2E_KEY is set, so this server encrypts every notification, and an organization key cannot send encrypted ones)", err)
+	}
+	return err
 }
 
 // ActivitiesPage is the paginated envelope returned by GET /activities (AIP-158).
@@ -307,11 +329,12 @@ type CreateNotificationInput struct {
 
 // CreateNotification creates an in-app notification with optional APNs push.
 func (c *APIClient) CreateNotification(ctx context.Context, input CreateNotificationInput) (json.RawMessage, error) {
-	if err := c.sealText(&input.Encrypted, &input.Title, &input.Subtitle, &input.Body, &input.URL); err != nil {
+	sealed, err := c.sealText(&input.Encrypted, &input.Title, &input.Subtitle, &input.Body, &input.URL)
+	if err != nil {
 		return nil, err
 	}
 	raw, _, err := c.DoJSON(ctx, http.MethodPost, "/notifications", input)
-	return raw, err
+	return raw, explainSealed(sealed, err)
 }
 
 // CreateScheduledNotificationInput is the request body for
@@ -357,11 +380,12 @@ type Recurrence struct {
 // cron schedule with Recurrence. Each send counts against the notification
 // quota when it happens.
 func (c *APIClient) CreateScheduledNotification(ctx context.Context, input CreateScheduledNotificationInput) (json.RawMessage, error) {
-	if err := c.sealText(&input.Encrypted, &input.Title, &input.Subtitle, &input.Body, &input.URL); err != nil {
+	sealed, err := c.sealText(&input.Encrypted, &input.Title, &input.Subtitle, &input.Body, &input.URL)
+	if err != nil {
 		return nil, err
 	}
 	raw, _, err := c.DoJSON(ctx, http.MethodPost, "/notifications/scheduled", input)
-	return raw, err
+	return raw, explainSealed(sealed, err)
 }
 
 // ListScheduledNotifications lists scheduled notifications. status is
