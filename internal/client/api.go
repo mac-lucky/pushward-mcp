@@ -86,6 +86,16 @@ func (c *APIClient) sealText(encrypted, title, subtitle, body, link *string) (bo
 	return true, nil
 }
 
+// checkAcknowledge refuses tags or a callback URL without acknowledge. The
+// server would too, but the tools drop an empty acknowledge object, so a
+// model that sent {} would not understand its "requires acknowledge" error.
+func checkAcknowledge(ack json.RawMessage, tags []string, callbackURL string) error {
+	if len(ack) == 0 && (len(tags) > 0 || callbackURL != "") {
+		return errors.New(`tags and callback_url need acknowledge, and an empty acknowledge object is ignored: set at least one field, e.g. {"repeat_seconds": 60}`)
+	}
+	return nil
+}
+
 // explainSealed names the cause when the server refuses a notification this
 // client encrypted because the token is an organization key: the agent
 // cannot see that PUSHWARD_E2E_KEY is set, and only the user can unset it.
@@ -329,6 +339,9 @@ type CreateNotificationInput struct {
 
 // CreateNotification creates an in-app notification with optional APNs push.
 func (c *APIClient) CreateNotification(ctx context.Context, input CreateNotificationInput) (json.RawMessage, error) {
+	if err := checkAcknowledge(input.Acknowledge, input.Tags, input.CallbackURL); err != nil {
+		return nil, err
+	}
 	sealed, err := c.sealText(&input.Encrypted, &input.Title, &input.Subtitle, &input.Body, &input.URL)
 	if err != nil {
 		return nil, err
@@ -380,6 +393,9 @@ type Recurrence struct {
 // cron schedule with Recurrence. Each send counts against the notification
 // quota when it happens.
 func (c *APIClient) CreateScheduledNotification(ctx context.Context, input CreateScheduledNotificationInput) (json.RawMessage, error) {
+	if err := checkAcknowledge(input.Acknowledge, input.Tags, input.CallbackURL); err != nil {
+		return nil, err
+	}
 	sealed, err := c.sealText(&input.Encrypted, &input.Title, &input.Subtitle, &input.Body, &input.URL)
 	if err != nil {
 		return nil, err

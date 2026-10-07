@@ -135,6 +135,14 @@ var opaqueFields = map[string]bool{
 	"acknowledge": true,
 }
 
+// paramDescSuffix adds MCP-side behaviour to a body param's spec description,
+// for what the tool does differently from the API.
+var paramDescSuffix = map[string]string{
+	// The tools drop an empty opaque object (see objectField), but the API
+	// reads acknowledge: {} as "all defaults".
+	"acknowledge": `An empty object is ignored here: set at least one field, e.g. {"repeat_seconds": 60}.`,
+}
+
 // Live OpenAPI spec URLs.
 const (
 	apiSpecURL   = "https://api.pushward.app/openapi.json"
@@ -542,6 +550,9 @@ func schemaToParams(spec *openAPISpec, schema schemaObj, bodyRequired bool) []pa
 			Desc:     desc,
 			Required: requiredSet[name] && bodyRequired,
 			Enum:     prop.Enum,
+		}
+		if sfx := paramDescSuffix[name]; sfx != "" {
+			p.Desc = strings.TrimSpace(p.Desc + " " + sfx)
 		}
 
 		// Handle ref'd object schemas as MCP object params, mapped to a hand-defined Go struct.

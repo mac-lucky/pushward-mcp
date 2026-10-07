@@ -991,6 +991,11 @@ func TestBuildAPITools_NotificationAckParams(t *testing.T) {
 	if p := params["acknowledge"]; p.MCPType != "Object" || !p.Opaque || p.GoType != "json.RawMessage" || p.Props["repeat_seconds"] == nil {
 		t.Errorf("acknowledge = %+v, want an opaque object with its properties", p)
 	}
+	// The tool drops {}, which the API would take as all defaults, so the
+	// model has to be told.
+	if d := params["acknowledge"].Desc; !strings.Contains(d, "An empty object is ignored") {
+		t.Errorf("acknowledge description %q does not say an empty object is ignored", d)
+	}
 	if p := params["tags"]; p.MCPType != "Array" || p.GoType != "[]string" || p.ItemsType != "string" {
 		t.Errorf("tags = %+v, want a string array", p)
 	}

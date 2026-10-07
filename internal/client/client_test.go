@@ -1109,3 +1109,35 @@ func TestAPIClient_E2EOrgRefusalExplained(t *testing.T) {
 		t.Errorf("caller-sealed: err = %v, want the bare server error", err)
 	}
 }
+
+// The tools drop an empty acknowledge object, so tags or a callback URL left
+// without one is refused here with the reason instead of reaching the server.
+func TestAPIClient_TagsNeedAcknowledge(t *testing.T) {
+	var bodies []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		b, _ := io.ReadAll(r.Body)
+		bodies = append(bodies, string(b))
+		_, _ = w.Write([]byte(`{}`))
+	}))
+	defer srv.Close()
+	api := NewAPIClient(srv.URL, "tok")
+	ctx := context.Background()
+
+	_, err := api.CreateNotification(ctx, CreateNotificationInput{Title: "T", Body: "B", Tags: []string{"nas-1"}})
+	if err == nil || !strings.Contains(err.Error(), "empty acknowledge object is ignored") {
+		t.Errorf("tags alone: err = %v", err)
+	}
+	_, err = api.CreateScheduledNotification(ctx, CreateScheduledNotificationInput{Title: "T", Body: "B", SendAt: "2030-01-01T09:00:00Z", CallbackURL: "https://hooks.example.com/x"})
+	if err == nil || !strings.Contains(err.Error(), "need acknowledge") {
+		t.Errorf("callback alone: err = %v", err)
+	}
+	if len(bodies) != 0 {
+		t.Fatalf("refused sends reached the server: %v", bodies)
+	}
+	if _, err := api.CreateNotification(ctx, CreateNotificationInput{Title: "T", Body: "B", Acknowledge: json.RawMessage(`{"repeat_seconds":60}`), Tags: []string{"nas-1"}}); err != nil {
+		t.Fatal(err)
+	}
+	if len(bodies) != 1 || !strings.Contains(bodies[0], `"acknowledge":{"repeat_seconds":60}`) || !strings.Contains(bodies[0], `"tags":["nas-1"]`) {
+		t.Errorf("acknowledged send body = %v", bodies)
+	}
+}
