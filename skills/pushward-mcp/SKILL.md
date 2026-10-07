@@ -110,6 +110,7 @@ cannot be `passive` or sent with `push: false`.
 The create response carries a `receipt`. Wait on it, or stop it once the problem clears:
 
 ```
+create_notification {"title": "Backup failed", "body": "nas-1 nightly job exited 1", "level": "time-sensitive", "acknowledge": {"repeat_seconds": 300}, "tags": ["nas-1"], "collapse_id": "nas-1-backup"}
 wait_for_ack {"notification_id": 1234, "timeout_seconds": 600}
 cancel_notification_receipt {"notification_id": 1234}
 cancel_notification_receipts_by_tag {"tag": "nas-1"}
