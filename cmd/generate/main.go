@@ -1060,7 +1060,7 @@ import (
 	if v, ok := req.GetArguments()[{{ quote .Name }}]; ok && v != nil {
 {{- if .Opaque }}
 		// An empty object is skipped like an omitted one: some clients fill
-		// every optional object param, and the API refuses an empty one.
+		// every optional object param, and an empty one would not mean what the caller asked for.
 		if m, isMap := v.(map[string]any); !isMap || len(m) > 0 {
 			buf, err := json.Marshal(v)
 			if err != nil {

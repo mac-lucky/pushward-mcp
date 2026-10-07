@@ -66,7 +66,7 @@ func registerAPITools(s *mcpserver.MCPServer, api *client.APIClient) {
 			// results cross a trust boundary - keep the open-world hint explicit.
 			mcp.WithOpenWorldHintAnnotation(true),
 			mcp.WithObject("acknowledge",
-				mcp.Description("Repeat the notification until someone acknowledges it: any tap on an action without a url counts, and when there is none the server adds an Acknowledge button (id pw_ack). Track it with GET /notifications/receipts/{id} (the response's receipt). Not with push false or level passive. At most 25 active per account. An empty object is ignored here: set at least one field, e.g. {\"repeat_seconds\": 60}."),
+				mcp.Description("Repeat the notification until someone acknowledges it: any tap on an action without a url that does not open the app (foreground false) counts, and when there is none the server adds an Acknowledge button (id pw_ack). Track it with GET /notifications/receipts/{id} (the response's receipt). Not with push false or level passive. At most 25 active per account. An empty object is ignored here: set at least one field, e.g. {\"repeat_seconds\": 60}."),
 				mcp.Properties(map[string]any{"action_title": map[string]any{"description": "Label of the acknowledge button the server adds (id pw_ack) when no action without a url is present. Default Acknowledge.", "type": "string"}, "expire_seconds": map[string]any{"description": "Seconds after which the notification stops repeating and its receipt expires (60-10800, default 3600).", "type": "integer"}, "repeat_seconds": map[string]any{"description": "Seconds between repeats while nobody has acknowledged the notification (30-3600, default 60). At most 50 repeats are sent.", "type": "integer"}}),
 			),
 			mcp.WithArray("actions",
@@ -148,7 +148,7 @@ func registerAPITools(s *mcpserver.MCPServer, api *client.APIClient) {
 			// results cross a trust boundary - keep the open-world hint explicit.
 			mcp.WithOpenWorldHintAnnotation(true),
 			mcp.WithObject("acknowledge",
-				mcp.Description("Repeat the notification until someone acknowledges it: any tap on an action without a url counts, and when there is none the server adds an Acknowledge button (id pw_ack). Track it with GET /notifications/receipts/{id} (the response's receipt). Not with push false or level passive. At most 25 active per account. An empty object is ignored here: set at least one field, e.g. {\"repeat_seconds\": 60}."),
+				mcp.Description("Repeat the notification until someone acknowledges it: any tap on an action without a url that does not open the app (foreground false) counts, and when there is none the server adds an Acknowledge button (id pw_ack). Track it with GET /notifications/receipts/{id} (the response's receipt). Not with push false or level passive. At most 25 active per account. An empty object is ignored here: set at least one field, e.g. {\"repeat_seconds\": 60}."),
 				mcp.Properties(map[string]any{"action_title": map[string]any{"description": "Label of the acknowledge button the server adds (id pw_ack) when no action without a url is present. Default Acknowledge.", "type": "string"}, "expire_seconds": map[string]any{"description": "Seconds after which the notification stops repeating and its receipt expires (60-10800, default 3600).", "type": "integer"}, "repeat_seconds": map[string]any{"description": "Seconds between repeats while nobody has acknowledged the notification (30-3600, default 60). At most 50 repeats are sent.", "type": "integer"}}),
 			),
 			mcp.WithArray("actions",
@@ -534,7 +534,7 @@ func handleCreateActivity(ctx context.Context, req mcp.CallToolRequest, api *cli
 	}
 	if v, ok := req.GetArguments()["target"]; ok && v != nil {
 		// An empty object is skipped like an omitted one: some clients fill
-		// every optional object param, and the API refuses an empty one.
+		// every optional object param, and an empty one would not mean what the caller asked for.
 		if m, isMap := v.(map[string]any); !isMap || len(m) > 0 {
 			buf, err := json.Marshal(v)
 			if err != nil {
@@ -556,7 +556,7 @@ func handleCreateNotification(ctx context.Context, req mcp.CallToolRequest, api 
 	input := client.CreateNotificationInput{}
 	if v, ok := req.GetArguments()["acknowledge"]; ok && v != nil {
 		// An empty object is skipped like an omitted one: some clients fill
-		// every optional object param, and the API refuses an empty one.
+		// every optional object param, and an empty one would not mean what the caller asked for.
 		if m, isMap := v.(map[string]any); !isMap || len(m) > 0 {
 			buf, err := json.Marshal(v)
 			if err != nil {
@@ -637,7 +637,7 @@ func handleCreateNotification(ctx context.Context, req mcp.CallToolRequest, api 
 	}
 	if v, ok := req.GetArguments()["target"]; ok && v != nil {
 		// An empty object is skipped like an omitted one: some clients fill
-		// every optional object param, and the API refuses an empty one.
+		// every optional object param, and an empty one would not mean what the caller asked for.
 		if m, isMap := v.(map[string]any); !isMap || len(m) > 0 {
 			buf, err := json.Marshal(v)
 			if err != nil {
@@ -671,7 +671,7 @@ func handleCreateScheduledNotification(ctx context.Context, req mcp.CallToolRequ
 	input := client.CreateScheduledNotificationInput{}
 	if v, ok := req.GetArguments()["acknowledge"]; ok && v != nil {
 		// An empty object is skipped like an omitted one: some clients fill
-		// every optional object param, and the API refuses an empty one.
+		// every optional object param, and an empty one would not mean what the caller asked for.
 		if m, isMap := v.(map[string]any); !isMap || len(m) > 0 {
 			buf, err := json.Marshal(v)
 			if err != nil {
@@ -766,7 +766,7 @@ func handleCreateScheduledNotification(ctx context.Context, req mcp.CallToolRequ
 	}
 	if v, ok := req.GetArguments()["target"]; ok && v != nil {
 		// An empty object is skipped like an omitted one: some clients fill
-		// every optional object param, and the API refuses an empty one.
+		// every optional object param, and an empty one would not mean what the caller asked for.
 		if m, isMap := v.(map[string]any); !isMap || len(m) > 0 {
 			buf, err := json.Marshal(v)
 			if err != nil {
@@ -825,7 +825,7 @@ func handleCreateWidget(ctx context.Context, req mcp.CallToolRequest, api *clien
 	}
 	if v, ok := req.GetArguments()["target"]; ok && v != nil {
 		// An empty object is skipped like an omitted one: some clients fill
-		// every optional object param, and the API refuses an empty one.
+		// every optional object param, and an empty one would not mean what the caller asked for.
 		if m, isMap := v.(map[string]any); !isMap || len(m) > 0 {
 			buf, err := json.Marshal(v)
 			if err != nil {
@@ -976,7 +976,7 @@ func handleUpdateActivity(ctx context.Context, req mcp.CallToolRequest, api *cli
 	}
 	if v, ok := req.GetArguments()["target"]; ok && v != nil {
 		// An empty object is skipped like an omitted one: some clients fill
-		// every optional object param, and the API refuses an empty one.
+		// every optional object param, and an empty one would not mean what the caller asked for.
 		if m, isMap := v.(map[string]any); !isMap || len(m) > 0 {
 			buf, err := json.Marshal(v)
 			if err != nil {
@@ -1039,7 +1039,7 @@ func handleUpdateWidget(ctx context.Context, req mcp.CallToolRequest, api *clien
 	}
 	if v, ok := req.GetArguments()["target"]; ok && v != nil {
 		// An empty object is skipped like an omitted one: some clients fill
-		// every optional object param, and the API refuses an empty one.
+		// every optional object param, and an empty one would not mean what the caller asked for.
 		if m, isMap := v.(map[string]any); !isMap || len(m) > 0 {
 			buf, err := json.Marshal(v)
 			if err != nil {
