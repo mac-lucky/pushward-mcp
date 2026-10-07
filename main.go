@@ -38,6 +38,9 @@ func main() {
 	if cfg.IsRemote() {
 		log.Info("pushward-mcp starting", "version", version, "commit", commit, "buildDate", buildDate, "transport", string(cfg.Transport), "httpAuth", string(cfg.HTTPAuth))
 	}
+	if cfg.E2EKeyIgnored {
+		log.Warn("PUSHWARD_E2E_KEY is ignored in OAuth http mode: notifications are sent unencrypted; only stdio and PUSHWARD_MCP_HTTP_AUTH=none use it")
+	}
 
 	// In http mode the Authenticator is the only source of identity: it puts
 	// the key in the request context, so the client carries no fallback token.

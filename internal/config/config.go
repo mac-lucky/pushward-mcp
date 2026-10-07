@@ -63,6 +63,9 @@ type Config struct {
 	// body and url end to end. Nil when unset, and always nil in OAuth http
 	// mode.
 	E2EKey *e2e.Key
+	// E2EKeyIgnored is set when PUSHWARD_E2E_KEY was given in OAuth http
+	// mode, where it is dropped, so startup can say so.
+	E2EKeyIgnored bool
 }
 
 // IsRemote reports whether the server runs in network-exposed (http) mode.
@@ -168,6 +171,7 @@ func Load() (*Config, error) {
 			cfg.APIToken = ""
 			// Same for the encryption key: every user's notifications would
 			// be sealed to the devices of whoever set it.
+			cfg.E2EKeyIgnored = e2eKey != ""
 			e2eKey = ""
 		}
 		if cfg.ListenAddr == "" {

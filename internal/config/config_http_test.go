@@ -195,7 +195,7 @@ func TestLoad_E2EKeyByHTTPAuth(t *testing.T) {
 
 	t.Setenv("PUSHWARD_MCP_HTTP_AUTH", "none")
 	cfg, err := Load()
-	if err != nil || cfg.E2EKey == nil {
+	if err != nil || cfg.E2EKey == nil || cfg.E2EKeyIgnored {
 		t.Fatalf("single-user http keeps the key: cfg.E2EKey = %v, err = %v", cfg.E2EKey, err)
 	}
 
@@ -204,8 +204,8 @@ func TestLoad_E2EKeyByHTTPAuth(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cfg.E2EKey != nil {
-		t.Fatal("OAuth mode must drop a process-wide PUSHWARD_E2E_KEY")
+	if cfg.E2EKey != nil || !cfg.E2EKeyIgnored {
+		t.Fatalf("OAuth mode must drop a process-wide PUSHWARD_E2E_KEY and flag it: key %v, ignored %v", cfg.E2EKey, cfg.E2EKeyIgnored)
 	}
 
 	// Dropped before parsing, so a bad value cannot stop the hosted server.
