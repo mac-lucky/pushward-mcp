@@ -285,9 +285,11 @@ func TestParseKey(t *testing.T) {
 			t.Errorf("ParseKey(%q) accepted", s)
 		}
 	}
-	_, err := ParseKey("hlk_0123456789abcdef0123456789abcdef")
-	if err == nil || !strings.Contains(err.Error(), "integration key") {
-		t.Errorf("hlk_ key: err = %v, want the integration key hint", err)
+	for _, s := range []string{"hlk_0123456789abcdef0123456789abcdef", "  HLA_0123456789abcdef\n", "Hlk_x"} {
+		_, err := ParseKey(s)
+		if err == nil || !strings.Contains(err.Error(), "integration key") {
+			t.Errorf("ParseKey(%q): err = %v, want the integration key hint", s, err)
+		}
 	}
 }
 

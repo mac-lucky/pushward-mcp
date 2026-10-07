@@ -57,7 +57,7 @@ func ParseKey(s string) (*Key, error) {
 		}
 		return r
 	}, s)
-	if strings.HasPrefix(s, "hlk_") || strings.HasPrefix(s, "hla_") {
+	if p := strings.ToLower(s); strings.HasPrefix(p, "hlk_") || strings.HasPrefix(p, "hla_") {
 		return nil, errors.New("that is an integration key, not an encryption key")
 	}
 	raw, err := hex.DecodeString(s)
