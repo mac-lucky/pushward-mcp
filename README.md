@@ -109,8 +109,10 @@ Environment variables (stdio mode):
 - `PUSHWARD_E2E_KEY` - optional, the 64-hex-character key from Settings > Encryption in the
   app. With it set, the notification tools encrypt title, subtitle, body and url before they
   leave the process, so the PushWard server only ever sees ciphertext; your devices decrypt
-  them. Everything else (level, sound, actions, metadata) still goes in the clear.
-  Organization keys can't send encrypted notifications. Also read in single-user http mode
+  them. Everything else (level, sound, actions, metadata) still goes in the clear, and so do
+  Live Activities, widgets, emails and the `relay_*` tools: only `create_notification` and
+  `create_scheduled_notification` are encrypted. Organization keys can't send encrypted
+  notifications. Also read in single-user http mode
   below; the hosted OAuth server ignores it.
 
 The `http` transport (OAuth, multi-tenant) is what backs the hosted endpoint above; it needs
