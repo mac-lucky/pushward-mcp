@@ -63,7 +63,7 @@ func registerReceiptTools(s *mcpserver.MCPServer, api *client.APIClient) {
 
 	s.AddTool(
 		mcp.NewTool("wait_for_ack",
-			mcp.WithDescription("Wait until a notification sent with acknowledge stops repeating. Returns {status, acknowledged, receipt, reason}: acknowledged=true once someone tapped an action without a url on one of their devices (receipt.action_id says which, receipt.acknowledged_by_device where); acknowledged=false with a reason when it expired, was canceled, or timeout_seconds ran out first (it then keeps repeating). None of these is a tool error."),
+			mcp.WithDescription("Wait until a notification sent with acknowledge stops repeating. Returns {status, acknowledged, receipt, reason}: acknowledged=true once someone tapped an action without a url that does not open the app on one of their devices (receipt.action_id says which, receipt.acknowledged_by_device where); acknowledged=false with a reason when it expired, was canceled, or timeout_seconds ran out first (it then keeps repeating). None of these is a tool error."),
 			mcp.WithReadOnlyHintAnnotation(true),
 			mcp.WithOpenWorldHintAnnotation(true),
 			mcp.WithNumber("notification_id", mcp.Required(), mcp.Description("Notification id from create_notification")),
