@@ -65,6 +65,10 @@ func registerAPITools(s *mcpserver.MCPServer, api *client.APIClient) {
 			// Every tool proxies an external REST API (api.pushward.app), so its
 			// results cross a trust boundary - keep the open-world hint explicit.
 			mcp.WithOpenWorldHintAnnotation(true),
+			mcp.WithObject("acknowledge",
+				mcp.Description("Repeat the notification until someone acknowledges it: any tap on an action without a url counts, and when there is none the server adds an Acknowledge button (id pw_ack). Track it with GET /notifications/receipts/{id} (the response's receipt). Not with push false or level passive. At most 25 active per account. An empty object is ignored here: set at least one field, e.g. {\"repeat_seconds\": 60}."),
+				mcp.Properties(map[string]any{"action_title": map[string]any{"description": "Label of the acknowledge button the server adds (id pw_ack) when no action without a url is present. Default Acknowledge.", "type": "string"}, "expire_seconds": map[string]any{"description": "Seconds after which the notification stops repeating and its receipt expires (60-10800, default 3600).", "type": "integer"}, "repeat_seconds": map[string]any{"description": "Seconds between repeats while nobody has acknowledged the notification (30-3600, default 60). At most 50 repeats are sent.", "type": "integer"}}),
+			),
 			mcp.WithArray("actions",
 				mcp.Description("Server-driven action buttons. Max 10 (Apple cap)."),
 				mcp.Items(map[string]any{"type": "object"}),
@@ -73,11 +77,16 @@ func registerAPITools(s *mcpserver.MCPServer, api *client.APIClient) {
 				mcp.Description("activity_slug"),
 			),
 			mcp.WithString("body",
-				mcp.Required(),
-				mcp.Description("Notification body"),
+				mcp.Description("Notification body. Required unless encrypted is set; leave it out then (the server stores a placeholder)."),
+			),
+			mcp.WithString("callback_url",
+				mcp.Description("https URL that receives a signed POST once the notification is acknowledged or expires (Standard Webhooks, signed with a secret derived from the sending integration key). Requires acknowledge and an integration key."),
 			),
 			mcp.WithString("collapse_id",
 				mcp.Description("Collapse ID for replacing notifications"),
+			),
+			mcp.WithString("encrypted",
+				mcp.Description("End-to-end encrypted title, subtitle, body and url: a pw1 envelope sealed with the user's encryption key (see the encryption docs). Leave title, subtitle, body and url out when it is set; the stored and pushed title and body become placeholders that devices holding the key replace with the decrypted text. Everything else (level, sound, source, media, actions, metadata) stays plaintext. Not available to organization keys."),
 			),
 			mcp.WithString("icon_url",
 				mcp.Description("http or https URL for per-notification source avatar, shown as the Communication Notification avatar on iOS. Recommended <=256x256 and <=100 KB; responses larger than 512 KB are rejected by the iOS extension to protect the 24 MB memory budget."),
@@ -102,6 +111,10 @@ func registerAPITools(s *mcpserver.MCPServer, api *client.APIClient) {
 			mcp.WithString("subtitle",
 				mcp.Description("Notification subtitle"),
 			),
+			mcp.WithArray("tags",
+				mcp.Description("Labels for canceling acknowledged notifications as a group (POST /notifications/receipts/cancel): up to 10, each 1-64 printable ASCII characters without spaces. Requires acknowledge."),
+				mcp.Items(map[string]any{"type": "string"}),
+			),
 			mcp.WithObject("target",
 				mcp.Description("Organization keys only: who receives it, narrowing the organization's routing rules. Omit to reach everyone the rules allow (or, for a key limited to some groups and tags, all of those)."),
 				mcp.Properties(map[string]any{"groups": map[string]any{"description": "Names of the organization's groups whose members receive it.", "items": map[string]any{"type": "string"}, "maxItems": 20, "type": "array"}, "members": map[string]any{"description": "User ids of members who receive it on all their devices.", "items": map[string]any{"type": "string"}, "maxItems": 100, "type": "array"}, "tags": map[string]any{"description": "Names of the organization's device tags; devices with any of them receive it.", "items": map[string]any{"type": "string"}, "maxItems": 20, "type": "array"}}),
@@ -110,8 +123,7 @@ func registerAPITools(s *mcpserver.MCPServer, api *client.APIClient) {
 				mcp.Description("Thread identifier for grouping"),
 			),
 			mcp.WithString("title",
-				mcp.Required(),
-				mcp.Description("Notification title"),
+				mcp.Description("Notification title. Required unless encrypted is set; leave it out then (the server stores a placeholder)."),
 			),
 			mcp.WithString("url",
 				mcp.Description("Action URL"),
@@ -135,6 +147,10 @@ func registerAPITools(s *mcpserver.MCPServer, api *client.APIClient) {
 			// Every tool proxies an external REST API (api.pushward.app), so its
 			// results cross a trust boundary - keep the open-world hint explicit.
 			mcp.WithOpenWorldHintAnnotation(true),
+			mcp.WithObject("acknowledge",
+				mcp.Description("Repeat the notification until someone acknowledges it: any tap on an action without a url counts, and when there is none the server adds an Acknowledge button (id pw_ack). Track it with GET /notifications/receipts/{id} (the response's receipt). Not with push false or level passive. At most 25 active per account. An empty object is ignored here: set at least one field, e.g. {\"repeat_seconds\": 60}."),
+				mcp.Properties(map[string]any{"action_title": map[string]any{"description": "Label of the acknowledge button the server adds (id pw_ack) when no action without a url is present. Default Acknowledge.", "type": "string"}, "expire_seconds": map[string]any{"description": "Seconds after which the notification stops repeating and its receipt expires (60-10800, default 3600).", "type": "integer"}, "repeat_seconds": map[string]any{"description": "Seconds between repeats while nobody has acknowledged the notification (30-3600, default 60). At most 50 repeats are sent.", "type": "integer"}}),
+			),
 			mcp.WithArray("actions",
 				mcp.Description("Server-driven action buttons. Max 10 (Apple cap)."),
 				mcp.Items(map[string]any{"type": "object"}),
@@ -143,11 +159,16 @@ func registerAPITools(s *mcpserver.MCPServer, api *client.APIClient) {
 				mcp.Description("activity_slug"),
 			),
 			mcp.WithString("body",
-				mcp.Required(),
-				mcp.Description("Notification body"),
+				mcp.Description("Notification body. Required unless encrypted is set; leave it out then (the server stores a placeholder)."),
+			),
+			mcp.WithString("callback_url",
+				mcp.Description("https URL that receives a signed POST once the notification is acknowledged or expires (Standard Webhooks, signed with a secret derived from the sending integration key). Requires acknowledge and an integration key."),
 			),
 			mcp.WithString("collapse_id",
 				mcp.Description("Collapse ID for replacing notifications"),
+			),
+			mcp.WithString("encrypted",
+				mcp.Description("End-to-end encrypted title, subtitle, body and url: a pw1 envelope sealed with the user's encryption key (see the encryption docs). Leave title, subtitle, body and url out when it is set; the stored and pushed title and body become placeholders that devices holding the key replace with the decrypted text. Everything else (level, sound, source, media, actions, metadata) stays plaintext. Not available to organization keys."),
 			),
 			mcp.WithString("icon_url",
 				mcp.Description("http or https URL for per-notification source avatar, shown as the Communication Notification avatar on iOS. Recommended <=256x256 and <=100 KB; responses larger than 512 KB are rejected by the iOS extension to protect the 24 MB memory budget."),
@@ -179,6 +200,10 @@ func registerAPITools(s *mcpserver.MCPServer, api *client.APIClient) {
 			mcp.WithString("subtitle",
 				mcp.Description("Notification subtitle"),
 			),
+			mcp.WithArray("tags",
+				mcp.Description("Labels for canceling acknowledged notifications as a group (POST /notifications/receipts/cancel): up to 10, each 1-64 printable ASCII characters without spaces. Requires acknowledge."),
+				mcp.Items(map[string]any{"type": "string"}),
+			),
 			mcp.WithObject("target",
 				mcp.Description("Organization keys only: who receives it, narrowing the organization's routing rules. Omit to reach everyone the rules allow (or, for a key limited to some groups and tags, all of those)."),
 				mcp.Properties(map[string]any{"groups": map[string]any{"description": "Names of the organization's groups whose members receive it.", "items": map[string]any{"type": "string"}, "maxItems": 20, "type": "array"}, "members": map[string]any{"description": "User ids of members who receive it on all their devices.", "items": map[string]any{"type": "string"}, "maxItems": 100, "type": "array"}, "tags": map[string]any{"description": "Names of the organization's device tags; devices with any of them receive it.", "items": map[string]any{"type": "string"}, "maxItems": 20, "type": "array"}}),
@@ -187,8 +212,7 @@ func registerAPITools(s *mcpserver.MCPServer, api *client.APIClient) {
 				mcp.Description("Thread identifier for grouping"),
 			),
 			mcp.WithString("title",
-				mcp.Required(),
-				mcp.Description("Notification title"),
+				mcp.Description("Notification title. Required unless encrypted is set; leave it out then (the server stores a placeholder)."),
 			),
 			mcp.WithString("url",
 				mcp.Description("Action URL"),
@@ -217,7 +241,7 @@ func registerAPITools(s *mcpserver.MCPServer, api *client.APIClient) {
 				mcp.Description("Human-readable widget name shown in the iOS configuration picker."),
 			),
 			mcp.WithNumber("push_throttle",
-				mcp.Description("Per-widget minimum seconds between pushes. (min: 1, max: 3600)"),
+				mcp.Description("Per-widget minimum seconds between pushes. Ignored for an organization's widgets, which share one window of at least 60 seconds. (min: 1, max: 3600)"),
 			),
 			mcp.WithString("slug",
 				mcp.Required(),
@@ -225,6 +249,10 @@ func registerAPITools(s *mcpserver.MCPServer, api *client.APIClient) {
 			),
 			mcp.WithNumber("stale_after",
 				mcp.Description("Seconds after updated_at before clients render the widget as stale. (min: 60, max: 604800)"),
+			),
+			mcp.WithObject("target",
+				mcp.Description("Organization keys only: which members read the widget and have it reloaded, narrowing the organization's routing rules. Omit to reach everyone the rules allow (or, for a key limited to some groups and tags, all of those). Re-POSTing an existing slug without it keeps the stored target."),
+				mcp.Properties(map[string]any{"groups": map[string]any{"description": "Names of the organization's groups whose members receive it.", "items": map[string]any{"type": "string"}, "maxItems": 20, "type": "array"}, "members": map[string]any{"description": "User ids of members who receive it on all their devices.", "items": map[string]any{"type": "string"}, "maxItems": 100, "type": "array"}, "tags": map[string]any{"description": "Names of the organization's device tags; devices with any of them receive it.", "items": map[string]any{"type": "string"}, "maxItems": 20, "type": "array"}}),
 			),
 			mcp.WithString("content_json",
 				mcp.Required(),
@@ -461,6 +489,13 @@ func registerAPITools(s *mcpserver.MCPServer, api *client.APIClient) {
 			mcp.WithNumber("stale_after",
 				mcp.Description("Seconds after updated_at before clients render the widget as stale. Omit to keep the current value."),
 			),
+			mcp.WithObject("target",
+				mcp.Description("Organization keys only: which members read the widget and have it reloaded, narrowing the organization's routing rules. Tri-state: omit to keep, clear_target: true to clear (everyone the rules allow), object to replace."),
+				mcp.Properties(map[string]any{"groups": map[string]any{"description": "Names of the organization's groups whose members receive it.", "items": map[string]any{"type": "string"}, "maxItems": 20, "type": "array"}, "members": map[string]any{"description": "User ids of members who receive it on all their devices.", "items": map[string]any{"type": "string"}, "maxItems": 100, "type": "array"}, "tags": map[string]any{"description": "Names of the organization's device tags; devices with any of them receive it.", "items": map[string]any{"type": "string"}, "maxItems": 20, "type": "array"}}),
+			),
+			mcp.WithBoolean("clear_target",
+				mcp.Description("Set true to clear target (null in the API). Cannot be combined with target."),
+			),
 			mcp.WithString("content_json",
 				mcp.Required(),
 				mcp.Description("Widget content as a JSON object. PATCH applies RFC 7396 JSON Merge Patch semantics - only send the fields you want to change, null clears a field, absent preserves. Fields: template (value|progress|status|gauge|stat_list|trend|countdown|battery|schedule|flow - selects the visual style), value (number), label, unit, trend (up|down|flat arrow, annotates value and gauge), severity, min_value, max_value, icon, subtitle, subtitle_timer ({date [RFC 3339], style: timer|relative} - renders the subtitle slot as a self-updating timer, on any template), accent_color, background_color, text_color, tap_action ({url}), url_action, secondary_url_action. Template-specific: progress (value 0.0-1.0, or start_date + end_date to advance the bar on device between pushes; send both when you have them, older builds render value), gauge (value, min_value and max_value all required), stat_list (stat_rows: 1-6 {label, value, unit, timer {date, style}}), trend (value plus points: 2-48 numbers oldest first; min_value/max_value fix the chart bounds, otherwise it auto-scales), countdown (end_date required, start_date fills a progress bar alongside it, expired_text replaces the counter once end_date passes), battery (devices: 1-8 {name, level 0-100, charging, icon, color}; device_sort: up to 2 keys of {field: level|name, direction: asc|desc}, applied in order and reordering devices on write so the ones that matter land in the 2 a small widget shows), schedule (periods: 1-48 {start [RFC 3339], value, level: low|medium|high}, strictly increasing by start), flow (flow: {inputs [up to 3], storage, output, exchange}, each a node of {rate, total, level, name, icon, color}; at least one node required)."),
@@ -518,17 +553,19 @@ func handleCreateActivity(ctx context.Context, req mcp.CallToolRequest, api *cli
 }
 
 func handleCreateNotification(ctx context.Context, req mcp.CallToolRequest, api *client.APIClient) (*mcp.CallToolResult, error) {
-	paramBody, err := req.RequireString("body")
-	if err != nil {
-		return mcp.NewToolResultError(err.Error()), nil
-	}
-	paramTitle, err := req.RequireString("title")
-	if err != nil {
-		return mcp.NewToolResultError(err.Error()), nil
-	}
-	input := client.CreateNotificationInput{
-		Body:  paramBody,
-		Title: paramTitle,
+	input := client.CreateNotificationInput{}
+	if v, ok := req.GetArguments()["acknowledge"]; ok && v != nil {
+		// An empty object is skipped like an omitted one: some clients fill
+		// every optional object param, and the API refuses an empty one.
+		if m, isMap := v.(map[string]any); !isMap || len(m) > 0 {
+			buf, err := json.Marshal(v)
+			if err != nil {
+				return mcp.NewToolResultError("encoding acknowledge: " + err.Error()), nil
+			}
+			// Forward opaque JSON - server is the source of truth for the
+			// acknowledge schema, so new fields don't require an MCP rebuild.
+			input.Acknowledge = json.RawMessage(buf)
+		}
 	}
 	if v, ok := req.GetArguments()["actions"]; ok && v != nil {
 		buf, err := json.Marshal(v)
@@ -542,8 +579,17 @@ func handleCreateNotification(ctx context.Context, req mcp.CallToolRequest, api 
 	if v := req.GetString("activity_slug", ""); v != "" {
 		input.ActivitySlug = v
 	}
+	if v := req.GetString("body", ""); v != "" {
+		input.Body = v
+	}
+	if v := req.GetString("callback_url", ""); v != "" {
+		input.CallbackURL = v
+	}
 	if v := req.GetString("collapse_id", ""); v != "" {
 		input.CollapseID = v
+	}
+	if v := req.GetString("encrypted", ""); v != "" {
+		input.Encrypted = v
 	}
 	if v := req.GetString("icon_url", ""); v != "" {
 		input.IconURL = v
@@ -578,6 +624,17 @@ func handleCreateNotification(ctx context.Context, req mcp.CallToolRequest, api 
 	if v := req.GetString("subtitle", ""); v != "" {
 		input.Subtitle = v
 	}
+	if v, ok := req.GetArguments()["tags"]; ok && v != nil {
+		buf, err := json.Marshal(v)
+		if err != nil {
+			return mcp.NewToolResultError("encoding tags: " + err.Error()), nil
+		}
+		var parsed []string
+		if err := json.Unmarshal(buf, &parsed); err != nil {
+			return mcp.NewToolResultError("parsing tags: " + err.Error()), nil
+		}
+		input.Tags = parsed
+	}
 	if v, ok := req.GetArguments()["target"]; ok && v != nil {
 		// An empty object is skipped like an omitted one: some clients fill
 		// every optional object param, and the API refuses an empty one.
@@ -594,6 +651,9 @@ func handleCreateNotification(ctx context.Context, req mcp.CallToolRequest, api 
 	if v := req.GetString("thread_id", ""); v != "" {
 		input.ThreadID = v
 	}
+	if v := req.GetString("title", ""); v != "" {
+		input.Title = v
+	}
 	if v := req.GetString("url", ""); v != "" {
 		input.URL = v
 	}
@@ -608,17 +668,19 @@ func handleCreateNotification(ctx context.Context, req mcp.CallToolRequest, api 
 }
 
 func handleCreateScheduledNotification(ctx context.Context, req mcp.CallToolRequest, api *client.APIClient) (*mcp.CallToolResult, error) {
-	paramBody, err := req.RequireString("body")
-	if err != nil {
-		return mcp.NewToolResultError(err.Error()), nil
-	}
-	paramTitle, err := req.RequireString("title")
-	if err != nil {
-		return mcp.NewToolResultError(err.Error()), nil
-	}
-	input := client.CreateScheduledNotificationInput{
-		Body:  paramBody,
-		Title: paramTitle,
+	input := client.CreateScheduledNotificationInput{}
+	if v, ok := req.GetArguments()["acknowledge"]; ok && v != nil {
+		// An empty object is skipped like an omitted one: some clients fill
+		// every optional object param, and the API refuses an empty one.
+		if m, isMap := v.(map[string]any); !isMap || len(m) > 0 {
+			buf, err := json.Marshal(v)
+			if err != nil {
+				return mcp.NewToolResultError("encoding acknowledge: " + err.Error()), nil
+			}
+			// Forward opaque JSON - server is the source of truth for the
+			// acknowledge schema, so new fields don't require an MCP rebuild.
+			input.Acknowledge = json.RawMessage(buf)
+		}
 	}
 	if v, ok := req.GetArguments()["actions"]; ok && v != nil {
 		buf, err := json.Marshal(v)
@@ -632,8 +694,17 @@ func handleCreateScheduledNotification(ctx context.Context, req mcp.CallToolRequ
 	if v := req.GetString("activity_slug", ""); v != "" {
 		input.ActivitySlug = v
 	}
+	if v := req.GetString("body", ""); v != "" {
+		input.Body = v
+	}
+	if v := req.GetString("callback_url", ""); v != "" {
+		input.CallbackURL = v
+	}
 	if v := req.GetString("collapse_id", ""); v != "" {
 		input.CollapseID = v
+	}
+	if v := req.GetString("encrypted", ""); v != "" {
+		input.Encrypted = v
 	}
 	if v := req.GetString("icon_url", ""); v != "" {
 		input.IconURL = v
@@ -682,6 +753,17 @@ func handleCreateScheduledNotification(ctx context.Context, req mcp.CallToolRequ
 	if v := req.GetString("subtitle", ""); v != "" {
 		input.Subtitle = v
 	}
+	if v, ok := req.GetArguments()["tags"]; ok && v != nil {
+		buf, err := json.Marshal(v)
+		if err != nil {
+			return mcp.NewToolResultError("encoding tags: " + err.Error()), nil
+		}
+		var parsed []string
+		if err := json.Unmarshal(buf, &parsed); err != nil {
+			return mcp.NewToolResultError("parsing tags: " + err.Error()), nil
+		}
+		input.Tags = parsed
+	}
 	if v, ok := req.GetArguments()["target"]; ok && v != nil {
 		// An empty object is skipped like an omitted one: some clients fill
 		// every optional object param, and the API refuses an empty one.
@@ -697,6 +779,9 @@ func handleCreateScheduledNotification(ctx context.Context, req mcp.CallToolRequ
 	}
 	if v := req.GetString("thread_id", ""); v != "" {
 		input.ThreadID = v
+	}
+	if v := req.GetString("title", ""); v != "" {
+		input.Title = v
 	}
 	if v := req.GetString("url", ""); v != "" {
 		input.URL = v
@@ -737,6 +822,19 @@ func handleCreateWidget(ctx context.Context, req mcp.CallToolRequest, api *clien
 	}
 	if v := req.GetFloat("stale_after", math.NaN()); !math.IsNaN(v) {
 		input.StaleAfter = &v
+	}
+	if v, ok := req.GetArguments()["target"]; ok && v != nil {
+		// An empty object is skipped like an omitted one: some clients fill
+		// every optional object param, and the API refuses an empty one.
+		if m, isMap := v.(map[string]any); !isMap || len(m) > 0 {
+			buf, err := json.Marshal(v)
+			if err != nil {
+				return mcp.NewToolResultError("encoding target: " + err.Error()), nil
+			}
+			// Forward opaque JSON - server is the source of truth for the
+			// target schema, so new fields don't require an MCP rebuild.
+			input.Target = json.RawMessage(buf)
+		}
 	}
 	raw, err := api.CreateWidget(ctx, input)
 	if err != nil {
@@ -938,6 +1036,38 @@ func handleUpdateWidget(ctx context.Context, req mcp.CallToolRequest, api *clien
 	}
 	if v := req.GetFloat("stale_after", math.NaN()); !math.IsNaN(v) {
 		input.StaleAfter = &v
+	}
+	if v, ok := req.GetArguments()["target"]; ok && v != nil {
+		// An empty object is skipped like an omitted one: some clients fill
+		// every optional object param, and the API refuses an empty one.
+		if m, isMap := v.(map[string]any); !isMap || len(m) > 0 {
+			buf, err := json.Marshal(v)
+			if err != nil {
+				return mcp.NewToolResultError("encoding target: " + err.Error()), nil
+			}
+			// Forward opaque JSON - server is the source of truth for the
+			// target schema, so new fields don't require an MCP rebuild.
+			input.Target = json.RawMessage(buf)
+		}
+	}
+	{
+		// clear_target (or a literal null) sends null, which clears the
+		// field in the merge patch; omitted keeps it.
+		v, present := req.GetArguments()["target"]
+		clearIt := false
+		if _, set := req.GetArguments()["clear_target"]; set {
+			b, err := req.RequireBool("clear_target")
+			if err != nil {
+				return mcp.NewToolResultError("clear_target must be true or false"), nil
+			}
+			clearIt = b
+		}
+		if clearIt && len(input.Target) > 0 {
+			return mcp.NewToolResultError("target and clear_target cannot be used together"), nil
+		}
+		if clearIt || (present && v == nil) {
+			input.Target = json.RawMessage("null")
+		}
 	}
 	raw, err := api.UpdateWidget(ctx, paramSlug, input)
 	if err != nil {
