@@ -74,6 +74,11 @@ func (c *APIClient) sealText(encrypted, title, subtitle, body, link *string) (bo
 		}
 		return false, nil
 	}
+	// The spec lets title and body go when encrypted is set, so the generated
+	// tools no longer require them; a readable send still needs both.
+	if *title == "" || *body == "" {
+		return false, errors.New("title and body are required unless encrypted is set")
+	}
 	if c.e2eKey == nil {
 		return false, nil
 	}
