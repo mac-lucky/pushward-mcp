@@ -523,6 +523,7 @@ type CreateWidgetInput struct {
 	Content      json.RawMessage `json:"content"`
 	PushThrottle *float64        `json:"push_throttle,omitempty"`
 	StaleAfter   *float64        `json:"stale_after,omitempty"`
+	Target       json.RawMessage `json:"target,omitempty"` // organization keys: who reads it
 }
 
 // CreateWidget creates a new widget.
@@ -554,6 +555,7 @@ type UpdateWidgetInput struct {
 	Content      json.RawMessage `json:"content"`
 	PushThrottle *float64        `json:"push_throttle,omitempty"`
 	StaleAfter   *float64        `json:"stale_after,omitempty"`
+	Target       json.RawMessage `json:"target,omitempty"` // organization keys; null clears it
 }
 
 // UpdateWidget partially updates a widget's content.
