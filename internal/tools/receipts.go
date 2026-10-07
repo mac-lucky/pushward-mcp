@@ -147,8 +147,11 @@ func handleWaitForAck(ctx context.Context, req mcp.CallToolRequest, api *client.
 			Status       string `json:"status"`
 			CancelReason string `json:"cancel_reason"`
 		}
-		if err := json.Unmarshal(raw, &r); err != nil || r.Status == "" {
+		if err := json.Unmarshal(raw, &r); err != nil {
 			return "", mcp.NewToolResultError(fmt.Sprintf("decode %s: %v", target, err))
+		}
+		if r.Status == "" {
+			return "", mcp.NewToolResultError(target + " has no status")
 		}
 		last = raw
 		out := ackOutcome{Status: r.Status, Receipt: raw}
@@ -170,7 +173,7 @@ func handleWaitForAck(ctx context.Context, req mcp.CallToolRequest, api *client.
 		return r.Status, ackResult(out)
 	}
 	fetch := func(wait int) (json.RawMessage, int, error) { return api.GetNotificationReceipt(ctx, id, wait) }
-	return runWait(ctx, req, "wait_for_ack", target, fetch, judge, func(state string, timeout float64) *mcp.CallToolResult {
+	return runWait(ctx, req, "wait_for_ack", "an acknowledgement", target, fetch, judge, func(state string, timeout float64) *mcp.CallToolResult {
 		return ackResult(ackOutcome{Status: state, Receipt: last,
 			Reason: fmt.Sprintf("not acknowledged within %.0fs; it keeps repeating until it expires or is canceled", timeout)})
 	}), nil

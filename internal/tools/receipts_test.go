@@ -204,3 +204,16 @@ func TestHandleWaitForAck_NotFoundAborts(t *testing.T) {
 		t.Errorf("%d polls, want 1", calls.Load())
 	}
 }
+
+// A receipt body without a status cannot be judged: the wait stops with an
+// error that says so.
+func TestHandleWaitForAck_NoStatus(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		io.WriteString(w, `{"notification_id":7}`)
+	}))
+	defer srv.Close()
+	result, err := handleWaitForAck(context.Background(), newReq(map[string]any{"notification_id": float64(7)}), client.NewAPIClient(srv.URL, "tok"))
+	if err != nil || !result.IsError || resultText(t, result) != "receipt 7 has no status" {
+		t.Errorf("want a tool error naming the missing status, got %v / %s", err, resultText(t, result))
+	}
+}

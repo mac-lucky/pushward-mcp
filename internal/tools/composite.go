@@ -528,7 +528,7 @@ func transientPollFailure(status int) bool {
 // which defaults to error, and a dropped keepalive keeps nothing alive. Send
 // failures never abort the wait, and without a server in ctx (tests, direct
 // calls) the reporter is a no-op.
-func answerProgress(ctx context.Context, req mcp.CallToolRequest, tool, target string, total float64) func(elapsed float64) {
+func answerProgress(ctx context.Context, req mcp.CallToolRequest, tool, waitingFor, target string, total float64) func(elapsed float64) {
 	srv := mcpserver.ServerFromContext(ctx)
 	if srv == nil {
 		return func(float64) {}
@@ -540,7 +540,7 @@ func answerProgress(ctx context.Context, req mcp.CallToolRequest, tool, target s
 				"progressToken": token,
 				"progress":      elapsed,
 				"total":         total,
-				"message":       fmt.Sprintf("waiting for an answer on %s (%.0fs of %.0fs)", target, elapsed, total),
+				"message":       fmt.Sprintf("waiting for %s on %s (%.0fs of %.0fs)", waitingFor, target, elapsed, total),
 			})
 		}
 	}
@@ -548,7 +548,7 @@ func answerProgress(ctx context.Context, req mcp.CallToolRequest, tool, target s
 		_ = srv.SendNotificationToClient(ctx, string(mcp.MethodNotificationMessage), map[string]any{
 			"level":  "info",
 			"logger": tool,
-			"data":   fmt.Sprintf("still waiting for an answer on %s (%.0fs of %.0fs)", target, elapsed, total),
+			"data":   fmt.Sprintf("still waiting for %s on %s (%.0fs of %.0fs)", waitingFor, target, elapsed, total),
 		})
 	}
 	keepalive(0)
@@ -675,7 +675,7 @@ func handleWaitForAnswer(ctx context.Context, req mcp.CallToolRequest, api *clie
 		fetch = func(wait int) (json.RawMessage, int, error) { return api.WaitActivity(ctx, slug, wait) }
 		judge = judgeApprovalAnswer(slug)
 	}
-	return runWait(ctx, req, "wait_for_answer", target, fetch, judge, func(state string, timeout float64) *mcp.CallToolResult {
+	return runWait(ctx, req, "wait_for_answer", "an answer", target, fetch, judge, func(state string, timeout float64) *mcp.CallToolResult {
 		return waitResult(waitOutcome{State: state, Answered: false,
 			Reason: fmt.Sprintf("no answer within %.0fs", timeout)})
 	}), nil
@@ -684,7 +684,8 @@ func handleWaitForAnswer(ctx context.Context, req mcp.CallToolRequest, api *clie
 // runWait is the poll loop behind the wait tools: fetch long-polls the
 // target until judge ends the wait, timeout_seconds passes (timedOut builds
 // that result from the last state seen), or the context is canceled.
-func runWait(ctx context.Context, req mcp.CallToolRequest, tool, target string,
+// waitingFor names what it waits for in progress and cancel messages.
+func runWait(ctx context.Context, req mcp.CallToolRequest, tool, waitingFor, target string,
 	fetch func(wait int) (json.RawMessage, int, error), judge waitJudge,
 	timedOut func(state string, timeout float64) *mcp.CallToolResult,
 ) *mcp.CallToolResult {
@@ -695,7 +696,7 @@ func runWait(ctx context.Context, req mcp.CallToolRequest, tool, target string,
 	timeout = min(timeout, answerWaitMax)
 	start := time.Now()
 	deadline := start.Add(time.Duration(timeout * float64(time.Second)))
-	report := answerProgress(ctx, req, tool, target, timeout)
+	report := answerProgress(ctx, req, tool, waitingFor, target, timeout)
 
 	failures := 0
 	lastState := ""
@@ -704,7 +705,7 @@ func runWait(ctx context.Context, req mcp.CallToolRequest, tool, target string,
 		raw, status, err := fetch(longPollSeconds(deadline))
 		switch {
 		case err != nil && ctx.Err() != nil:
-			return mcp.NewToolResultError("cancelled while waiting for an answer")
+			return mcp.NewToolResultError("cancelled while waiting for " + waitingFor)
 		case err != nil:
 			failures++
 			if !transientPollFailure(status) || failures >= answerPollFailureBudget {
@@ -727,7 +728,7 @@ func runWait(ctx context.Context, req mcp.CallToolRequest, tool, target string,
 		// only an early pending reply waits out the rest of the poll interval.
 		select {
 		case <-ctx.Done():
-			return mcp.NewToolResultError("cancelled while waiting for an answer")
+			return mcp.NewToolResultError("cancelled while waiting for " + waitingFor)
 		case <-time.After(answerPollInterval - time.Since(pollStart)):
 		}
 	}
