@@ -99,7 +99,7 @@ General rules for any code that talks to the PushWard REST API
   more than 5 minutes off. Delivery is at least once and retried for about an
   hour; a 410 stops it. Rolling the key re-keys the signature.
 - **End-to-end encryption.** When the user has an encryption key (Settings >
-  Encryption in the app), seal `title`, `subtitle`, `body` and `url` into one
+  End-to-End Encryption in the app, 1.17.0 or later), seal `title`, `subtitle`, `body` and `url` into one
   `encrypted` field and leave those four empty: the server stores and pushes a
   placeholder, and only the user's devices holding the key can read the text.
   Format `pw1.<key id>.<base64url>`: AES-256-GCM under a key derived with

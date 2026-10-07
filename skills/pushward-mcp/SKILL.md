@@ -102,7 +102,7 @@ on the Lock Screen.
 Sending `create_notification` with an `acknowledge` object (for example
 `{"repeat_seconds": 300, "expire_seconds": 7200}`; every field is optional, but pass at least
 one, since an empty object is dropped) makes the push come back every minute by default until
-someone taps an action without a url, or until it expires after an hour. Without such an action
+someone taps an action without a url that does not open the app, or until it expires after an hour. Without such an action
 the server adds an Acknowledge button. Keep it for problems that must not be missed: a failed
 backup, a production outage, a decision blocking a release. A finished task is not one. It
 cannot be `passive` or sent with `push: false`.
