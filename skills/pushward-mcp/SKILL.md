@@ -185,23 +185,36 @@ at least 15 minutes apart and an account can have 25 pending; keep the returned 
 
 With a key that belongs to a PushWard organization (a team account), everything goes to the
 members' devices, filtered by the organization's routing rules. `create_notification`,
-`create_scheduled_notification`, `create_activity` and `update_activity` take an optional
-`target` that narrows it further, by group name, device tag name or member user id:
+`create_scheduled_notification`, `create_activity`, `update_activity`, `create_widget` and
+`update_widget` take an optional `target` that narrows it further, by group name, device tag
+name or member user id:
 
 ```
 create_notification {"title": "db-1 disk at 95%", "body": "Paging on-call", "level": "time-sensitive", "target": {"groups": ["oncall"]}}
 create_activity {"slug": "agent-deploy-api", "name": "Deploy api", "ended_ttl": 1800, "target": {"tags": ["wall"]}}
 update_activity {"slug": "agent-deploy-api", "content_json": "{}", "target": {"groups": ["oncall", "sre"]}}
 update_activity {"slug": "agent-deploy-api", "content_json": "{}", "clear_target": true}
+create_widget {"slug": "agent-queue", "name": "Queue", "content_json": "{\"template\":\"value\",\"value\":42,\"label\":\"jobs\"}", "target": {"groups": ["oncall"]}}
+update_widget {"slug": "agent-queue", "content_json": "{}", "clear_target": true}
 ```
 
 On `update_activity` a new `target` replaces the stored one and `clear_target` sends the
 activity back to everyone the rules allow; devices that lose it end it, devices that gain it
 start it. A key the admins limited to some groups and tags must stay inside them (403
-otherwise, and for `clear_target` too) and only sees activities sent inside them: anything else
-answers 404, as if it did not exist. A personal key gets 422 for a target. The API cannot list
-group or tag names or member user ids: they live in the organization's console, so ask the
-user for them.
+otherwise, and for `clear_target` too) and only sees activities and widgets sent inside them:
+anything else answers 404, as if it did not exist. A personal key gets 422 for a target. The
+API cannot list group or tag names or member user ids: they live in the organization's
+console, so ask the user for them.
+
+`update_widget` replaces or clears a widget's target the same way. Organization widgets show
+on members' iPhone and iPad home screens (not on Apple Watch yet), and all of an organization's
+widgets share one push window of at least 60 seconds: `push_throttle` is ignored, and updates
+closer together than that reach the devices as one reload, so more than one a minute buys
+nothing.
+
+`send_email` with an organization key only reaches addresses the organization registered and
+the recipient confirmed. No tool here adds one; if the user needs a new recipient, point them
+to https://pushward.app/docs/teams.
 
 ## Encrypted notifications
 

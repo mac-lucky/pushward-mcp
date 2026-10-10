@@ -34,8 +34,16 @@ agent's context.
 | Relay (stdio only) | `relay_<provider>` for ArgoCD, Backrest, Bazarr, Changedetection.io, Forgejo, Gatus, Gitea, Grafana, Jellyfin, Komodo, Overseerr, Paperless-ngx, Prowlarr, Proxmox VE, Radarr, Sonarr, Unmanic and Uptime Kuma; `relay_universal` POSTs any other JSON to the relay root URL, which hands a payload it recognises to that provider's route and maps the rest through the universal presets or into one plain notification (`source`, `channels`, `priority` and `level` go on the query string) |
 
 With a key from a PushWard organization (a team account), `create_notification`,
-`create_scheduled_notification`, `create_activity` and `update_activity` also take `target`:
-group names, device tag names or member user ids that narrow who receives it.
+`create_scheduled_notification`, `create_activity`, `update_activity`, `create_widget` and
+`update_widget` also take `target`: group names, device tag names or member user ids that narrow
+who receives it. `update_activity` and `update_widget` take `clear_target` to drop it again.
+Organization widgets reach members' iPhone and iPad home screens, not Apple Watch yet, and all of
+an organization's widgets share one push window of at least 60 seconds, so `push_throttle` does
+nothing there.
+
+`send_email` with an organization key goes only to the organization's own verified recipients.
+There is no tool for adding them: an organization key with email permission registers them with
+`POST /emails/recipients`, as described at [pushward.app/docs/teams](https://pushward.app/docs/teams).
 
 ## Using the hosted server
 
