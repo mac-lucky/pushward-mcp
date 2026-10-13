@@ -2,7 +2,7 @@
 
 > Full Markdown bundle of every PushWard docs page, auto-generated from the prerendered HTML at build time. Source: https://pushward.app
 
-> Generated: 2026-10-13T12:46:59.329Z
+> Generated: 2026-10-13T16:19:02.013Z
 
 ---
 <!-- source: https://pushward.app/docs/getting-started -->
@@ -2991,7 +2991,7 @@ The whole push also has to fit Apple's 4 KB payload, with the actions, media and
 | `400` | `notification.invalid` | `title`, `subtitle`, `body` or `url` sent next to `encrypted`, or an envelope with the wrong shape (the `detail` starts with `encrypted:`). |
 | `422` | (schema) | `encrypted` longer than 3072 characters, or neither `encrypted` nor `title` and `body`. |
 | `422` | `notification.encrypted_too_large` | With the other fields, the push would exceed 4 KB; for an acknowledged alert, its largest repeat counts. Shorten the text, the actions or the URLs, or send it with `push: false` (stored in the inbox only). |
-| `422` | `notification.encryption_unavailable` | Sent with an organization key before PushWard has enabled encryption for organizations. See [Organizations](#organizations). |
+| `422` | `notification.encryption_unavailable` | Sent with an organization key while PushWard has encryption for organizations turned off. See [Organizations](#organizations). |
 
 ## What your devices show
 
@@ -3000,23 +3000,19 @@ The whole push also has to fit Apple's 4 KB payload, with the actions, media and
 -   Builds older than 1.17.0, and banners on the Mac, show the placeholder the server stores in place of the text: **Encrypted notification**, "End-to-end encrypted. Open PushWard on a device with the encryption key to read it."
 -   On the Mac, the notification history, the menu bar and search in the app decrypt.
 
-_Requires PushWard iOS app 1.18.0 or later._
-
 From 1.18.0, an [organization's](#organizations) notification that no key on the device opens stays locked; the row names the organization (**Ask <organization> for its encryption key.**) and shows the Key ID to ask for. It opens once the member adds that key under **Organization Keys**. On 1.17.x the locked row shows the Key ID but not the organization, and its **Add Your Key** button leads to the personal key setup, which is the wrong place for an organization key (see [What members do](#org-members)).
 
 ## Organizations
 
-_Requires PushWard iOS app 1.18.0 or later._
-
 An [organization](https://pushward.app/docs/teams) encrypts the way a person does: the same key of 64 hex characters, the same `pw1` envelope and the same senders, with the organization's API key in place of a personal one. What changes is who holds the key. An admin creates it and hands it to the members, who add it in the app as an organization key, and to the organization's senders. It never passes through PushWard.
 
-PushWard switches encryption on for organizations on the server, separately from the app release. Until it does, an encrypted send with an organization key still fails with `422` `notification.encryption_unavailable`. Members can add the key in the meantime; senders have to wait (step 3 below tells you when).
+Encryption for organizations is a switch on PushWard's server, apart from the app; it is on. If PushWard turns it off again, an encrypted send with an organization key fails with `422` `notification.encryption_unavailable` ("PushWard has not enabled end-to-end encrypted notifications for organizations yet"). Personal keys are not affected, and the keys members added stay on their devices.
 
 ### Set up an organization key
 
 1.  Create the key with `pushward e2e generate`, which prints a new key and its Key ID (`openssl rand -hex 32` makes an equally good one). Not with **Create Key** in the app: that one becomes your personal key.
 2.  Hand it to the members outside PushWard: show the QR code or paste it in person, or put it in a shared vault of your password manager. Anyone who has added the key in the app, not only admins, can show it under **Organization Keys** after device authentication (Face ID, Touch ID, or the passcode or Mac password), as hex and as a QR code, and send it from the share sheet (Messages, AirDrop). So hand a key only to the members it should reach (see [One key per scope](#org-scopes)): once someone has it, rotating is the only way to take it back.
-3.  Check that encryption is on for organizations with one encrypted send through the organization's API key, such as the command below. If it answers `422` `notification.encryption_unavailable`, it is not on yet: members can keep adding the key, but leave it out of your senders for now. A sender holding it would fail every send until then: the CLI, the MCP server and the GitHub Action refuse to send, Home Assistant's action fails and its to-do reminders are dropped with a repair issue, and the Grafana and Unraid plugins send the alert without its text. If it goes through, open it on a member's device; the Key ID the app shows next to the organization key should match the one the generator printed.
+3.  Check the key with one encrypted send through the organization's API key, such as the command below, and open it on a member's device that has the key: the Key ID the app shows next to the organization key should match the one the generator printed. A `422` `notification.encryption_unavailable` instead means PushWard has encryption for organizations turned off. Until it is back on, a sender holding the key cannot deliver the text: the CLI, the MCP server and the GitHub Action fail the send, Home Assistant's action fails and its to-do reminders are dropped with a repair issue, and the Grafana and Unraid plugins send the alert without its text.
 4.  Give the key to every tool that sends with the organization's API key, the same way as a personal key (see [Sending encrypted notifications](#senders)).
 
 ```
@@ -3099,7 +3095,7 @@ Create an in-app notification and optionally push it to all user devices. No sub
 | `activity_slug` | string | No | Optional link to an existing activity. An unknown slug is rejected with `422` before the notification is persisted. |
 | `push` | boolean | No | If `true` (default), send APNs rich alert to all user devices. Set `false` to store in the inbox only. |
 | `target` | object | No | Organization keys only: which members get it, as `groups`, `tags` and `members`. See [Teams](https://pushward.app/docs/teams#target). |
-| `encrypted` | string | No | A `pw1` envelope holding the title, subtitle, body and url, sealed with the user's encryption key (max 3072 chars). Leave those four fields out when it is set; `title` and `body` are required only without it. Not available to organization keys. See [End-to-End Encryption](https://pushward.app/docs/notifications/encryption). |
+| `encrypted` | string | No | A `pw1` envelope holding the title, subtitle, body and url, sealed with the user's encryption key, or with the organization's encryption key when sent with an organization key (max 3072 chars). Leave those four fields out when it is set; `title` and `body` are required only without it. See [End-to-End Encryption](https://pushward.app/docs/notifications/encryption). |
 | `acknowledge` | object | No | Repeat the push until someone acknowledges it: `repeat_seconds` (30-3600, default 60), `expire_seconds` (60-10800, default 3600), `action_title` (default `Acknowledge`). Not with `push: false` or level `passive`. See [Acknowledged Alerts](https://pushward.app/docs/notifications/acknowledge). |
 | `tags` | array | No | Up to 10 labels (1-64 printable ASCII characters, no spaces) for canceling acknowledged notifications as a group. Requires `acknowledge`. |
 | `callback_url` | string | No | https URL that gets a signed `POST` when the notification is acknowledged or expires (max 2048 chars). Requires `acknowledge`. |
@@ -3214,7 +3210,7 @@ Errors use the RFC 9457 Problem Details shape (`Content-Type: application/proble
 | `429` | Per-IP rate limit (`code: rate_limit.exceeded`) or monthly notification quota exhausted (`code: quota.exceeded`) - pairs with `Retry-After` and `retry_after_ms`. See [Errors](https://pushward.app/docs/api/activities#errors) for the quota body shape. |
 | `500` | Internal server error |
 | `409` | 25 acknowledged notifications are already active for the account (`notification_receipt.limit_exceeded`) |
-| `422` | An encrypted push that would not fit 4 KB (`notification.encrypted_too_large`), `encrypted` from an organization key (`notification.encryption_unavailable`), or acknowledged notifications switched off for now (`notification_receipt.disabled`) |
+| `422` | An encrypted push that would not fit 4 KB (`notification.encrypted_too_large`), `encrypted` from an organization key while PushWard has encryption for organizations turned off (`notification.encryption_unavailable`), or acknowledged notifications switched off for now (`notification_receipt.disabled`) |
 
 ---
 
@@ -3614,7 +3610,7 @@ _Requires PushWard iOS app 1.17.0 or later._
 
 ## Organization widgets
 
-A widget created with a key from an [organization](https://pushward.app/docs/teams) belongs to the organization and reaches its members' iPhone and iPad Home Screens, filtered by the routing rules that apply to widgets. Members add it like any other PushWard widget. Apple Watch complications do not show organization widgets yet.
+A widget created with a key from an [organization](https://pushward.app/docs/teams) belongs to the organization and reaches its members' iPhone and iPad Home Screens, filtered by the routing rules that apply to widgets. Members add it like any other PushWard widget. On Apple Watch, PushWard 1.18.0 or later lists organization widgets in the watch app and in the complication picker.
 
 `POST /widgets` and `PATCH /widgets/{slug}` take an optional `target` with `groups`, `tags` and `members`, the same object as on [activities and notifications](https://pushward.app/docs/teams#target). It narrows who reads the widget and has it reloaded, and never reaches anyone a rule keeps out. A re-POST of an existing slug without `target` keeps the stored one. On `PATCH` a new `target` replaces it and `"target": null` clears it, so everyone the rules allow gets the widget again. A personal key gets `422` `org.target_unavailable`.
 
@@ -5162,7 +5158,7 @@ The test notification on the **Connect** page is encrypted as well and reports t
 -   PushWard can still read the notification level, the Live Activity the push links to, its collapse id and the tag of a repeating push. The link, collapse id and tag are hashes, not the alert name.
 -   The timeline Live Activity is not encrypted, and it carries the alert name and summary. The key keeps the alert text out of your notification history, not out of PushWard entirely.
 -   A key that does not work never sends the alert text readable. The push still goes out, without its text: "Grafana alert firing" (or "resolved") and "Encryption key invalid, check the PushWard plugin settings". The plugin's **Configuration** page shows what is wrong with the key.
--   An integration key that belongs to an [organization](https://pushward.app/docs/teams) cannot send encrypted notifications. From plugin 0.10.1 the push then goes out without its text, as it does for a key that does not work.
+-   With an integration key that belongs to an [organization](https://pushward.app/docs/teams), paste the organization's encryption key, not your own key from the app: an admin creates it and hands it out, and members add it in PushWard 1.18.0 or later (see [Organizations](https://pushward.app/docs/notifications/encryption#organizations)). While PushWard has encryption for organizations turned off, the push goes out without its text (plugin 0.10.1 and later), as it does for a key that does not work.
 
 What exactly is covered, and what a device without the key shows, is on the [end-to-end encryption](https://pushward.app/docs/notifications/encryption) page.
 
@@ -5553,7 +5549,7 @@ Integration 0.51.0 and later can seal the title, subtitle, body and url of every
 1.  In the PushWard app (1.17.0 or later), open **Settings > End-to-End Encryption**, create a key and copy it.
 2.  In Home Assistant, open **Settings > Devices & Services > PushWard > Configure** and paste it. The form shows its Key ID, which should match the one in the app.
 
-The form never shows the stored key: leaving the field empty keeps the key in use, pasting another one replaces it, and **Remove the encryption key** turns encryption off. An `hlk_` integration key pasted there is refused, and an integration key that belongs to an [organization](https://pushward.app/docs/teams) cannot send encrypted notifications at all: to-do reminders sent with one then raise a repair issue in Home Assistant instead of failing quietly.
+The form never shows the stored key: leaving the field empty keeps the key in use, pasting another one replaces it, and **Remove the encryption key** turns encryption off. An `hlk_` integration key pasted there is refused. An entry that sends with an [organization's](https://pushward.app/docs/teams) integration key takes the organization's encryption key, not your own: an admin creates it and hands it out, and members add it in PushWard 1.18.0 or later (see [Organizations](https://pushward.app/docs/notifications/encryption#organizations)). While PushWard has encryption for organizations turned off, the entry's action calls fail and its to-do reminders raise a repair issue in Home Assistant instead of failing quietly.
 
 -   `pushward.send_notification` and to-do reminders are sealed whether they go out now or are scheduled. Notifications scheduled before you set or change the key go out the way they were queued.
 -   The server cannot check sealed text, so the integration does: an empty title or body, a blocked url scheme, or text too long to encrypt (about 2.2 KB for title, subtitle, body and url together) fails the action call. To-do reminders are cut to fit instead, the description first and then the title.
@@ -6183,7 +6179,7 @@ The page never shows the stored key: leaving the field empty keeps it, pasting a
 -   The encrypted text has to fit in about 2.2 KB, so a long message is shortened, the body first.
 -   Live Activities (parity, mover, backups, UPS) and widgets are not encrypted, so the jobs they track are visible to PushWard either way.
 -   If the key is not valid, or PHP on the Unraid server has no AES-256-GCM, notifications still go out but without their details ("Unraid alert on Tower"). The system log says why, and the encryption card on the **Settings** tab turns red.
--   An API key that belongs to an [organization](https://pushward.app/docs/teams) cannot send encrypted notifications. From 2026.10.08a the plugin then sends the alert without its text, as it does for a key that is not valid.
+-   With an API key that belongs to an [organization](https://pushward.app/docs/teams), use the organization's encryption key, not your own key from the app: an admin creates it and hands it out, and members add it in PushWard 1.18.0 or later (see [Organizations](https://pushward.app/docs/notifications/encryption#organizations)). While PushWard has encryption for organizations turned off, the plugin (2026.10.08a and later) sends the alert without its text, as it does for a key that is not valid.
 
 The key is saved with the rest of the settings on the flash drive. What exactly is covered, and what a device without the key shows, is on the [end-to-end encryption](https://pushward.app/docs/notifications/encryption) page.
 
@@ -7045,7 +7041,7 @@ Match on the stable `code` field - not the human-readable `detail` string (rewor
 | `answer_wait.limit_exceeded` | `429` | Too many long-poll reads (`?wait=` on `GET /activities/{slug}` or `GET /notifications/answers/{id}`) open at once for the account. Retry shortly, or read without `wait`. |
 | `quota.exceeded` | `429` | Free-tier monthly quota exhausted. The Problem Details body includes `kind` (`"notifications"`, `"live_activity_updates"`, `"widget_updates"`, or `"emails"`), `used`, `limit`, and `reset_at` (RFC 3339 UTC, the start of next calendar month). The `Retry-After` header gives seconds until `reset_at`. Upgrading the user's plan clears the quota immediately - retrying before `reset_at` on the free tier will keep failing. |
 | `notification.encrypted_too_large` | `422` | An end-to-end encrypted notification whose push, with its other fields, would exceed 4 KB. See [Encryption limits](https://pushward.app/docs/notifications/encryption#limits). |
-| `notification.encryption_unavailable` | `422` | `encrypted` sent with an organization key; organizations cannot send encrypted notifications yet. |
+| `notification.encryption_unavailable` | `422` | `encrypted` sent with an organization key while PushWard has encryption for organizations turned off. See [End-to-End Encryption](https://pushward.app/docs/notifications/encryption#organizations). |
 | `notification_receipt.limit_exceeded` | `409` | 25 acknowledged notifications are already active for the account (or organization). See [Acknowledged Alerts](https://pushward.app/docs/notifications/acknowledge). |
 | `notification_receipt.not_found` | `404` | No receipt for that id: the notification was not sent with `acknowledge`, was sent by another key, or finished more than 7 days ago. |
 | `notification_receipt.disabled` | `422` | Acknowledged notifications are switched off on the server for now. Send without `acknowledge` or retry later. |
@@ -10850,7 +10846,7 @@ With an encryption key set, Home Assistant seals the title, subtitle, body and U
 
 The form never shows the stored key: leaving the field empty keeps the key in use, pasting another one replaces it, and **Remove the encryption key** turns encryption off. An `hlk_` integration key pasted here is refused.
 
-An integration key that belongs to an organization cannot send encrypted notifications: PushWard answers every encrypted send from it with `422 notification.encryption_unavailable`, and to-do reminders refused that way raise a repair issue. Use a personal integration key, or leave encryption off for that entry.
+An organization's integration key encrypts the same way, with the organization's key in place of your own. The organization's admin creates that key (for example with `pushward e2e generate`; **Create Key** in the app makes a personal key instead) and hands it out, and members add it in PushWard 1.18 or later under **Settings > End-to-End Encryption > Organization Keys** by scanning its QR code or pasting it. Members without it see a locked notification on 1.17 or later, older builds the placeholder text. If PushWard turns encryption for organizations off, it answers every encrypted send from an organization's key with `422 notification.encryption_unavailable`: the action fails, and to-do reminders refused that way raise a repair issue. Remove the encryption key, or use a personal integration key until it is back on; either change sends the refused reminders again. If you wait instead, reminders refused meanwhile are not resent on their own once it is back on: reload the entry or edit the items to send them. More in <https://pushward.app/docs/notifications/encryption#organizations>.
 
 Only those four fields are encrypted. Level, sound, volume, thread and collapse ids, source, media and icon URLs, metadata, actions, typed replies and the acknowledged-alert settings (`tags`, `callback_url` and the button's `action_title`) stay readable to PushWard, which needs them to deliver the push, and Live Activities and widgets are not encrypted at all. PushWard and Apple also still see when a notification was sent and to which account.
 
@@ -11563,7 +11559,11 @@ With that push on, **Repeat until acknowledged** makes the firing push come back
 
 Paste the key from Settings > End-to-End Encryption in the PushWard app into **End-to-end encryption key** and save. From then on the plugin encrypts the title, subtitle and body of every push notification it sends, and only devices that hold the key can read them. The Configuration page shows the Key ID of the saved key; it should match the Key ID the app shows next to the key. The test notification on the Connect page is encrypted as well and reports the Key ID it used.
 
-What stays readable to PushWard is what it needs to deliver the push: the priority, the thread id (`grafana`), the collapse id, the activity slug the push links to, and the tag on a repeating push. The last three are hashes, not the alert name. The timeline Live Activity is not encrypted, though, and it carries the alert name and summary, so the key keeps the alert text out of your notification history but not out of PushWard entirely. A device without the key, or on a PushWard app older than 1.17, shows a placeholder instead of the text. An integration key that belongs to an organization cannot send encrypted notifications. With one, alert pushes arrive without their text, saying encryption is not available for organization keys, and the test notification on the Connect page reports the problem instead of sending.
+What stays readable to PushWard is what it needs to deliver the push: the priority, the thread id (`grafana`), the collapse id, the activity slug the push links to, and the tag on a repeating push. The last three are hashes, not the alert name. The timeline Live Activity is not encrypted, though, and it carries the alert name and summary, so the key keeps the alert text out of your notification history but not out of PushWard entirely. A device without the key, or on a PushWard app older than 1.17, shows a placeholder instead of the text.
+
+With an integration key that belongs to an organization, the encryption key has to be the organization's, not the one under your own Settings. An admin creates it (`pushward e2e generate`, or `openssl rand -hex 32`; **Create Key** in the app would make it their own key) and hands it out, and members add it in PushWard 1.18 or later under Settings > End-to-End Encryption > Organization Keys, by QR code or paste. A member without the key sees a locked notification on 1.17 or later; older apps show the placeholder. Setup: https://pushward.app/docs/notifications/encryption#organizations
+
+PushWard can switch encryption for organizations off on its side. While it is off, an encrypted send from an organization key is refused, so alert pushes arrive without their text, saying PushWard has not enabled encryption for organizations yet, and the test notification on the Connect page reports that instead of sending. Remove the encryption key or use a personal integration key until it is back on.
 
 A saved key that does not parse is never a reason to send the alert in the clear. The push still goes out, saying only "Grafana alert firing" (or "resolved") and "Encryption key invalid, check the PushWard plugin settings", and the Overview and Configuration pages show what is wrong with the key. To go back to unencrypted pushes, press Reset next to the key and save.
 
@@ -11717,7 +11717,7 @@ The page never shows the stored key: leaving the field empty keeps it, pasting a
 
 PushWard still reads the level, the server name, the timestamp and the importance, the name of the Live Activity a notification links to (`tower-array`, `tower-backup`, `tower-vmbackup`), and the repeat settings and tags when those are on (`unraid-tower` names the server). The event name is replaced by a hash keyed with your encryption key, so repeats of one event still replace each other's banner, but the hash cannot be matched against a list of likely event names. A link is encrypted only as a full `http://` or `https://` address: a web UI path gets the "Unraid web UI URL" in front of it, or is left out when that is unknown. The envelope fits about 2.2 KB of text, so a long message is shortened, the body first. Live Activities and widgets are not encrypted at all, so the jobs they track are visible to PushWard either way.
 
-If the key is not valid, or PHP on the box has no AES-256-GCM, notifications still go out but without the details ("Unraid alert on Tower", with a body saying which of the two it is), the syslog says why, and the Encryption card on the Settings tab turns red. An API key that belongs to an organization cannot send encrypted notifications: PushWard refuses them, so the plugin sends the content-free alert instead and the syslog says why. A device without the key, or with an app older than 1.17, shows "Encrypted notification" in place of the text.
+If the key is not valid, or PHP on the box has no AES-256-GCM, notifications still go out but without the details ("Unraid alert on Tower", with a body saying which of the two it is), the syslog says why, and the Encryption card on the Settings tab turns red. With an API key that belongs to an organization, paste the organization's key instead of your own: the organization's admin creates it and hands it out, and members read the notifications once they add it in PushWard 1.18 or later under Settings > End-to-End Encryption > Organization Keys ([docs](https://pushward.app/docs/notifications/encryption#organizations)). If PushWard has encryption for organizations switched off, it refuses the encrypted send, so the plugin sends the content-free alert instead and the syslog says why. A device without the key, or with an app older than 1.17, shows "Encrypted notification" in place of the text.
 
 ### Live Activities
 
