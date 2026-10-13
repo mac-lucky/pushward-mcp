@@ -207,7 +207,7 @@ API cannot list group or tag names or member user ids: they live in the organiza
 console, so ask the user for them.
 
 `update_widget` replaces or clears a widget's target the same way. Organization widgets show
-on members' iPhone and iPad home screens (not on Apple Watch yet), and all of an organization's
+on members' iPhone and iPad home screens (and Apple Watch from PushWard 1.18.0), and all of an organization's
 widgets share one push window of at least 60 seconds: `push_throttle` is ignored, and updates
 closer together than that reach the devices as one reload, so more than one a minute buys
 nothing.

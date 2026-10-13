@@ -37,7 +37,7 @@ With a key from a PushWard organization (a team account), `create_notification`,
 `create_scheduled_notification`, `create_activity`, `update_activity`, `create_widget` and
 `update_widget` also take `target`: group names, device tag names or member user ids that narrow
 who receives it. `update_activity` and `update_widget` take `clear_target` to drop it again.
-Organization widgets reach members' iPhone and iPad home screens, not Apple Watch yet, and all of
+Organization widgets reach members' iPhone and iPad home screens (and Apple Watch from PushWard 1.18.0), and all of
 an organization's widgets share one push window of at least 60 seconds, so `push_throttle` does
 nothing there.
 
