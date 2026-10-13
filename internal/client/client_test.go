@@ -1085,13 +1085,13 @@ func TestAPIClient_NoE2EKeySendsPlaintext(t *testing.T) {
 	}
 }
 
-// An organization key cannot send encrypted, and the agent cannot see that a
-// key is configured, so the refusal names PUSHWARD_E2E_KEY.
+// PushWard can turn encryption off for organizations, and the agent cannot see
+// that a key is configured, so the refusal names PUSHWARD_E2E_KEY.
 func TestAPIClient_E2EOrgRefusalExplained(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/problem+json")
 		w.WriteHeader(http.StatusUnprocessableEntity)
-		_, _ = w.Write([]byte(`{"title":"Unprocessable Entity","status":422,"detail":"organization keys cannot send encrypted notifications","code":"notification.encryption_unavailable"}`))
+		_, _ = w.Write([]byte(`{"title":"Unprocessable Entity","status":422,"detail":"PushWard has not enabled end-to-end encrypted notifications for organizations yet","code":"notification.encryption_unavailable"}`))
 	}))
 	defer srv.Close()
 	k, err := e2e.ParseKey("000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f")

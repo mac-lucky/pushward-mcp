@@ -120,9 +120,11 @@ Environment variables (stdio mode):
   process, so the PushWard server only ever sees ciphertext; your devices decrypt
   them. Everything else (level, sound, actions, metadata) still goes in the clear, and so do
   Live Activities, widgets, emails and the `relay_*` tools: only `create_notification` and
-  `create_scheduled_notification` are encrypted. Organization keys can't send encrypted
-  notifications. Also read in single-user http mode
-  below; the hosted OAuth server ignores it.
+  `create_scheduled_notification` are encrypted. With an organization key, set it to the
+  organization's key, which an admin creates and members add in PushWard 1.18 or later under
+  Organization Keys. A 422 `notification.encryption_unavailable` means PushWard has not
+  enabled encryption for organizations, so leave it unset there for now. Also read in
+  single-user http mode below; the hosted OAuth server ignores it.
 
 The `http` transport (OAuth, multi-tenant) is what backs the hosted endpoint above; it needs
 a signing key and a few more variables and is meant to run behind a proxy. See

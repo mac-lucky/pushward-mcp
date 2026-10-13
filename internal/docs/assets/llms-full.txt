@@ -2,7 +2,7 @@
 
 > Full Markdown bundle of every PushWard docs page, auto-generated from the prerendered HTML at build time. Source: https://pushward.app
 
-> Generated: 2026-09-30T15:32:50.920Z
+> Generated: 2026-10-13T12:46:59.329Z
 
 ---
 <!-- source: https://pushward.app/docs/getting-started -->
@@ -1407,6 +1407,18 @@ Deep-link a notification into an existing Live Activity.
 
 ](https://pushward.app/docs/notifications/activity-link)[
 
+#### Acknowledged AlertsSoon
+
+Repeat an alert until someone acknowledges it.
+
+](https://pushward.app/docs/notifications/acknowledge)[
+
+#### End-to-End EncryptionSoon
+
+Encrypt the text so only your devices can read it.
+
+](https://pushward.app/docs/notifications/encryption)[
+
 #### API Reference
 
 Full request body, endpoints, and response schemas.
@@ -2107,6 +2119,7 @@ From Home Assistant, `pushward.send_notification` takes the same `send_at` and `
 -   If the activity named in `activity_slug` was deleted before the send, the notification still goes out, without the link.
 -   Revoking the integration key that created a scheduled notification deletes its pending schedules outright (they do not show up as `canceled`; one already being sent still goes out). Lowering the key's `notifications` level below `schedule`, or letting the key expire, instead makes each schedule fail with `key_revoked` when it comes due.
 -   An integration key can list, read and cancel only the scheduled notifications it created.
+-   The names in an organization key's `target` are resolved when you schedule, so renaming a group afterwards does not matter. Who is in a group is read when it is sent, and a group deleted by then reaches nobody. See [Teams](https://pushward.app/docs/teams#target).
 
 ℹ Info
 
@@ -2119,10 +2132,14 @@ Scheduled notifications need `notifications` at `schedule` on your integration k
 | `scheduled` | Waiting for `send_at`. A repeating schedule comes back to this status after each send. |
 | `sending` | Being sent right now. It can still be canceled: the send is dropped unless it has already gone out. |
 | `sent` | Delivered. `notification_id` is the notification it became, `sent_at` when it went out, and `delivery` / `reason` report the push outcome as on `POST /notifications`. A repeating schedule ends here once its `until` or `count` runs out. |
-| `failed` | Not sent. `failure_reason` is `quota_exceeded`, `key_revoked` or `internal_error`. For a repeating schedule, `key_revoked` ends the series; the other two skip one send and the series carries on. |
+| `failed` | Not sent. `failure_reason` is `quota_exceeded`, `key_revoked`, `target_deleted` (every group, tag and member an organization's target names is gone, see [Teams](https://pushward.app/docs/teams#target)) or `internal_error`. For a repeating schedule, `key_revoked` ends the series, and so does `target_deleted` unless the target names a member who can be invited back (then only that send is skipped). The other two skip one send and the series carries on. |
 | `canceled` | Canceled before it was sent (a repeating schedule: before its next send). `canceled_at` is when. The content stays readable so the app can show what was canceled. |
 
 Sent and failed schedules stay readable for 7 days, canceled ones for 24 hours, then they are removed.
+
+_Requires PushWard iOS app 1.17.0 or later._
+
+A schedule sent with [`acknowledge`](https://pushward.app/docs/notifications/acknowledge) starts repeating when it goes out. If 25 acknowledged notifications are already active at that moment, it goes out once as a plain notification, without repeats or a receipt. An [encrypted](https://pushward.app/docs/notifications/encryption) schedule is stored as its envelope: the API returns it as `encrypted`, next to the placeholder title and body.
 
 ## Repeating notifications
 
@@ -2170,7 +2187,7 @@ Created on a Monday afternoon, the first send is Tuesday at 08:00 in Warsaw:
 | `cron` | string | Yes | A standard 5-field cron expression (minute, hour, day of month, month, day of week) or one of `@hourly`, `@daily`, `@weekly`, `@monthly`, `@yearly`. Sends must be at least 15 minutes apart. `@every` and a `TZ=` prefix are rejected; the zone goes in `timezone`. |
 | `timezone` | string | Yes | IANA time zone name, such as `Europe/Warsaw` or `America/New_York`. The cron expression runs on local wall-clock time there, so 08:00 stays 08:00 across daylight saving changes. |
 | `until` | string | No | RFC 3339 timestamp of the last allowed send (inclusive). |
-| `count` | integer | No | Number of sends, 1-1000. Only real sends count: one skipped because the quota was used up does not. |
+| `count` | integer | No | Number of sends, 1-1000. Only real sends count: a skipped one does not (the quota was used up, or nothing was left in an organization's target but a removed member who can be invited back). |
 
 Set `until` or `count`, not both. With neither, the series runs until you cancel it.
 
@@ -2216,6 +2233,839 @@ The clock button in the app's Notifications tab opens your scheduled notificatio
 
 ---
 
+<!-- source: https://pushward.app/docs/notifications/acknowledge -->
+
+# Acknowledged Alerts
+
+Send an alert that repeats until someone acknowledges it on one of their devices. Then read who did and when, or let PushWard call your endpoint.
+
+_Requires PushWard iOS app 1.17.0 or later._
+
+Add `acknowledge` to a [`POST /notifications`](https://pushward.app/docs/notifications/api) body and PushWard sends the notification again every `repeat_seconds`, until someone [acknowledges it](#button) on one of their devices, until `expire_seconds` have passed, or until you cancel it. It is for the alerts where one buzz in a pocket is not enough: a water leak, a server that stopped answering, the garage door open at midnight.
+
+Repeat a leak alert until someone answers 
+
+```
+curl -X POST https://api.pushward.app/notifications \
+  -H "Authorization: Bearer hlk_YOUR_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "title": "Water leak",
+    "body": "Sensor under the kitchen sink",
+    "level": "time-sensitive",
+    "source": "home",
+    "acknowledge": { "repeat_seconds": 120, "expire_seconds": 3600 },
+    "tags": ["leak"],
+    "callback_url": "https://hooks.example.com/pushward"
+  }'
+```
+
+This one has no button of its own that PushWard records, so the server adds an **Acknowledge** button. The response shows it, and carries the notification's `receipt`:
+
+```
+{
+  "id": 4242,
+  "title": "Water leak",
+  "body": "Sensor under the kitchen sink",
+  "level": "time-sensitive",
+  "source": "home",
+  "actions": [
+    { "id": "pw_ack", "title": "Acknowledge", "icon": "checkmark.circle" }
+  ],
+  "answerable": true,
+  "pushed": true,
+  "created_at": "2026-10-20T07:00:00Z",
+  "delivery": "all",
+  "receipt": {
+    "notification_id": 4242,
+    "status": "active",
+    "repeat_seconds": 120,
+    "expires_at": "2026-10-20T08:00:00Z",
+    "repeats_sent": 0,
+    "last_delivered_at": "2026-10-20T07:00:00Z",
+    "tags": ["leak"],
+    "callback": { "status": "pending", "attempts": 0 },
+    "created_at": "2026-10-20T07:00:00Z"
+  }
+}
+```
+
+## The acknowledge object
+
+| Field | Default | Range |
+| --- | --- | --- |
+| `repeat_seconds` | 60 | 30 to 3600. Seconds between repeats. |
+| `expire_seconds` | 3600 | 60 to 10800. After this the repeats stop and the receipt is `expired`. |
+| `action_title` | `Acknowledge` | 1 to 64 characters. The label of the button the server adds. |
+
+`"acknowledge": {}` takes all three defaults: once a minute, for an hour.
+
+-   A repeat is the same notification again, with the same text, level, actions and media. Each repeat alerts again but replaces the previous one in Notification Center, so they do not stack up. Set `level` to `time-sensitive` if it has to get through a Focus.
+-   At most 50 repeats are sent. Every 30 seconds for 3 hours would be 360, so a short `repeat_seconds` with a long `expire_seconds` goes quiet after the 50th and waits out the rest of its time.
+-   Repeats are free. The first send counts toward your notification quota like any other notification; the repeats do not.
+-   Each repeat goes to the devices the account has at that moment, so a phone signed in halfway through gets the next one. For an [organization](https://pushward.app/docs/teams), repeats go to the members who got the first send, with their current mute and routing settings.
+-   `push: false` and `level: passive` cannot be acknowledged; both are a `400`.
+-   Up to 25 acknowledged notifications can be active per account at once, and an organization's sends count against the organization. One more is a `409` with `notification_receipt.limit_exceeded`.
+-   A new acknowledged notification with the same `collapse_id`, sent with the same integration key, replaces one that is still repeating: the old receipt is canceled with `cancel_reason` `superseded` before the 25 are counted. Useful for an alert that changes while it is open (a temperature still climbing).
+-   [Scheduled notifications](https://pushward.app/docs/notifications/scheduled) take `acknowledge`, `tags` and `callback_url` too, and start repeating when they go out. If 25 are already active at that moment, that send goes out once as a plain notification, without repeats or a receipt (`GET /notifications/receipts/{id}` answers 404 for it).
+
+### Which taps count
+
+Any tap that PushWard records as an [answer](https://pushward.app/docs/notifications/answers) acknowledges the notification: an action without a `url` and without `foreground`, including a typed reply. When none of your actions is like that, the server puts its own button first: `{ "id": "pw_ack", "title": "<action_title>", "icon": "checkmark.circle" }`. A button that opens a URL or the app does not count, so this works:
+
+```
+"actions": [
+  { "id": "fixing", "title": "On it", "icon": "wrench" },
+  { "id": "dashboard", "title": "Open Grafana", "url": "https://grafana.example.com/d/water" }
+],
+"acknowledge": {}
+```
+
+Here **On it** acknowledges and no `pw_ack` is added. The id `pw_ack` is reserved for the server (`400` if you use it), and ten actions with none of them answerable leave no room for the extra button (`400`). The answer is also readable from `GET /notifications/answers/{id}` as usual.
+
+## Tags and callback\_url
+
+Both sit at the top level of the request, next to `acknowledge`, and both need it. `tags` is a list of up to 10 labels, each 1 to 64 printable ASCII characters without spaces, used to [cancel](#cancel) a group of alerts at once. Duplicates are dropped. `callback_url` is an https URL that gets a signed `POST` when the notification is acknowledged or expires; see [Callbacks](#callbacks).
+
+## The receipt
+
+The receipt's id is the notification id, the `id` from `POST /notifications`, or the `notification_id` of a sent scheduled notification. Fields that do not apply yet are left out.
+
+| Field | Description |
+| --- | --- |
+| `notification_id` | The notification this receipt belongs to. |
+| `status` | `active` (still repeating), `acknowledged`, `expired` (`expire_seconds` ran out first) or `canceled`. |
+| `repeat_seconds` | Seconds between repeats. |
+| `expires_at` | When it expires if nobody acknowledges it. |
+| `repeats_sent` | Repeats sent so far, not counting the first send. At most 50. |
+| `last_delivered_at` | When a push, the first or a repeat, last reached at least one device. |
+| `acknowledged_at` | When it was acknowledged. |
+| `acknowledged_by` | User id of who acknowledged it: the account, or for an organization the member who tapped, when PushWard can tell. |
+| `acknowledged_by_device` | The name (or else the model) of the device it was acknowledged on, when the app reported it. Personal sends only. |
+| `action_id` | The action that acknowledged it; `pw_ack` for the button the server adds. |
+| `canceled_at` | When it was canceled. |
+| `cancel_reason` | `api` (canceled by id), `tag`, `superseded` (a newer send with the same `collapse_id` replaced it), `key_revoked` (the sending key was revoked, expired or lost `notifications` access) or `org_disabled`. |
+| `tags` | The tags it was sent with. |
+| `callback` | Present when the send had a `callback_url`: `status` (`pending`, `delivered` or `failed`), `attempts`, `delivered_at` and `last_status_code`. |
+| `created_at` | When it was sent. |
+
+Finished receipts stay readable for 7 days, then they are deleted.
+
+## Reading and canceling
+
+GET `/notifications/receipts/{id}`
+
+The receipt. ?wait=0-25 holds the request open while the receipt is active and returns as soon as it is acknowledged, expires or is canceled, or with status active when the time is up. 404 notification\_receipt.not\_found when the notification was not sent with acknowledge.
+
+POST `/notifications/receipts/{id}/cancel`
+
+Stops the repeats and returns the receipt. A receipt that already finished comes back unchanged.
+
+POST `/notifications/receipts/cancel`
+
+Cancels every active receipt sent with a tag. Body: {"tag": "leak"}. Returns {"canceled": <count>}.
+
+Wait for the acknowledgement 
+
+```
+curl "https://api.pushward.app/notifications/receipts/4242?wait=25" \
+  -H "Authorization: Bearer hlk_YOUR_TOKEN"
+```
+
+```
+{
+  "notification_id": 4242,
+  "status": "acknowledged",
+  "repeat_seconds": 120,
+  "expires_at": "2026-10-20T08:00:00Z",
+  "repeats_sent": 3,
+  "last_delivered_at": "2026-10-20T07:06:00Z",
+  "acknowledged_at": "2026-10-20T07:07:12Z",
+  "acknowledged_by": "7d1c5e2a-3f4b-4c8e-9a61-2b0f6d8e4c13",
+  "acknowledged_by_device": "Kitchen iPad",
+  "action_id": "pw_ack",
+  "tags": ["leak"],
+  "callback": { "status": "delivered", "attempts": 1, "delivered_at": "2026-10-20T07:07:13Z", "last_status_code": 200 },
+  "created_at": "2026-10-20T07:00:00Z"
+}
+```
+
+A long-poll that runs out is not an error: it returns the receipt, still `active`, and you ask again. Open `?wait` requests are shared with answer and activity reads, at most 4 per account; one more is a `429` `answer_wait.limit_exceeded`.
+
+### Canceling
+
+Stop the repeats 
+
+```
+# one notification
+curl -X POST https://api.pushward.app/notifications/receipts/4242/cancel \
+  -H "Authorization: Bearer hlk_YOUR_TOKEN"
+
+# everything still repeating with the tag "leak"
+curl -X POST https://api.pushward.app/notifications/receipts/cancel \
+  -H "Authorization: Bearer hlk_YOUR_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"tag": "leak"}'
+```
+
+Canceling only stops the repeats; it is not a recall. Banners already delivered stay where they are, the notification stays in the app's history, and no callback is sent for a canceled receipt. Call it from the thing that fixed the problem: the leak sensor reading dry again, the health check passing.
+
+An integration key reads and cancels only the receipts of notifications it sent itself. Another key's notification id is a `404`, and canceling by tag skips the other keys' alerts with the same tag. Revoking a key, letting it expire or taking away its `notifications` access cancels its active receipts with `key_revoked`.
+
+## Callbacks
+
+With a `callback_url`, PushWard sends one `POST` when the receipt finishes: `notification.acknowledged` or `notification.expired`. A canceled receipt sends nothing. Delivery is at least once, so the same event can arrive twice; deduplicate on `webhook-id`.
+
+```
+POST /pushward HTTP/1.1
+Host: hooks.example.com
+Content-Type: application/json
+User-Agent: PushWard-Webhook/1
+webhook-id: pwr_4242
+webhook-timestamp: 1792480033
+webhook-signature: v1,qERR29JWI+VB49/fNoMAEHY3LArHdrYidBMh5V7HXWc=
+
+{"type":"notification.acknowledged","timestamp":"2026-10-20T07:07:12Z","data":{"notification_id":4242,"status":"acknowledged","repeat_seconds":120,"expires_at":"2026-10-20T08:00:00Z","repeats_sent":3,"last_delivered_at":"2026-10-20T07:06:00Z","acknowledged_at":"2026-10-20T07:07:12Z","acknowledged_by":"7d1c5e2a-3f4b-4c8e-9a61-2b0f6d8e4c13","acknowledged_by_device":"Kitchen iPad","action_id":"pw_ack","tags":["leak"],"created_at":"2026-10-20T07:00:00Z"}}
+```
+
+| Header | Value |
+| --- | --- |
+| `webhook-id` | `pwr_<notification_id>`, the same on every retry. |
+| `webhook-timestamp` | Unix seconds of this attempt. |
+| `webhook-signature` | `v1,` and the base64 HMAC-SHA256 of `webhook-id`, a dot, `webhook-timestamp`, a dot and the raw body, keyed with the signing secret. |
+
+In the body, `type` is the event, `timestamp` is when the receipt finished (the same on every retry), and `data` is the receipt as `GET /notifications/receipts/{id}` returns it, without `callback`.
+
+### Delivery and retries
+
+-   Any 2xx counts as delivered. A `410` fails it at once (the endpoint is gone). Any other status, a timeout or a connection error is retried 1, 2, 4, 8, 16 and 32 minutes later, and after that the callback is `failed`. Redirects are not followed; a 3xx counts as a failed attempt.
+-   Each attempt gets 10 seconds in all (5 to connect, 5 for TLS). PushWard reads at most 64 KB of your response body and does nothing with it, so answer `204` quickly and do the work afterwards.
+-   The URL has to be https, with a host, no user name or password, and at most 2048 characters. It cannot point at a private place: `localhost`, `.local`, `.internal`, `.svc`, `.cluster.local` or a private IP address are refused when you send, and a name that resolves to a private, loopback, link-local or CGNAT address fails the callback when PushWard connects. A Home Assistant on your LAN is out of reach; use its Home Assistant Cloud webhook URL.
+-   A revoked or expired key leaves nothing to sign with: its pending callbacks fail without a request.
+
+### Verifying the signature
+
+There is no secret to create or rotate. It is derived from the integration key that sent the notification:
+
+```
+key_hash = SHA-256(integration key as UTF-8)                 # 32 raw bytes
+secret   = HMAC-SHA256(key = key_hash, message = "pushward/callback/v1")
+whsec    = "whsec_" + base64(secret)
+```
+
+`pushward receipt secret` prints the `whsec_` form for the CLI's configured key, or for another one with `--key -`, which reads it from stdin and keeps it out of your shell history. The scheme is [Standard Webhooks](https://www.standardwebhooks.com/), so any of its libraries verifies these requests once you give it that `whsec_` secret. Rolling the key changes the secret for every callback delivered after the roll, including retries of events from before it.
+
+```
+op read op://Private/pushward-alerts/credential | pushward receipt secret --key -
+```
+
+Without a library, verify the signature over the raw body, before parsing it, and reject timestamps more than five minutes off:
+
+Verify a callback in Python 
+
+```
+import base64, hashlib, hmac, time
+
+
+def callback_secret(integration_key: str) -> bytes:
+    key_hash = hashlib.sha256(integration_key.encode()).digest()
+    return hmac.new(key_hash, b"pushward/callback/v1", hashlib.sha256).digest()
+
+
+def verify(headers, body: bytes, integration_key: str, tolerance: int = 300) -> bool:
+    """headers: the request headers (any mapping); body: the raw request body."""
+    msg_id = headers.get("webhook-id", "")
+    ts = headers.get("webhook-timestamp", "")
+    if not (ts.isascii() and ts.isdigit()) or abs(time.time() - int(ts)) > tolerance:
+        return False
+    signed = f"{msg_id}.{ts}.".encode() + body
+    mac = hmac.new(callback_secret(integration_key), signed, hashlib.sha256)
+    expected = base64.b64encode(mac.digest()).decode()
+    # The header can carry several space-separated signatures.
+    for sig in headers.get("webhook-signature", "").split():
+        version, _, value = sig.partition(",")
+        if version == "v1" and hmac.compare_digest(value, expected):
+            return True
+    return False
+```
+
+Verify a callback in Node.js 
+
+```
+import { createHash, createHmac, timingSafeEqual } from 'node:crypto';
+
+export function callbackSecret(integrationKey) {
+  const keyHash = createHash('sha256').update(integrationKey).digest();
+  return createHmac('sha256', keyHash).update('pushward/callback/v1').digest();
+}
+
+// headers: lower-case names, as node:http gives them. rawBody: the request
+// body exactly as received (a Buffer), before any JSON parsing.
+export function verify(headers, rawBody, integrationKey, toleranceSeconds = 300) {
+  const id = headers['webhook-id'] ?? '';
+  const ts = headers['webhook-timestamp'] ?? '';
+  if (!/^\d+$/.test(ts)) return false;
+  if (Math.abs(Date.now() / 1000 - Number(ts)) > toleranceSeconds) return false;
+  const expected = createHmac('sha256', callbackSecret(integrationKey))
+    .update(`${id}.${ts}.`)
+    .update(rawBody)
+    .digest();
+  // The header can carry several space-separated signatures.
+  return (headers['webhook-signature'] ?? '').split(' ').some((sig) => {
+    const [version, value = ''] = sig.split(',');
+    const got = Buffer.from(value, 'base64');
+    return version === 'v1' && got.length === expected.length && timingSafeEqual(got, expected);
+  });
+}
+```
+
+Verify a callback in Go 
+
+```
+package callback
+
+import (
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/base64"
+	"errors"
+	"io"
+	"math"
+	"net/http"
+	"strconv"
+	"strings"
+	"time"
+)
+
+// Secret derives the signing secret from the integration key that sends.
+func Secret(integrationKey string) []byte {
+	sum := sha256.Sum256([]byte(integrationKey))
+	mac := hmac.New(sha256.New, sum[:])
+	mac.Write([]byte("pushward/callback/v1"))
+	return mac.Sum(nil)
+}
+
+// Verify checks a callback request and returns its body.
+func Verify(r *http.Request, integrationKey string) ([]byte, error) {
+	body, err := io.ReadAll(io.LimitReader(r.Body, 1<<20))
+	if err != nil {
+		return nil, err
+	}
+	id := r.Header.Get("webhook-id")
+	ts := r.Header.Get("webhook-timestamp")
+	sec, err := strconv.ParseInt(ts, 10, 64)
+	if err != nil || math.Abs(time.Since(time.Unix(sec, 0)).Seconds()) > 300 {
+		return nil, errors.New("timestamp outside tolerance")
+	}
+	mac := hmac.New(sha256.New, Secret(integrationKey))
+	mac.Write([]byte(id + "." + ts + "."))
+	mac.Write(body)
+	want := mac.Sum(nil)
+	// The header may carry several space-separated signatures.
+	for _, sig := range strings.Fields(r.Header.Get("webhook-signature")) {
+		v, b64, ok := strings.Cut(sig, ",")
+		if !ok || v != "v1" {
+			continue
+		}
+		got, err := base64.StdEncoding.DecodeString(b64)
+		if err == nil && hmac.Equal(got, want) {
+			return body, nil
+		}
+	}
+	return nil, errors.New("signature mismatch")
+}
+```
+
+[`/e2e/callback-vectors-v1.json`](https://pushward.app/e2e/callback-vectors-v1.json) has two integration keys with their derived secrets and signed sample requests to test your code against. The request above is signed with the first of those keys.
+
+## From the CLI, MCP and integrations
+
+Acknowledged alerts need CLI 1.4.0, pushward-mcp 1.16.0, the Home Assistant integration 0.51.0, the Grafana plugin 0.10.0 or the Unraid plugin 2026.10.08 or later; on the Relay they need `?ack=1`. The app shows them on every version; see [Older app versions](#app-versions) for what 1.17.0 adds.
+
+The [CLI](https://pushward.app/docs/api/cli) has `--ack` on `notify` and `schedule create`, with `--ack-repeat` (30s to 1h), `--ack-expire` (1m to 3h) and `--ack-title`, which imply it, plus `--tag` (repeatable) and `--callback-url`. `notify --ack --wait` blocks until it is acknowledged. The GitHub Action takes the same as inputs: `ack`, `ack-repeat`, `ack-expire`, `ack-title`, `tags` and `callback-url`.
+
+Acknowledged alerts from the CLI 
+
+```
+pushward notify --title "db-1 down" --body "Primary unreachable" \
+  --level time-sensitive --ack --ack-repeat 2m --tag db-1
+pushward receipt 4242 --wait 10m      # exit 7 if it expires, or 10m pass, first
+pushward receipt cancel --tag db-1    # db-1 is back: stop repeating
+```
+
+The [MCP server](https://pushward.app/docs/api/mcp) passes `acknowledge`, `tags` and `callback_url` through `create_notification` and `create_scheduled_notification`, and adds `get_notification_receipt`, `wait_for_ack` (waits up to 10 minutes and reports how it ended), `cancel_notification_receipt` and `cancel_notification_receipts_by_tag`. Give `acknowledge` at least one field there, such as `{"repeat_seconds": 60}`: the tools drop an empty object, and `tags` or `callback_url` without it are refused.
+
+In [Home Assistant](https://pushward.app/docs/integrations/home-assistant), `pushward.send_notification` takes `acknowledge` (`true` for the defaults, or the object), `tags` and `callback_url`, and returns the `receipt` when you ask for a response. `pushward.cancel_notifications` stops one by `notification_id` or all of them with a `tag`.
+
+The [Grafana app plugin](https://pushward.app/docs/integrations/grafana#acknowledge) has a **Repeat until acknowledged** switch under **Also send a push notification**, with the repeat interval and the expiry next to it (300 and 3600 seconds by default). The firing push repeats, and the resolve stops the repeats before the resolved push goes out.
+
+The [Unraid plugin](https://pushward.app/docs/integrations/unraid#acknowledge) has the same setting under **Settings -> PushWard**. Only notifications that arrive as Unraid alerts repeat, tagged `unraid-<server name>`, and a later notice for the same event that is not an alert stops them.
+
+On the [Relay](https://pushward.app/docs/integrations/relay#ack), add `ack=1` to the webhook URL, with `ack_repeat` and `ack_expire` for the timing. Alerts from Grafana, Uptime Kuma, Gatus, Komodo and the universal webhook then repeat until acknowledged, and the resolve webhook stops them where the service sends one. TrueNAS cannot send query parameters, so its API URL is `https://relay.pushward.app/truenas/ack` instead.
+
+The Grafana plugin, the Unraid plugin and the relay all send the alert once without repeats, rather than lose it, when the account already has 25 active or the server refuses the acknowledge.
+
+## Older app versions
+
+The repeats and the **Acknowledge** button work on every version of the app, because the button is an ordinary action that PushWard records. PushWard 1.17.0 adds two things. When someone acknowledges, the notification is cleared from every iPhone, iPad and Mac that got it; older versions leave it there until it is dismissed by hand. And only 1.17.0 reports which device the tap came from, so `acknowledged_by_device` stays empty for taps on older versions.
+
+## Errors
+
+| Status | Code | When |
+| --- | --- | --- |
+| `400` | `notification.invalid` | `acknowledge` with `push: false` or `level: passive`; a value out of range; your own action with id `pw_ack`; ten actions and none answerable; `tags` or `callback_url` without `acknowledge`; a bad tag or a `callback_url` that is not an allowed https URL; a `callback_url` sent without an integration key (its signing secret comes from the key); text so long that the answer links push the notification past 4 KB. |
+| `404` | `notification_receipt.not_found` | The notification was not sent with `acknowledge`, was sent by another key, or finished more than 7 days ago. |
+| `409` | `notification_receipt.limit_exceeded` | 25 acknowledged notifications are already active. Wait for one to finish, or cancel one. |
+| `422` | `notification.encrypted_too_large` | An [encrypted](https://pushward.app/docs/notifications/encryption) acknowledged notification whose largest repeat would not fit 4 KB. |
+| `422` | `notification_receipt.disabled` | Acknowledged notifications are switched off for a while on the server. Send without `acknowledge`, or retry later. A schedule that fires meanwhile goes out as a plain notification, with no receipt. |
+| `429` | `answer_wait.limit_exceeded` | Too many `?wait` requests open for the account. |
+
+ℹ Info
+
+Quotas in short: the first send is one notification, repeats are free, 25 active per account, 50 repeats each. All the numbers are on [Limits](https://pushward.app/docs/limits#acknowledged-and-encrypted).
+
+---
+
+<!-- source: https://pushward.app/docs/notifications/encryption -->
+
+# End-to-End Encryption
+
+Seal a notification's title, subtitle, body and link on your own machine with a key only your devices hold. PushWard stores and delivers text it cannot read.
+
+_Requires PushWard iOS app 1.17.0 or later._
+
+The tool that sends the notification seals its title, subtitle, body and url with your encryption key and sends the result as a single field, `encrypted`. PushWard stores that envelope and pushes it through Apple as it is. The PushWard app opens it with the same key on your devices. The key itself never reaches PushWard, so the text cannot be read back from the server, its database backups or Apple's push service.
+
+Encrypt every notification the CLI sends 
+
+```
+pushward e2e import              # paste the key from the app
+pushward e2e key-id              # should match the Key ID the app shows
+pushward notify --title "Prod DB password rotated" --body "New one is in the vault under db/prod"
+```
+
+## What is encrypted
+
+Four fields go inside the envelope: `title`, `subtitle`, `body` and `url`. The rest of the request stays readable to PushWard, and the part of it that ends up in the push stays readable to Apple, because the server and iOS need it to deliver and show the notification:
+
+-   `level` and `volume`
+-   `thread_id` and `collapse_id`
+-   `source` and `source_display_name`
+-   the `media` and `icon_url` URLs (and whoever hosts them sees your devices download them)
+-   `metadata` and `activity_slug`
+-   an [acknowledged alert](https://pushward.app/docs/notifications/acknowledge)'s settings: `acknowledge`, including the button's `action_title`, `tags` and `callback_url`
+-   `actions`: ids, titles, URLs and webhook bodies. Which button someone tapped, and a reply typed into a [text input](https://pushward.app/docs/notifications/answers), are recorded in plain text too.
+
+Live Activities, widgets and email are not encrypted at all. Keep secrets out of the readable fields: a password in `metadata` is as visible as it was before.
+
+## What it protects against
+
+It covers the text of your notifications at rest and in transit, against anyone who can read PushWard's database, logs or backups, and against Apple's push service. A leaked database dump shows each encrypted notification as the placeholder title `Encrypted notification` and an opaque envelope.
+
+It does not hide that you were sent something. PushWard and Apple still see:
+
+-   when a notification was sent, to which account, and how big the envelope was;
+-   every readable field listed above.
+
+The server, or Apple, can still drop a notification, hold it back, or deliver the same envelope again. What they cannot do is change the text: AES-GCM authenticates the envelope, and one that was altered fails to open, so the device shows the placeholder rather than different words.
+
+Only the Key ID is bound to the envelope as authenticated data, not the readable fields around it. So the server could also deliver a genuine envelope with different readable fields: other actions and button URLs, another level, other media. The text would be yours; what the buttons do would not be guaranteed.
+
+The key is the weak point. Anyone holding it reads every notification sealed with it, and it lives in more places than your phone: in iCloud Keychain, and on every machine that sends with it (the CLI's config file, a GitHub secret, a Home Assistant config entry, the Grafana plugin's settings, the Unraid flash drive, an environment variable). Treat it like a password. On your devices the decrypted text is shown and kept in the app's history like any other notification.
+
+## Set up a key
+
+1.  In PushWard 1.17.0 or later, open **Settings > End-to-End Encryption** and tap **Create Key**. The screen shows the key's Key ID, an 8-character fingerprint you can compare with every tool that holds the same key.
+2.  **Show Key** asks for Face ID or your passcode, then shows the key as 64 hex characters and as a QR code. Copy it from there.
+3.  The key reaches your other iPhones, iPads and Macs through iCloud Keychain, which Apple encrypts end to end. With iCloud Keychain off, use **Add Existing Key** on each device and paste the key, or scan the QR code with another device's camera and paste what it reads.
+4.  Give the key to the tools that send for you, below.
+5.  **Send Encrypted Test Notification** on the same screen checks the whole path on that device.
+
+It works the other way round too: `pushward e2e generate --save` creates a key in the CLI, and **Add Existing Key** brings it into the app.
+
+## Sending encrypted notifications
+
+### CLI
+
+Encryption needs CLI 1.4.0 or later. Once the [CLI](https://pushward.app/docs/api/cli) has a key, from `PUSHWARD_E2E_KEY` or from its config file (`e2e import` or `e2e generate --save` put it there), every `notify`, `notification send` and `schedule create` is encrypted. `--no-encrypt` sends one in the clear, and `--encrypt` fails instead of sending readable text when no key is set. `pushward api` never encrypts. `pushward e2e encrypt` prints an envelope for a script that cannot seal one itself, and `pushward e2e decrypt` opens one.
+
+```
+pushward e2e encrypt --title "Disk full" --body "/var at 97%" --jq .encrypted
+pushward e2e remove    # forget the CLI's copy; your devices keep theirs
+```
+
+### GitHub Action
+
+The `e2e-key` and `encrypt` inputs come with CLI 1.4.0, which `@v1` follows. Pass the key from a secret as the `e2e-key` input and set `encrypt: true` next to it. A secret that does not exist, or that GitHub does not pass to a pull request from a fork, arrives empty, and without `encrypt` the step would then send the text readable instead of failing. With `encrypt: true`, a command that cannot encrypt (anything but `notify`, `notification send` and `schedule create`) fails the step as well.
+
+GitHub prints a step's inputs at the top of its log, so a `title` or `body` input is readable there even though the request is encrypted. For text that must stay private, write the body to a file in an earlier step and pass it with `json: '@body.json'`.
+
+An encrypted workflow step 
+
+```
+- run: |
+    jq -n --arg body "$(cat rotation.log)" '{title: "Credentials rotated", body: $body}' > body.json
+- uses: mac-lucky/pushward-action@v1
+  with:
+    token: ${{ secrets.PUSHWARD_TOKEN }}
+    e2e-key: ${{ secrets.PUSHWARD_E2E_KEY }}
+    encrypt: true
+    json: '@body.json'
+```
+
+### MCP server
+
+Set `PUSHWARD_E2E_KEY` for the [MCP server](https://pushward.app/docs/api/mcp) (pushward-mcp 1.16.0 or later) when you run it yourself over stdio (single-user http mode reads it too). `create_notification` and `create_scheduled_notification` then seal the text before it leaves the process. The hosted server at `mcp.pushward.app` holds no key and sends plain text.
+
+### Home Assistant
+
+With the PushWard integration 0.51.0 or later, open **Settings > Devices & Services > PushWard > Configure** and paste the key; the form shows its Key ID. `pushward.send_notification` and to-do reminders are sealed from then on, whether they go out now or later, and the integration checks the text before sealing, so an action call fails instead of sending something your phone cannot show. The form never shows the stored key: leaving the field empty keeps it, pasting another one replaces it, and **Remove the encryption key** goes back to plain text. Details on the [Home Assistant](https://pushward.app/docs/integrations/home-assistant#encryption) page.
+
+### Grafana plugin
+
+The Grafana app plugin 0.10.0 or later takes the key under **End-to-end encryption key** on its **Configuration** page and shows its Key ID there. It seals the title, subtitle and body of the alert pushes it sends, and its test notification. The timeline Live Activity stays readable. A key that does not work never sends the alert text readable: the push goes out without it, and the Configuration page shows the error. Details on the [Grafana](https://pushward.app/docs/integrations/grafana#encryption) page.
+
+### Unraid plugin
+
+The Unraid plugin 2026.10.08 or later takes the key under **End-to-end encryption key** in **Settings -> PushWard**, and its status cards show the Key ID. It seals the title, subtitle, body and link of every Unraid notification on the Unraid server itself before sending it, and shortens a long message to fit, the body first. The parity, mover, backup and UPS Live Activities stay readable. Details on the [Unraid](https://pushward.app/docs/integrations/unraid#encryption) page.
+
+ℹ Info
+
+Webhooks sent through the [Relay](https://pushward.app/docs/integrations/relay), the universal webhook included, cannot be encrypted. The relay builds the text from the webhook and never holds your key, so those notifications reach PushWard readable.
+
+### The API
+
+From your own code, send `encrypted` to `POST /notifications` or `POST /notifications/scheduled` in place of `title`, `subtitle`, `body` and `url`; sending any of those four next to it is a `400`. Every other field works as usual.
+
+Send an envelope you sealed yourself 
+
+```
+curl -X POST https://api.pushward.app/notifications \
+  -H "Authorization: Bearer hlk_YOUR_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "encrypted": "pw1.767c0806.oKGio6Slpqeoqaqr-DhDOK4k53I0XIqFXerStl8L5wgFH2EUp_HSYIhOtPQU6R9X6oBtcwaIVw6kyen5OK3Vm_WWiP9w4ooFbGhar_XGOj1J",
+    "level": "time-sensitive",
+    "source": "monitoring"
+  }'
+```
+
+That envelope is the `ascii_minimal` case from the [test vectors](#vectors), sealed with their public test key, so a real device has no key for it and shows the placeholder. The response (and `GET /notifications/scheduled` for a schedule) carries the placeholders the server stored in place of the text, plus the envelope:
+
+```
+{
+  "id": 4310,
+  "title": "Encrypted notification",
+  "body": "End-to-end encrypted. Open PushWard on a device with the encryption key to read it.",
+  "encrypted": "pw1.767c0806.oKGio6Slpqeoqaqr-DhDOK4k53I0XIqFXerStl8L5wgFH2EUp_HSYIhOtPQU6R9X6oBtcwaIVw6kyen5OK3Vm_WWiP9w4ooFbGhar_XGOj1J",
+  "level": "time-sensitive",
+  "source": "monitoring",
+  "pushed": true,
+  "created_at": "2026-10-20T07:00:00Z",
+  "delivery": "all"
+}
+```
+
+## The envelope
+
+The format is called `pw1`. It is small enough to write yourself in any language with HKDF and AES-GCM. The four versions below build the envelope; put the [checks](#sender-checks) that follow the format in front of them.
+
+-   The key is 32 random bytes, written as 64 lowercase hex characters. Accept upper case and strip whitespace when reading one.
+-   `enc_key` = HKDF-SHA256 of the key with an empty salt, info `pushward/e2e/v1/enc`, 32 bytes.
+-   `kid` = lowercase hex of HKDF-SHA256 of the key with an empty salt, info `pushward/e2e/v1/kid`, 4 bytes. This is the Key ID the app and the CLI show.
+-   The plaintext is a UTF-8 JSON object with `title` and `body` (both required, not empty) and optional `subtitle` and `url`. Receivers ignore other keys. Pad it with trailing ASCII spaces to a multiple of 64 bytes, so the length gives less away, unless the padding would push the envelope past 3072 characters; then send it unpadded. No compression.
+-   Seal it with AES-256-GCM under `enc_key`, a random 12-byte nonce, and the ASCII string `pw1.<kid>` as additional authenticated data. The 16-byte tag goes after the ciphertext.
+-   The envelope is `pw1.<kid>.` followed by base64url without padding of `nonce || ciphertext || tag`. It must match `^pw1\.[0-9a-f]{8}\.[A-Za-z0-9_-]{40,}$` and be at most 3072 characters long. Decode it strictly: a length that leaves one character over, or a last character whose unused bits are not zero, is refused.
+
+PushWard only checks that shape; it cannot look inside. So check the text yourself before sealing it, the way the server checks a plaintext send, and refuse to send with an error when a check fails:
+
+-   `title` and `body` are not empty.
+-   `title` and `subtitle` are at most 256 and `body` at most 4096 characters, counted in Unicode code points (not bytes, not UTF-16 units).
+-   `url` is empty, or follows the [action url rules](https://pushward.app/docs/limits): at most 2048 code points, a scheme, not `javascript:`, `data:`, `file:` or `vbscript:`, and a host for `http(s)`.
+
+Skip these and nothing fails loudly: the app clips text that is too long and drops a url that breaks the rules, without telling anyone.
+
+Seal in Python 
+
+```
+import base64, json, os
+from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+from cryptography.hazmat.primitives.kdf.hkdf import HKDF
+
+
+def _hkdf(key: bytes, info: bytes, length: int) -> bytes:
+    return HKDF(algorithm=hashes.SHA256(), length=length, salt=None, info=info).derive(key)
+
+
+def seal(key_hex: str, title: str, body: str, subtitle: str = "", url: str = "") -> str:
+    key = bytes.fromhex(key_hex)
+    if len(key) != 32:
+        raise ValueError("the key must be 64 hex characters")
+    enc_key = _hkdf(key, b"pushward/e2e/v1/enc", 32)
+    kid = _hkdf(key, b"pushward/e2e/v1/kid", 4).hex()
+
+    msg = {"title": title, "body": body}
+    if subtitle:
+        msg["subtitle"] = subtitle
+    if url:
+        msg["url"] = url
+    plaintext = json.dumps(msg, ensure_ascii=False, separators=(",", ":")).encode()
+    # Pad with spaces to a multiple of 64 bytes, unless that no longer fits:
+    # 2266 bytes is the most a 3072-character envelope holds.
+    padded = plaintext + b" " * (-len(plaintext) % 64)
+    if len(padded) <= 2266:
+        plaintext = padded
+
+    nonce = os.urandom(12)
+    sealed = AESGCM(enc_key).encrypt(nonce, plaintext, f"pw1.{kid}".encode())
+    envelope = f"pw1.{kid}." + base64.urlsafe_b64encode(nonce + sealed).rstrip(b"=").decode()
+    if len(envelope) > 3072:
+        raise ValueError("too long to encrypt: shorten the title, subtitle, body or url")
+    return envelope
+```
+
+Seal in Node.js 
+
+```
+import { createCipheriv, hkdfSync, randomBytes } from 'node:crypto';
+
+const derive = (key, info, length) =>
+  Buffer.from(hkdfSync('sha256', key, Buffer.alloc(0), info, length));
+
+// Returns the pw1 envelope to send as "encrypted".
+export function seal(keyHex, { title, body, subtitle, url }) {
+  const key = Buffer.from(keyHex, 'hex');
+  if (key.length !== 32) throw new Error('the key must be 64 hex characters');
+  const encKey = derive(key, 'pushward/e2e/v1/enc', 32);
+  const kid = derive(key, 'pushward/e2e/v1/kid', 4).toString('hex');
+
+  // JSON.stringify leaves out undefined, so empty optional fields disappear.
+  const msg = { title, body, subtitle: subtitle || undefined, url: url || undefined };
+  let plaintext = Buffer.from(JSON.stringify(msg));
+  const pad = (64 - (plaintext.length % 64)) % 64;
+  if (plaintext.length + pad <= 2266) {
+    plaintext = Buffer.concat([plaintext, Buffer.alloc(pad, ' ')]);
+  }
+
+  const nonce = randomBytes(12);
+  const cipher = createCipheriv('aes-256-gcm', encKey, nonce);
+  cipher.setAAD(Buffer.from(`pw1.${kid}`));
+  const ct = Buffer.concat([cipher.update(plaintext), cipher.final(), cipher.getAuthTag()]);
+  const envelope = `pw1.${kid}.${Buffer.concat([nonce, ct]).toString('base64url')}`;
+  if (envelope.length > 3072) throw new Error('too long to encrypt');
+  return envelope;
+}
+```
+
+`crypto/hkdf` is in the standard library from Go 1.24.
+
+Seal in Go 
+
+```
+package e2e
+
+import (
+	"bytes"
+	"crypto/aes"
+	"crypto/cipher"
+	"crypto/hkdf"
+	"crypto/rand"
+	"crypto/sha256"
+	"encoding/base64"
+	"encoding/hex"
+	"encoding/json"
+	"errors"
+)
+
+type Message struct {
+	Title    string `json:"title"`
+	Body     string `json:"body"`
+	Subtitle string `json:"subtitle,omitempty"`
+	URL      string `json:"url,omitempty"`
+}
+
+// Seal encrypts msg for the devices holding keyHex and returns the pw1
+// envelope to send as "encrypted".
+func Seal(keyHex string, msg Message) (string, error) {
+	key, err := hex.DecodeString(keyHex)
+	if err != nil || len(key) != 32 {
+		return "", errors.New("the key must be 64 hex characters")
+	}
+	encKey, err := hkdf.Key(sha256.New, key, nil, "pushward/e2e/v1/enc", 32)
+	if err != nil {
+		return "", err
+	}
+	kidBytes, err := hkdf.Key(sha256.New, key, nil, "pushward/e2e/v1/kid", 4)
+	if err != nil {
+		return "", err
+	}
+	kid := hex.EncodeToString(kidBytes)
+
+	plaintext, err := json.Marshal(msg)
+	if err != nil {
+		return "", err
+	}
+	if pad := (64 - len(plaintext)%64) % 64; len(plaintext)+pad <= 2266 {
+		plaintext = append(plaintext, bytes.Repeat([]byte(" "), pad)...)
+	}
+
+	block, err := aes.NewCipher(encKey)
+	if err != nil {
+		return "", err
+	}
+	gcm, err := cipher.NewGCM(block)
+	if err != nil {
+		return "", err
+	}
+	nonce := make([]byte, gcm.NonceSize())
+	rand.Read(nonce)
+	sealed := gcm.Seal(nonce, nonce, plaintext, []byte("pw1."+kid))
+	envelope := "pw1." + kid + "." + base64.RawURLEncoding.EncodeToString(sealed)
+	if len(envelope) > 3072 {
+		return "", errors.New("too long to encrypt: shorten the title, subtitle, body or url")
+	}
+	return envelope, nil
+}
+```
+
+WebCrypto works in browsers, Deno, Bun and Node. Only seal in a page when the key stays on the machine of the person it belongs to, such as a browser extension or a local tool; a key shipped to a website's visitors is no secret.
+
+Seal with WebCrypto 
+
+```
+const utf8 = new TextEncoder();
+
+async function hkdf(key, info, length) {
+  const ikm = await crypto.subtle.importKey('raw', key, 'HKDF', false, ['deriveBits']);
+  const params = { name: 'HKDF', hash: 'SHA-256', salt: new Uint8Array(), info: utf8.encode(info) };
+  return new Uint8Array(await crypto.subtle.deriveBits(params, ikm, length * 8));
+}
+
+const hex = (bytes) => Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
+
+const base64url = (bytes) =>
+  btoa(String.fromCharCode(...bytes)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+
+// Returns the pw1 envelope to send as "encrypted".
+export async function seal(keyHex, { title, body, subtitle, url }) {
+  if (!/^[0-9a-fA-F]{64}$/.test(keyHex)) throw new Error('the key must be 64 hex characters');
+  const key = Uint8Array.from(keyHex.match(/../g), (h) => parseInt(h, 16));
+  const kid = hex(await hkdf(key, 'pushward/e2e/v1/kid', 4));
+  const rawKey = await hkdf(key, 'pushward/e2e/v1/enc', 32);
+  const encKey = await crypto.subtle.importKey('raw', rawKey, 'AES-GCM', false, ['encrypt']);
+
+  const msg = { title, body, subtitle: subtitle || undefined, url: url || undefined };
+  let plaintext = utf8.encode(JSON.stringify(msg));
+  const pad = (64 - (plaintext.length % 64)) % 64;
+  if (plaintext.length + pad <= 2266) {
+    const padded = new Uint8Array(plaintext.length + pad).fill(0x20);
+    padded.set(plaintext);
+    plaintext = padded;
+  }
+
+  const nonce = crypto.getRandomValues(new Uint8Array(12));
+  const params = { name: 'AES-GCM', iv: nonce, additionalData: utf8.encode(`pw1.${kid}`) };
+  const ct = new Uint8Array(await crypto.subtle.encrypt(params, encKey, plaintext));
+  const sealed = new Uint8Array(nonce.length + ct.length);
+  sealed.set(nonce);
+  sealed.set(ct, nonce.length);
+  const envelope = `pw1.${kid}.${base64url(sealed)}`;
+  if (envelope.length > 3072) throw new Error('too long to encrypt');
+  return envelope;
+}
+```
+
+### Test vectors
+
+[`/e2e/vectors-v1.json`](https://pushward.app/e2e/vectors-v1.json) is the file the server, the apps, the CLI, the MCP server and the Home Assistant integration all test against, byte for byte. Its `seal` cases give a key, a fixed nonce, the exact plaintext and the envelope sealing must produce, plus what opening it must return. `open_fail` lists envelopes that must not open with the given key (tampered tag, wrong key, swapped Key ID, plaintext that is not a JSON object), and `parse_fail` lists ones whose shape is already wrong (padding characters, an upper-case Key ID, `pw2`, over 3072 characters, a last character with unused bits set). To reproduce a `seal` case, seal its `plaintext` string exactly as given, with no JSON building and no padding of your own, using its key and `nonce_hex`. Most cases are unpadded, so building the JSON from title and body the way the samples above do matches only `padded_to_64` and `max_size`; for the rest, seal, open and compare.
+
+## Limits and errors
+
+An envelope holds at most 3072 characters, which leaves about 2266 bytes for the JSON plaintext: title, subtitle, body and url together, with their keys and quotes. That is well under the plain-text limit of 4096 characters for the body alone, so a long body that worked unencrypted may need trimming. The CLI, the MCP server and Home Assistant refuse such text before sending anything; the Grafana and Unraid plugins shorten it instead, the body first.
+
+The whole push also has to fit Apple's 4 KB payload, with the actions, media and icon URLs and metadata next to the envelope. Plain-text notifications that are too big fail at send time; an encrypted one is refused up front.
+
+| Status | Code | When |
+| --- | --- | --- |
+| `400` | `notification.invalid` | `title`, `subtitle`, `body` or `url` sent next to `encrypted`, or an envelope with the wrong shape (the `detail` starts with `encrypted:`). |
+| `422` | (schema) | `encrypted` longer than 3072 characters, or neither `encrypted` nor `title` and `body`. |
+| `422` | `notification.encrypted_too_large` | With the other fields, the push would exceed 4 KB; for an acknowledged alert, its largest repeat counts. Shorten the text, the actions or the URLs, or send it with `push: false` (stored in the inbox only). |
+| `422` | `notification.encryption_unavailable` | Sent with an organization key before PushWard has enabled encryption for organizations. See [Organizations](#organizations). |
+
+## What your devices show
+
+-   An iPhone or iPad on PushWard 1.17.0 or later that holds the key decrypts the notification before the banner appears, so the banner, the Lock Screen, the history and search show the real text.
+-   An iPhone or iPad on 1.17.0 or later without the key shows the app's own text instead: **Encrypted Notification**, **Add your encryption key to read it.** The history marks it locked, shows its Key ID, and opens it as soon as the key arrives, through iCloud Keychain or **Add Existing Key**.
+-   Builds older than 1.17.0, and banners on the Mac, show the placeholder the server stores in place of the text: **Encrypted notification**, "End-to-end encrypted. Open PushWard on a device with the encryption key to read it."
+-   On the Mac, the notification history, the menu bar and search in the app decrypt.
+
+_Requires PushWard iOS app 1.18.0 or later._
+
+From 1.18.0, an [organization's](#organizations) notification that no key on the device opens stays locked; the row names the organization (**Ask <organization> for its encryption key.**) and shows the Key ID to ask for. It opens once the member adds that key under **Organization Keys**. On 1.17.x the locked row shows the Key ID but not the organization, and its **Add Your Key** button leads to the personal key setup, which is the wrong place for an organization key (see [What members do](#org-members)).
+
+## Organizations
+
+_Requires PushWard iOS app 1.18.0 or later._
+
+An [organization](https://pushward.app/docs/teams) encrypts the way a person does: the same key of 64 hex characters, the same `pw1` envelope and the same senders, with the organization's API key in place of a personal one. What changes is who holds the key. An admin creates it and hands it to the members, who add it in the app as an organization key, and to the organization's senders. It never passes through PushWard.
+
+PushWard switches encryption on for organizations on the server, separately from the app release. Until it does, an encrypted send with an organization key still fails with `422` `notification.encryption_unavailable`. Members can add the key in the meantime; senders have to wait (step 3 below tells you when).
+
+### Set up an organization key
+
+1.  Create the key with `pushward e2e generate`, which prints a new key and its Key ID (`openssl rand -hex 32` makes an equally good one). Not with **Create Key** in the app: that one becomes your personal key.
+2.  Hand it to the members outside PushWard: show the QR code or paste it in person, or put it in a shared vault of your password manager. Anyone who has added the key in the app, not only admins, can show it under **Organization Keys** after device authentication (Face ID, Touch ID, or the passcode or Mac password), as hex and as a QR code, and send it from the share sheet (Messages, AirDrop). So hand a key only to the members it should reach (see [One key per scope](#org-scopes)): once someone has it, rotating is the only way to take it back.
+3.  Check that encryption is on for organizations with one encrypted send through the organization's API key, such as the command below. If it answers `422` `notification.encryption_unavailable`, it is not on yet: members can keep adding the key, but leave it out of your senders for now. A sender holding it would fail every send until then: the CLI, the MCP server and the GitHub Action refuse to send, Home Assistant's action fails and its to-do reminders are dropped with a repair issue, and the Grafana and Unraid plugins send the alert without its text. If it goes through, open it on a member's device; the Key ID the app shows next to the organization key should match the one the generator printed.
+4.  Give the key to every tool that sends with the organization's API key, the same way as a personal key (see [Sending encrypted notifications](#senders)).
+
+```
+PUSHWARD_API_TOKEN="$ORG_API_KEY" PUSHWARD_E2E_KEY="$ORG_E2E_KEY" \
+  pushward notify --encrypt --title "Encryption check" --body "Sent with the organization key"
+```
+
+### What members do
+
+A member needs PushWard 1.18.0 or later and has to have joined the organization. In **Settings > End-to-End Encryption**, under **Organization Keys**, they tap **Add Organization Key**, pick the organization (it is already selected when they belong to only one), and paste the key or scan its QR code. Scanning works on iPhone and iPad; on the Mac, paste it.
+
+The key is listed under the organization's name, apart from **Your Key**, and reaches the member's other iPhones, iPads and Macs through iCloud Keychain. It never becomes their own key, so a personal sender set up from that screen keeps sealing with **Your Key**. Organization notifications already on the device open as soon as the key arrives. Each organization key can be removed on its own, and leaving an organization offers to remove its keys from the member's devices.
+
+⚠ Warning
+
+PushWard 1.17.x has no **Add Organization Key**. Do not add an organization key there with **Add Existing Key**: it becomes the member's own key, shown as **Your Key**, and a personal sender set up from that screen would then seal personal notifications with a key the whole organization holds. Update the app first.
+
+If it already happened, add the key again on 1.18.0 with **Add Organization Key** and choose **Move** when the app asks. Then create a new personal key with **Create Key** and give it to your personal senders: the organization holds the old one now.
+
+### One key per scope
+
+Everyone holding a key can read whatever is sealed with it, as long as the envelope reaches them. Routing decides who gets the push, but routing runs on PushWard's server, the one party encryption is meant to keep out. To keep a group's notifications from the rest of the organization, give that scope its own key: one per [group](https://pushward.app/docs/teams#groups-and-tags), or one per API key, such as a key [limited to groups and tags](https://pushward.app/docs/teams#limited-keys). Then hand it only to the members it reaches. The app opens each envelope with the key its Key ID names, so a member in two groups adds both keys, and a member without a scope's key sees its notifications locked, with the Key ID to ask for.
+
+### When a member leaves
+
+Once a member leaves or is removed, PushWard stops making copies for them at once. They keep the key, though: iCloud Keychain cannot be wiped from outside, and what is already on their devices stays readable. Without the server's copies they read nothing new, but holding out against the server is the point of encryption, so rotate after every removal:
+
+1.  Create a new key and give it to every sender, as in the setup above.
+2.  Hand it to the remaining members, who add it next to the old one.
+3.  Keep the old key in the app. Notifications sealed with it, the history included, open only while it is there.
+
+A sender you missed keeps sealing with the old key, which the person who left still holds. Nothing in PushWard enforces rotation or tracks who has a key; that is up to the organization's admins.
+
+### What the console can and cannot do
+
+The [console](https://console.pushward.app) never generates, stores, shows or relays an encryption key, and it cannot decrypt anything: an organization's notifications are readable only on its members' devices. That is on purpose. The console is a web page PushWard serves, so a key typed into it would be no safer than a key sent to the server. If every copy of a key is lost, PushWard cannot recover it, or the text sealed with it.
+
+## Rotating or removing the key
+
+**Rotate Key** in the app creates a new key and keeps the old one under **Previous Keys**, so notifications sealed with it still open. Then give the new key to every sender (`pushward e2e import --force`, which replaces the stored key, the Home Assistant options, the GitHub secret, the MCP environment, the Grafana and Unraid plugin settings). A sender you missed keeps sealing with the old key, and your devices keep opening those, so nothing breaks while you go through the list. Scheduled notifications were sealed when they were scheduled and open the same way.
+
+**Remove Key** deletes the keys from all your devices. Notifications sealed with them stay locked until you add the key again. PushWard never had a copy, so a key that is gone everywhere cannot be recovered, and neither can the text sealed with it.
+
+⚠ Warning
+
+CLI 1.3.x and earlier drop a stored encryption key when `pushward auth login` or `auth logout` rewrites the config file. If an older binary runs on the same machine, `pushward e2e key-id` tells you whether the key is still there.
+
+---
+
 <!-- source: https://pushward.app/docs/notifications/api -->
 
 # Notifications API
@@ -2248,6 +3098,11 @@ Create an in-app notification and optionally push it to all user devices. No sub
 | `metadata` | object | No | Key-value string pairs (max 20 keys, key max 64 chars, value max 4096 chars, and 8 KB total across all keys and values) |
 | `activity_slug` | string | No | Optional link to an existing activity. An unknown slug is rejected with `422` before the notification is persisted. |
 | `push` | boolean | No | If `true` (default), send APNs rich alert to all user devices. Set `false` to store in the inbox only. |
+| `target` | object | No | Organization keys only: which members get it, as `groups`, `tags` and `members`. See [Teams](https://pushward.app/docs/teams#target). |
+| `encrypted` | string | No | A `pw1` envelope holding the title, subtitle, body and url, sealed with the user's encryption key (max 3072 chars). Leave those four fields out when it is set; `title` and `body` are required only without it. Not available to organization keys. See [End-to-End Encryption](https://pushward.app/docs/notifications/encryption). |
+| `acknowledge` | object | No | Repeat the push until someone acknowledges it: `repeat_seconds` (30-3600, default 60), `expire_seconds` (60-10800, default 3600), `action_title` (default `Acknowledge`). Not with `push: false` or level `passive`. See [Acknowledged Alerts](https://pushward.app/docs/notifications/acknowledge). |
+| `tags` | array | No | Up to 10 labels (1-64 printable ASCII characters, no spaces) for canceling acknowledged notifications as a group. Requires `acknowledge`. |
+| `callback_url` | string | No | https URL that gets a signed `POST` when the notification is acknowledged or expires (max 2048 chars). Requires `acknowledge`. |
 
 Example 
 
@@ -2298,6 +3153,7 @@ On `POST /notifications` only, the response also includes these read-only fields
 | `delivery` | `all`, `partial`, `none` | Whether every, some, or no devices accepted the push. |
 | `reason` | `no_apns_token`, `apns_rejected`, `push_disabled` | Failure mode when `delivery` is not `all` -- for a `push: false` create it is `push_disabled` with `delivery` `none`. Omitted on a fully successful push. |
 | `answerable` | `true` | The server records the answer to this notification (at least one action was sent without a `url`). Read it with `GET /notifications/answers/{id}`. Omitted otherwise. |
+| `receipt` | object | Sent with `acknowledge`: the receipt, as `GET /notifications/receipts/{id}` returns it. Omitted otherwise. |
 
 ## Scheduled Notifications
 
@@ -2327,6 +3183,24 @@ GET `/notifications/answers/{id}`
 
 Get the answer to a notification: notification\_id, status (pending or answered), action\_id, text and answered\_at. id is the notification id from POST /notifications, or the notification\_id of a sent scheduled notification. ?wait=0-25 holds the request open until the answer lands (long-poll). The first answer wins; answers are kept 30 days. A key reads only answers to notifications it sent. Returns 404 notification\_answer.not\_found when none of the actions was url-less, and 429 answer\_wait.limit\_exceeded when too many waits are open.
 
+_Requires PushWard iOS app 1.17.0 or later._
+
+## Acknowledged Alerts
+
+Follow and stop a notification sent with `acknowledge`. The receipt fields, callbacks and their signature are on the [Acknowledged Alerts](https://pushward.app/docs/notifications/acknowledge) page.
+
+GET `/notifications/receipts/{id}`
+
+Get the receipt of a notification sent with acknowledge: status (active, acknowledged, expired or canceled), repeats\_sent, expires\_at, who acknowledged it and on which device, the action, cancel\_reason, tags and the callback delivery. ?wait=0-25 holds the request open while it is active. A key reads only receipts of notifications it sent. Finished receipts are kept 7 days. 404 notification\_receipt.not\_found when there is none.
+
+POST `/notifications/receipts/{id}/cancel`
+
+Stop the repeats and return the receipt; its callback is not sent. Delivered banners stay. A receipt that already finished comes back unchanged.
+
+POST `/notifications/receipts/cancel`
+
+Cancel every active receipt the calling key sent with a tag. Body {"tag": "..."}; returns {"canceled": <count>}.
+
 ## Error Responses
 
 Errors use the RFC 9457 Problem Details shape (`Content-Type: application/problem+json`) - see [Errors](https://pushward.app/docs/api/activities#errors) for the body shape and known `code` values.
@@ -2335,10 +3209,12 @@ Errors use the RFC 9457 Problem Details shape (`Content-Type: application/proble
 | --- | --- |
 | `400` | Malformed JSON, or a field-level validation failure (media, action URL scheme, duplicate action `id`, metadata size, or `text_input` rules) |
 | `401` | Missing or invalid token |
-| `403` | Integration key's `notifications` level is `none` (`integration_key.permission_denied`), or it sets `activity_slug` without activity access |
-| `422` | Schema violation (wrong shape, `maxLength`, or `enum`), or an unknown `activity_slug` |
+| `403` | Integration key's `notifications` level is `none` (`integration_key.permission_denied`), or it sets `activity_slug` without activity access, or an organization key limited to some groups and tags targets outside them (`integration_key.target_denied`) |
+| `422` | Schema violation (wrong shape, `maxLength`, or `enum`), an unknown `activity_slug`, or a bad `target` (`org.target_*`) |
 | `429` | Per-IP rate limit (`code: rate_limit.exceeded`) or monthly notification quota exhausted (`code: quota.exceeded`) - pairs with `Retry-After` and `retry_after_ms`. See [Errors](https://pushward.app/docs/api/activities#errors) for the quota body shape. |
 | `500` | Internal server error |
+| `409` | 25 acknowledged notifications are already active for the account (`notification_receipt.limit_exceeded`) |
+| `422` | An encrypted push that would not fit 4 KB (`notification.encrypted_too_large`), `encrypted` from an organization key (`notification.encryption_unavailable`), or acknowledged notifications switched off for now (`notification_receipt.disabled`) |
 
 ---
 
@@ -2507,6 +3383,7 @@ Register a widget by slug. Idempotent - re-POSTing the same slug refreshes name 
 | `name` | string | Yes | Human-readable name shown in the iOS widget picker. Max 256 chars. |
 | `content` | object | Yes | Initial content snapshot. Must include `content.template` (one of the ten template ids). Other fields are template-dependent - see [Content](#content). |
 | `push_throttle` | integer | No | Minimum seconds between APNs pushes for this widget (1 - 3600). Overrides the server's default coalesce window when you know updates will be bursty. |
+| `target` | object | No | Organization keys only: narrows which members get the widget. See [Organization widgets](#organizations). |
 
 Create a CPU-load widget 
 
@@ -2733,6 +3610,30 @@ curl -X PATCH https://api.pushward.app/widgets/cpu-load \
 
 A PATCH that changes nothing still re-stamps `updated_at` and resets the staleness clock - `stale_after` is a liveness signal, not a change signal. A poller that finds the value unchanged should PATCH anyway, so a widget whose producer died shows as stale instead of a confident, wrong number.
 
+_Requires PushWard iOS app 1.17.0 or later._
+
+## Organization widgets
+
+A widget created with a key from an [organization](https://pushward.app/docs/teams) belongs to the organization and reaches its members' iPhone and iPad Home Screens, filtered by the routing rules that apply to widgets. Members add it like any other PushWard widget. Apple Watch complications do not show organization widgets yet.
+
+`POST /widgets` and `PATCH /widgets/{slug}` take an optional `target` with `groups`, `tags` and `members`, the same object as on [activities and notifications](https://pushward.app/docs/teams#target). It narrows who reads the widget and has it reloaded, and never reaches anyone a rule keeps out. A re-POST of an existing slug without `target` keeps the stored one. On `PATCH` a new `target` replaces it and `"target": null` clears it, so everyone the rules allow gets the widget again. A personal key gets `422` `org.target_unavailable`.
+
+A widget for the on-call group 
+
+```
+curl -X POST https://api.pushward.app/widgets \
+  -H "Authorization: Bearer hlk_YOUR_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "slug": "queue-depth",
+    "name": "Queue depth",
+    "content": { "template": "value", "value": 42, "label": "jobs" },
+    "target": { "groups": ["oncall"] }
+  }'
+```
+
+All of an organization's widgets share one push window of at least 60 seconds, and `push_throttle` is ignored. A change inside the window is saved at once and reaches members' devices when the window closes, so updating more than once a minute does not make the widget any fresher. A key limited to groups and tags only sees widgets inside them (see [Keys limited to groups and tags](https://pushward.app/docs/teams#limited-keys)).
+
 ## Errors
 
 Widget errors use the same [RFC 9457 Problem Details](https://pushward.app/docs/api/activities#errors) body shape and stable `code` matching guidance as the rest of the API.
@@ -2743,7 +3644,7 @@ Widget errors use the same [RFC 9457 Problem Details](https://pushward.app/docs/
 | `401` | Missing or invalid token. |
 | `403` | Integration key's `widgets` level is below what the call needs (`integration_key.permission_denied`), or the slug is outside its `widget_slugs` (`integration_key.slug_invalid`). |
 | `404` | Widget slug not found. |
-| `422` | Validation failure - missing required content field for the template, value out of range, non-finite number, etc. |
+| `422` | Validation failure: missing required content field for the template, value out of range, non-finite number, etc. A bad organization `target` uses the `org.target_*` codes listed under [Teams](https://pushward.app/docs/teams#errors). |
 | `429` | Per-user widget cap reached (`code: widget.limit_exceeded`) or IP rate limit hit. |
 
 ---
@@ -3424,7 +4325,27 @@ A send to a globally-suppressed address returns `201` with `delivery: "none"` an
 
 ## Recipients & History
 
-Recipient management - registering an address, sending its double-opt-in confirmation, listing recipients, resending a confirmation, and removing one - is handled **in the PushWard app**, not through the public API. You curate the verified list in the app; your integration keys can only send to addresses already confirmed there.
+Recipient management - registering an address, sending its double-opt-in confirmation, listing recipients, resending a confirmation, and removing one - is handled **in the PushWard app**, not through the public API. You curate the verified list in the app; your integration keys can only send to addresses already confirmed there. An organization is the exception, below.
+
+### Organizations
+
+An [organization](https://pushward.app/docs/teams) has no app, so it manages its recipients through the API. Any of its keys with email permission that is not limited to groups and tags can call these; a personal key gets `403`. Organization email goes only to the organization's own verified recipients, never to the members' personal ones, and the same cap of 50 recipients applies.
+
+| Request | What it does |
+| --- | --- |
+| `POST /emails/recipients` | Registers `address` (with an optional `label`, up to 128 characters) and mails it a confirmation link valid for 48 hours. `409` `email.recipient_exists` if it is already verified; posting a pending address again mails a fresh link. `422` `email.recipient_limit_exceeded` when the list is full, `422` `email.recipient_suppressed` if the address bounced, was marked as spam or unsubscribed in the last 24 hours. |
+| `GET /emails/recipients` | Lists the recipients with their `status`: `pending`, `verified` or `unsubscribed`. |
+| `POST /emails/recipients/{id}/resend` | Mails a fresh confirmation link to a recipient that is not verified yet. `409` `email.recipient_exists` once it is verified. |
+| `DELETE /emails/recipients/{id}` | Removes a recipient. |
+
+Register an organization recipient 
+
+```
+curl -X POST https://api.pushward.app/emails/recipients \
+  -H "Authorization: Bearer hlk_YOUR_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"address": "oncall@example.com", "label": "On-call inbox"}'
+```
 
 Your **send history** - every email this account has sent or attempted - is likewise viewable in the app's Email tab, including each message's delivery `status`: `sent`, `bounced`, `complained`, `failed`, or `suppressed` (updated asynchronously as the delivery provider reports bounces and complaints).
 
@@ -3505,6 +4426,152 @@ Instead of sharing one activity, a **pattern share** grants access to every acti
 -   Recipients receive **push-to-start** for ongoing shared activities - the Live Activity appears on their devices without them opening the app.
 -   Receiving a shared activity consumes **none of the recipient's quota**. Free recipients keep their full monthly allowance for their own activities.
 -   Updates are charged to the **owner**: one Live Activity update slot per update, regardless of how many recipients the activity has.
+
+---
+
+<!-- source: https://pushward.app/docs/teams -->
+
+# Teams
+
+Send to a whole team from one organization account. Members join with their own Apple ID, and groups, device tags and routing rules decide who gets which Live Activity and notification.
+
+ℹ Info
+
+**Free for 14 days.** Anyone can create an organization in the console, no card needed. A trial organization holds up to 5 members and has every feature on this page. After that, PushWard Team is $5 per seat per month billed yearly ($60 per seat per year) or $6 per seat billed monthly, from 3 seats, and each paid seat includes the member's PushWard Plan. Members need nothing but the PushWard app and their own Apple ID. [Pricing and FAQ](https://pushward.app/teams).
+
+[Start free trial](https://console.pushward.app)
+
+## How it works
+
+An organization is its own PushWard account. It has members instead of devices, and its API keys send to the members' devices. Everything is managed in the web console at [console.pushward.app](https://console.pushward.app), where you sign in with Apple.
+
+1.  **Create the organization** at [console.pushward.app](https://console.pushward.app); its 14-day trial starts right away. Invite people from **Invites**. An invite is a link, single-use or for several people, with an expiry.
+2.  **Members open the link**, sign in with the Apple ID they use in the PushWard app, and join. Ongoing Live Activities of the organization start on their devices right away.
+3.  **Create an API key** under **API keys** and use it like any `hlk_` key. What it sends goes to every member the routing below allows.
+
+Organization activities show up in the app as shared by the organization, also in app versions older than this feature, and count toward the member's own limit of Live Activities shown at once. Leaving one in the app mutes that slug for the member until they unmute it in the console.
+
+## Trial, seats and billing
+
+The trial lasts 14 days, one per person, and holds up to 5 members. It has every organization feature, but members keep their own plan: the PushWard Plan comes only with paid seats. During the trial the organization can send up to 5,000 notifications a day.
+
+A seat is one member, not a device. A subscription starts at 3 seats, the organization can have as many members as it has paid seats, and each paid seat gives that member the PushWard Plan while they hold it. Sending is pooled: 5,000 notifications a day per seat, shared by the whole organization. Seat changes are prorated.
+
+The subscription is bought and managed in the console, never in the iOS app. Paddle.com sells it as our reseller and merchant of record, so the invoice comes from Paddle, which also handles VAT and sales tax. Refunds follow the [refund policy](https://pushward.app/refunds).
+
+| When | What happens |
+| --- | --- |
+| The trial ends without a subscription | The organization becomes read-only and its API keys are refused until someone subscribes. 30 days later it is deleted with its data. |
+| A payment fails | Paddle retries the charge and the organization keeps working meanwhile. If the payment never goes through, the subscription ends as below. |
+| The subscription is canceled | Everything works until the end of the paid period. Then the organization becomes read-only, its keys are refused and members lose the PushWard Plan of their seat. 60 days later it is deleted with its data. |
+| An owner deletes the organization | It is deleted with its data at once. A subscription that is still running ends with it, and the unused part of the paid period is not refunded, apart from what the [refund policy](https://pushward.app/refunds) grants. |
+
+## Roles
+
+| Role | Can do |
+| --- | --- |
+| **Owner** | Everything, including adding owners and deleting the organization. |
+| **Admin** | Invites and removes members below admin and changes their roles, renames the organization, and manages groups, device tags, routing rules and API keys. |
+| **Viewer** | Reads members, devices, routing and the audit log. Changes nothing of the organization. |
+| **Member**, **Billing** | See the member list. |
+
+Every member receives what the organization sends and manages their own devices and mutes, whatever their role.
+
+Every change made in the console lands in the **Audit log**, with who made it and when.
+
+## Devices and mutes
+
+Under **My devices** every member decides which of their devices take part. A device switched off gets nothing from the organization: its Live Activities end, and notification pushes skip it (the inbox entry still arrives). Members can also mute slugs, such as `ci-*`, for themselves only.
+
+## Groups and device tags
+
+A **group** is a set of members, such as `oncall` or `backend`. A **device tag** marks single devices, such as `wall` for the iPad on the office wall. Names are lowercase letters, digits, `-` and `_`, start with a letter or digit, and are up to 40 characters. An organization holds up to 50 groups and 50 tags.
+
+Deleting a group or tag removes it from every routing rule, target and key limit. A rule or target left with nothing reaches nobody, so an ongoing Live Activity aimed only at a deleted group ends.
+
+## Routing rules
+
+Rules decide who gets what. Each rule has a slug pattern (exact, or a prefix ending in `*`), applies to Live Activities, notifications, both, or widgets, and allows some groups and tags. Rules are checked in order, and the first one whose pattern matches and that applies to that kind of send decides:
+
+-   A member in one of the rule's groups gets it on all their devices, and a device with one of the rule's tags gets it whoever owns it.
+-   No rule matches: everyone gets it.
+-   A rule that allows no group and no tag: nobody gets it.
+-   Notifications match on `activity_slug`, or on `source` when they have no activity.
+
+A rule change applies to ongoing Live Activities at once: they end on devices that lost them and start on devices that gained them. An organization holds up to 100 rules.
+
+Example rules 
+
+```
+1. deploy-*   activities and notifications   group oncall, tag wall
+2. billing-*  notifications                  group finance
+3. noisy-*    notifications                  nobody
+   everything else                           everyone
+```
+
+## Targeting a send
+
+An organization key can narrow a single send with `target`. It works on `POST /activities`, `PATCH /activities/{slug}`, `POST /notifications`, `POST /notifications/scheduled`, `POST /widgets` and `PATCH /widgets/{slug}`. A target narrows what the routing rules allow; it never reaches anyone a rule keeps out.
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `groups` | string\[\] | Group names, up to 20. Members of any of them get it. |
+| `tags` | string\[\] | Device tag names, up to 20. Devices with any of them get it. |
+| `members` | string\[\] | User ids, up to 100 (the copy button next to each member on the console's Members page). They get it on all their devices. |
+
+Page the on-call group 
+
+```
+curl -X POST https://api.pushward.app/notifications \
+  -H "Authorization: Bearer hlk_YOUR_ORG_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "title": "db-1 disk at 95%",
+    "body": "Paging on-call",
+    "level": "time-sensitive",
+    "target": {"groups": ["oncall"]}
+  }'
+```
+
+-   Names are matched without regard to case. An unknown name fails the whole request with `422` `org.target_unknown`, which lists every unknown name.
+-   A Live Activity keeps its target. A later `PATCH` with a new `target` replaces it and `"target": null` sends it back to everyone the rules allow; devices that lose it end it and devices that gain it start it. A `POST` to an existing slug without `target` keeps the stored one. Widgets keep their target the same way.
+-   A scheduled notification resolves the names when you schedule it, so renaming a group later does not matter. Who is in a group is read when it is sent, and a group deleted by then reaches nobody. Once every group, tag and member the target names is gone, the schedule fails with `target_deleted` instead of being sent, without counting toward your quota. A repeating one stops, unless its target names a member who can be invited back: then only that send is skipped.
+-   A notification that nobody receives is still stored, and the response says `"pushed": false` with `"delivery": "none"` and `"reason": "no_apns_token"`, as for an account with no devices.
+
+The CLI takes `--target-groups`, `--target-tags` and `--target-members`, and `--no-target` on `activity update` and `widget update` (see [CLI](https://pushward.app/docs/api/cli); widgets need CLI 1.5.0). In the [MCP server](https://pushward.app/docs/api/mcp), `create_activity`, `update_activity`, `create_notification`, `create_scheduled_notification`, `create_widget` and `update_widget` take a `target` argument, and `update_activity` and `update_widget` take `clear_target`.
+
+## Keys limited to groups and tags
+
+When you create a key in the console, **Reaches** can limit it to some groups and tags, for example a key for a team's own tooling. The limit is set once; to change it, create a new key. Such a key:
+
+-   sends only inside its groups and tags. A send with no `target` goes to all of them, a `target` outside them is refused with `403` `integration_key.target_denied`, and it cannot name members or clear a target;
+-   sees only activities sent inside its groups and tags. `GET /activities` leaves the others out, and reading, changing or ending one of them answers `404`, exactly as for a slug that does not exist. Activities sent to everyone are outside every limit, and so are activities whose groups and tags were all deleted, so a limited key does not see those either;
+-   cannot reuse a slug taken by an activity it cannot see. Slugs are unique per organization, so creating one answers `403` `integration_key.target_denied`. A notification naming such an activity in `activity_slug` gets `422` `notification.activity_not_found`.
+
+If all of a limited key's groups and tags are deleted, it sees nothing and every send is refused with `403`; create a new key.
+
+The `activity_slugs` limit of a key (see [permissions](https://pushward.app/docs/api/authentication#scopes)) still applies on top.
+
+## Widgets and email
+
+A key made in the console can also carry widget and email permissions, as on a personal account.
+
+_Requires PushWard iOS app 1.17.0 or later._
+
+-   An organization's widgets reach its members the way activities do: rules that apply to widgets decide who reads which widget (no rule: everyone), a `target` on the widget narrows that, and a key limited to groups and tags only sees widgets inside them. Members add an organization widget to their Home Screen like any other PushWard widget; this needs PushWard 1.17.0 or later on iOS.
+-   Widget updates reach members' devices at most once a minute per organization, for all of its widgets together. `push_throttle` is ignored on organization widgets.
+
+Email goes only to recipients the organization manages, never to the members' personal ones. A key with email permission that is not limited to groups and tags adds and removes them through `/emails/recipients` (see [Email](https://pushward.app/docs/email#organizations)); each recipient confirms their address before the first message, and sends count toward the organization's email quota.
+
+## Errors
+
+| Code | Status | When |
+| --- | --- | --- |
+| `org.target_unavailable` | `422` | A `target` sent with a personal key. Personal sends always reach all of your devices. |
+| `org.target_invalid` | `422` | The `target` names nothing or a member by something other than a user id, or (on `PATCH`) more than the limits above. On the other requests an oversized list fails schema validation with a plain `422`. |
+| `org.target_unknown` | `422` | A group, tag or member that the organization does not have. |
+| `integration_key.target_denied` | `403` | A limited key sending outside its groups and tags, clearing a target, creating a slug held outside them, or sending without a target after all its groups and tags were deleted. |
+| `org.billing_inactive` | `403` | An organization key, or joining an organization, while the organization is not active because its trial or subscription ended. An owner can reactivate it in the console. |
 
 ---
 
@@ -3682,6 +4749,12 @@ Each provider delivers events as either a **push notification** (banner alert) o
 
 Relay requires PostgreSQL for persistent state (sync tracking, download lifecycle, playback progress across restarts and tenants). Stateless providers (Bazarr, Changedetection, Unmanic) still require a database connection to start.
 
+_Requires PushWard iOS app 1.17.0 or later._
+
+## End-to-end encryption
+
+Notifications sent through the relay are not end-to-end encrypted. The relay never holds your encryption key: it builds the text from the webhook and sends it to PushWard readable. For encrypted alerts, send them with the [CLI](https://pushward.app/docs/notifications/encryption#cli), an [MCP server](https://pushward.app/docs/notifications/encryption#mcp) you run yourself, [Home Assistant](https://pushward.app/docs/integrations/home-assistant#encryption), the [Grafana plugin](https://pushward.app/docs/integrations/grafana#encryption) or the [Unraid plugin](https://pushward.app/docs/integrations/unraid#encryption).
+
 _Requires PushWard iOS app 1.7.0 or later._
 
 ## Poster artwork
@@ -3726,6 +4799,9 @@ Append query parameters to any provider webhook URL to override that provider's 
 | `channels` | Comma-separated: `activity`, `notification` | Restricts which delivery surfaces this request may use. `channels=notification` suppresses Live Activities and only sends push notifications; `channels=activity` does the reverse. Must list at least one valid surface. |
 | `priority` | Integer `0`\-`10` | Sets the eviction / relevance [priority](https://pushward.app/docs/api/activities) for any Live Activity the request creates. |
 | `level` | `passive`, `active`, `time-sensitive`, `critical` | Sets the notification interruption [level](https://pushward.app/docs/notifications/basics) for any push notification the request sends. |
+| `ack` | `1` or `0` | `1` repeats an alert's push until someone acknowledges it or it expires, and the resolve stops the repeats. See [Acknowledged alerts](#ack). |
+| `ack_repeat` | Seconds, `30`\-`3600` (default `300`) | How often the alert repeats. Needs `ack=1`. |
+| `ack_expire` | Seconds, `60`\-`10800` (default `3600`) | How long the alert keeps repeating when nobody acknowledges it. Needs `ack=1`. |
 
 Force a Grafana alert to a time-sensitive notification only 
 
@@ -3736,6 +4812,35 @@ https://relay.pushward.app/grafana?channels=notification&level=time-sensitive
 ⚠ Warning
 
 An invalid value is rejected with `400` before the webhook is processed - an unknown `channels` surface, a `priority` that isn't an integer `0`\-`10`, or a `level` outside the four allowed values. Fix the URL rather than retrying.
+
+_Requires PushWard iOS app 1.17.0 or later._
+
+### Acknowledged alerts
+
+With `ack=1`, the push for a new alert repeats until someone taps **Acknowledge** on one of their devices, or until `ack_expire` runs out. The routes that send alerts take it: Grafana, Uptime Kuma, Gatus, Komodo, TrueNAS (through its own URL, below) and the alerts of the [universal webhook](https://pushward.app/docs/integrations/universal-webhook#overrides). Only that push repeats. Resolved notifications, passive ones and the other providers' notifications go out as before, and `channels=activity` sends no push at all.
+
+Example: repeat Uptime Kuma alerts until acknowledged 
+
+```
+https://relay.pushward.app/uptimekuma?ack=1&ack_repeat=60
+```
+
+-   The resolve webhook stops the repeats: Grafana with nothing left firing in the group, Uptime Kuma UP, Gatus resolved, a Komodo condition resolved, the TrueNAS clear, a universal webhook alert clearing. The relay stops them first and sends the resolved notification after, so the remaining repeats do not land on top of it. The resolve has to reach a URL with `ack=1` as well, which it does when the service posts both to the same URL.
+-   The relay stops Grafana repeats per alert name. With a contact point that groups by instance or folder, one group resolving also stops the repeats of another group of the same alert that is still firing.
+-   Komodo events that never resolve (a failed build, a stopped container) repeat until someone acknowledges them or they expire. With `ack=1` they are keyed on the condition (target and alert type), so the next event of the same condition replaces the repeats of the one before instead of taking another of the 25.
+-   An account can have at most 25 repeating alerts at once, shared with everything else that sends acknowledged notifications with your keys. When it is full, or the server refuses the acknowledge for another reason, the relay sends the alert once without repeats, so it still arrives.
+-   An `ack` other than `1` or `0`, an `ack_repeat` or `ack_expire` that is not an integer in its range or comes without `ack=1`, and `ack=1` with `level=passive` are a `400`.
+-   A self-hosted relay needs version 0.17.0 or later.
+
+TrueNAS cannot use query parameters: it appends `/v2/alerts` to the API URL it is given, so a query string never arrives as one. To repeat its alerts, set the **API URL** of its OpsGenie alert service to the URL below. Each alert then repeats every 5 minutes for up to an hour, until it is acknowledged or TrueNAS clears it.
+
+TrueNAS API URL for acknowledged alerts 
+
+```
+https://relay.pushward.app/truenas/ack
+```
+
+How the button, the repeats and their limits work is covered on the [acknowledged alerts](https://pushward.app/docs/notifications/acknowledge) page.
 
 ## Setup
 
@@ -3925,6 +5030,18 @@ Example: notifications only, time-sensitive
 https://relay.pushward.app/?source=alertmanager&channels=notification&level=time-sensitive
 ```
 
+_Requires PushWard iOS app 1.17.0 or later._
+
+`ack=1` makes the push of an alert repeat until someone acknowledges it, with `ack_repeat` and `ack_expire` setting the timing as on the provider routes. It applies to the events that open an alert card, also when `channels=notification` keeps the card closed, and the alert clearing stops the repeats. Progress cards and plain notifications are sent once, as before. The details, the 25-alert limit and the `400`s are under [acknowledged alerts](https://pushward.app/docs/integrations/relay#ack) on the Relay page.
+
+Example: repeat alerts until acknowledged 
+
+```
+https://relay.pushward.app/?source=alertmanager&ack=1&ack_repeat=120
+```
+
+Like everything sent through the relay, these notifications are not [end-to-end encrypted](https://pushward.app/docs/integrations/relay#encryption).
+
 ## Responses
 
 | Status | Meaning |
@@ -4014,6 +5131,40 @@ On the **Configuration** page (Admin only) you set:
 -   **History window and poll interval** - how far back to backfill and how often to refresh while firing
 -   **Also send a push notification** - off by default; sends a normal push alongside the quiet timeline when an alert fires and when it resolves, with a **Notification priority** of Silent, Normal, or Critical (Critical needs the critical-alert entitlement on your account, otherwise it falls back to time-sensitive). Plugin 0.6.0+
 -   **Widgets** - the widget definitions described below
+
+_Requires PushWard iOS app 1.17.0 or later._
+
+### Repeat until acknowledged
+
+Plugin 0.10.0 adds **Repeat until acknowledged** under **Also send a push notification**. It is off by default. With it on, the firing push gets an **Acknowledge** button and comes back every **Repeat every** seconds until someone taps it on one of their devices, or until **Stop repeating after** runs out. When the alert resolves, the plugin stops the repeats before the resolved push goes out, and ending the activity from the **Activities** page stops them too.
+
+| Setting | Default | Range |
+| --- | --- | --- |
+| Repeat until acknowledged | Off | \-- |
+| Repeat every | 300 seconds | 30 to 3600 seconds |
+| Stop repeating after | 3600 seconds | 60 to 10800 seconds |
+
+-   A Silent push never alerts, so it cannot repeat: the switch is greyed out when the notification priority is Silent.
+-   Turning the switch off does not stop repeats that are already running. Those stop when someone acknowledges them or when they expire.
+-   An account can have at most 25 repeating notifications at once, counting everything that sends them with your keys. When it is full, or the server refuses the acknowledge for another reason, the plugin sends the alert once without repeats, and the delivery log shows `ack refused` with the reason.
+
+How the button, the repeats and their limits work is covered on the [acknowledged alerts](https://pushward.app/docs/notifications/acknowledge) page.
+
+### End-to-end encryption
+
+Plugin 0.10.0 can encrypt the title, subtitle and body of the alert pushes it sends, so PushWard only stores and forwards an envelope it cannot open. Your devices open it with the same key.
+
+1.  In the PushWard app (1.17.0 or later), open **Settings > End-to-End Encryption**, create a key and copy it.
+2.  Paste the 64-character key into **End-to-end encryption key** on the plugin's **Configuration** page and save. The page shows the Key ID in use, which should match the one the app shows next to the key.
+
+The test notification on the **Connect** page is encrypted as well and reports the Key ID it used. To go back to unencrypted pushes, press **Reset** next to the key and save.
+
+-   PushWard can still read the notification level, the Live Activity the push links to, its collapse id and the tag of a repeating push. The link, collapse id and tag are hashes, not the alert name.
+-   The timeline Live Activity is not encrypted, and it carries the alert name and summary. The key keeps the alert text out of your notification history, not out of PushWard entirely.
+-   A key that does not work never sends the alert text readable. The push still goes out, without its text: "Grafana alert firing" (or "resolved") and "Encryption key invalid, check the PushWard plugin settings". The plugin's **Configuration** page shows what is wrong with the key.
+-   An integration key that belongs to an [organization](https://pushward.app/docs/teams) cannot send encrypted notifications. From plugin 0.10.1 the push then goes out without its text, as it does for a key that does not work.
+
+What exactly is covered, and what a device without the key shows, is on the [end-to-end encryption](https://pushward.app/docs/notifications/encryption) page.
 
 ### Widget Engine
 
@@ -4358,6 +5509,58 @@ Ignore, and no answer within the hour, both leave the door as it is. The respons
 
 How recording works, and its limits, is covered on the [notification answers](https://pushward.app/docs/notifications/answers) page.
 
+_Requires PushWard iOS app 1.17.0 or later._
+
+## Acknowledged notifications
+
+For alerts that must not be missed (a leak, an alarm, a door left open), integration 0.51.0 and later take `acknowledge` on `pushward.send_notification`: PushWard re-sends the push until someone answers it on one of their devices, or until it expires. `acknowledge: true` repeats every minute for an hour; an object sets `repeat_seconds` (30-3600), `expire_seconds` (60-10800) and `action_title`. Any tap on an action without a `url` that does not open the app (`foreground` off) counts, and when the notification has none, PushWard adds an Acknowledge button. An acknowledged send without a `collapse_id` gets a random one, so if Home Assistant retries the request, the retry replaces the first alert instead of repeating next to it. Repeats do not count toward your quota, and at most 25 can be repeating at once.
+
+```
+- action: pushward.send_notification
+  data:
+    title: "Water leak"
+    body: "Sensor under the kitchen sink"
+    level: time-sensitive
+    acknowledge:
+      repeat_seconds: 120
+      action_title: "On it"
+    tags: [leak]
+  response_variable: sent
+```
+
+With a response requested, the service returns the `receipt` next to `notification_id`. `tags` and `callback_url` need `acknowledge`. `callback_url` gets a signed `POST` when the notification is acknowledged or expires, and it has to be a public https URL: PushWard cannot reach `homeassistant:8123` or anything else on your LAN, so for a webhook trigger use the Home Assistant Cloud URL.
+
+`pushward.cancel_notifications` stops the repeats, for one `notification_id` or for every active notification with a `tag`. It reaches only notifications sent with this integration's key, and no callback is sent for them.
+
+```
+- alias: Leak cleared, stop nagging
+  triggers:
+    - trigger: state
+      entity_id: binary_sensor.kitchen_leak
+      to: "off"
+  actions:
+    - action: pushward.cancel_notifications
+      data:
+        tag: leak
+```
+
+Receipts, callbacks and their signature are covered on the [acknowledged alerts](https://pushward.app/docs/notifications/acknowledge) page.
+
+## End-to-end encryption
+
+Integration 0.51.0 and later can seal the title, subtitle, body and url of every notification they send, so PushWard only stores and forwards an envelope it cannot open. Your devices open it with the same key.
+
+1.  In the PushWard app (1.17.0 or later), open **Settings > End-to-End Encryption**, create a key and copy it.
+2.  In Home Assistant, open **Settings > Devices & Services > PushWard > Configure** and paste it. The form shows its Key ID, which should match the one in the app.
+
+The form never shows the stored key: leaving the field empty keeps the key in use, pasting another one replaces it, and **Remove the encryption key** turns encryption off. An `hlk_` integration key pasted there is refused, and an integration key that belongs to an [organization](https://pushward.app/docs/teams) cannot send encrypted notifications at all: to-do reminders sent with one then raise a repair issue in Home Assistant instead of failing quietly.
+
+-   `pushward.send_notification` and to-do reminders are sealed whether they go out now or are scheduled. Notifications scheduled before you set or change the key go out the way they were queued.
+-   The server cannot check sealed text, so the integration does: an empty title or body, a blocked url scheme, or text too long to encrypt (about 2.2 KB for title, subtitle, body and url together) fails the action call. To-do reminders are cut to fit instead, the description first and then the title.
+-   Diagnostics leave the key out and show only its Key ID.
+
+Everything else, Live Activities and widgets included, stays readable to PushWard. What exactly is covered, and what a device without the key shows, is on the [end-to-end encryption](https://pushward.app/docs/notifications/encryption) page.
+
 ## To-do reminders
 
 A tracked to-do list turns the due dates on a Home Assistant to-do list into PushWard reminders. Add one under **Settings > Devices & Services > PushWard > Add tracked to-do list** and pick any `todo` entity, such as a Local To-do list. Every open item with a due date gets a [scheduled notification](#scheduled-notifications): the item's title is the push title, and its description is the body (the list name when it has no description).
@@ -4539,6 +5742,29 @@ Create the widget once, from the app or with `command: widget create --template 
 
 Email only goes to addresses you have [verified in the app](https://pushward.app/docs/email).
 
+_Requires PushWard iOS app 1.17.0 or later._
+
+### Repeat until acknowledged
+
+With CLI 1.4.0, which `@v1` follows, `ack: true` sends the notification again until someone acknowledges it on one of their devices or it expires; `ack-repeat`, `ack-expire` and `ack-title` set how. Add `wait` and the step waits for the acknowledgement. `tags` let a later step stop it with `command: receipt cancel --tag ...`, and `callback-url` gets a signed `POST` when it ends. See [Acknowledged Alerts](https://pushward.app/docs/notifications/acknowledge).
+
+```
+- uses: mac-lucky/pushward-action@v1
+  if: failure()
+  with:
+    token: ${{ secrets.PUSHWARD_TOKEN }}
+    title: ${{ github.repository }} deploy failed
+    body: Production is on the previous release until someone looks.
+    level: time-sensitive
+    ack: true
+    ack-repeat: 5m
+    tags: deploy-prod
+```
+
+### Encrypted notifications
+
+Pass the encryption key from the app as `e2e-key`, from a secret, and set `encrypt: true` next to it so a missing secret fails the step instead of sending readable text. With `encrypt: true`, a command that cannot encrypt (anything but `notify`, `notification send` and `schedule create`) fails the step too. GitHub prints a step's inputs at the top of its log, so for text that must stay private, write the body to a file in an earlier step and pass `json: '@body.json'`. See [End-to-End Encryption](https://pushward.app/docs/notifications/encryption#github-action).
+
 ### Inputs
 
 `token` is the only required input. `command` takes any pushward command with its flags (the [CLI page](https://pushward.app/docs/api/cli) lists them); the other inputs are shortcuts for the common flags. An input the command has no use for is ignored with a warning.
@@ -4566,6 +5792,14 @@ Email only goes to addresses you have [verified in the app](https://pushward.app
 | `json` | Request body as JSON. Inputs and fields are applied on top of it. | \-- |
 | `api-url` | API base URL | \-- |
 | `fail-on-error` | Fail the step when the call fails. `false` turns the error annotation into a warning. | `true` |
+| `ack` | Repeat the notification until someone acknowledges it or it expires. With `wait`, the step waits for the acknowledgement. | \-- |
+| `ack-repeat` | How often it repeats, 30s to 1h. Implies `ack`. | `1m` |
+| `ack-expire` | When it stops repeating, 1m to 3h. Implies `ack`. | `1h` |
+| `ack-title` | Title of the acknowledge button. Implies `ack`. | `Acknowledge` |
+| `tags` | Tags to cancel it by, one per line | \-- |
+| `callback-url` | https URL that gets a signed `POST` when it is acknowledged or expires | \-- |
+| `e2e-key` | End-to-end encryption key from the app (64 hex characters). Pass it from a secret. | \-- |
+| `encrypt` | Fail the step instead of sending readable text when no encryption key is set, or when the command cannot encrypt (only `notify`, `notification send` and `schedule create` can) | \-- |
 
 ⚠ Warning
 
@@ -4908,8 +6142,50 @@ Open **Settings -> PushWard** (in the **User Utilities** row). On the **Settings
 | Track parity / appdata backup / mover / VM backup / UPS | Per-source toggles for the Live Activities above | `On` |
 | Poll interval | How often the monitor checks state | `15s` |
 | Activity priority | 0-10, used when PushWard evicts to make room for higher-priority activities | `5` |
+| Repeat alerts until acknowledged | Repeat every notification that arrives as an Unraid alert until you [acknowledge it](#acknowledge) | `Disabled` |
+| Repeat every (seconds) | Time between repeats, 30-3600 | `300` |
+| Stop repeating after (seconds) | How long an alert nobody acknowledges keeps repeating, 60-10800 | `3600` |
+| End-to-end encryption key | Optional. The key from the PushWard app that turns on [end-to-end encryption](#encryption) | \-- |
 
 Click **Apply**, then use the test buttons to confirm each path. The Settings tab shows live status - whether the key is valid, the subscription is active, and the monitor is running. Values are saved under `/boot/config/plugins/pushward-unraid/` and survive reboots and plugin upgrades. The **Activities** tab lists the current Live Activities and lets you end them.
+
+_Requires PushWard iOS app 1.17.0 or later._
+
+## Repeat alerts until acknowledged
+
+Plugin 2026.10.08 and later can repeat an alert until someone takes notice. It is off by default. Set **Repeat alerts until acknowledged** to **Enabled** and every notification that arrives as an Unraid alert comes back every **Repeat every** seconds (300 by default, 30 to 3600) until you tap **Acknowledge** on one of your devices, or until **Stop repeating after** runs out (3600 by default, 60 to 10800). Warnings and info notices never repeat. The test notification is sent as an alert, so it is an easy way to try it.
+
+-   When a later notification for the same event is not an alert, such as Unraid's notice that a disk returned to normal, the plugin stops that event's repeats before sending it, so the remaining repeats do not cover the good news. The repeats of other events carry on.
+-   Notifications sent without an event name (Unraid's `notify` without `-e`) are grouped by their subject instead, so each subject counts as one event (2026.10.08a and later).
+-   Turning the setting off does not stop repeats that are already running. Those stop when someone acknowledges them or when they expire.
+-   Each repeating alert is tagged `unraid-<server name>`, lowercased with dashes. The [CLI](https://pushward.app/docs/api/cli) can stop all of them at once, as long as it uses the same API key as the plugin.
+-   An account can have at most 25 repeating alerts at once. When it is full, or PushWard refuses the acknowledge for another reason, the plugin sends the alert once as an ordinary notification rather than lose it.
+
+Stop the repeats from the CLI 
+
+```
+pushward receipt cancel --tag unraid-tower
+```
+
+How the button, the repeats and their limits work is covered on the [acknowledged alerts](https://pushward.app/docs/notifications/acknowledge) page.
+
+## End-to-end encryption
+
+With a key set, plugin 2026.10.08 and later encrypt the title, subtitle, body and link of every notification on the Unraid server itself before it is sent. PushWard stores and forwards an envelope it cannot open, and your devices decrypt it with the same key.
+
+1.  In the PushWard app (1.17.0 or later), open **Settings > End-to-End Encryption**, create a key and copy it.
+2.  Paste it into **End-to-end encryption key** and click **Apply**. The status cards show its Key ID, which should match the one in the app.
+
+The page never shows the stored key: leaving the field empty keeps it, pasting another one replaces it, and **Remove key** turns encryption off. An `hlk_` API key pasted there is refused.
+
+-   PushWard can still read the level, the server name, the timestamp and the importance, the name of the Live Activity a notification links to (such as `tower-array`), and the repeat tags when repeating is on, which carry the server name. The event name is not sent readable. Repeats of one event still replace each other's banner because they share an identifier made from it, and from 2026.10.08a that identifier is derived from your encryption key, so it cannot be turned back into the event name.
+-   A link is encrypted only as a full `http://` or `https://` address. A link that is a web UI path gets the server's web UI address in front of it (the **Unraid web UI URL** setting, or the address Unraid detects), and is left out when that is unknown.
+-   The encrypted text has to fit in about 2.2 KB, so a long message is shortened, the body first.
+-   Live Activities (parity, mover, backups, UPS) and widgets are not encrypted, so the jobs they track are visible to PushWard either way.
+-   If the key is not valid, or PHP on the Unraid server has no AES-256-GCM, notifications still go out but without their details ("Unraid alert on Tower"). The system log says why, and the encryption card on the **Settings** tab turns red.
+-   An API key that belongs to an [organization](https://pushward.app/docs/teams) cannot send encrypted notifications. From 2026.10.08a the plugin then sends the alert without its text, as it does for a key that is not valid.
+
+The key is saved with the rest of the settings on the flash drive. What exactly is covered, and what a device without the key shows, is on the [end-to-end encryption](https://pushward.app/docs/notifications/encryption) page.
 
 ## Logs
 
@@ -5154,6 +6430,8 @@ A key can also be limited to specific activity slugs (`activity_slugs`) and widg
 
 Keys created before permission levels existed keep exactly the access they had. The older fields are still returned and accepted. In responses, `scope` is `activity:<level>`, and `notifications` is `true` at `send` or above, `widgets` at `write` and `emails` at `send`. In a create or update, `true` means the resource's highest level and `false` means `none`; send either those fields or `permissions`, not both.
 
+Keys of an [organization](https://pushward.app/docs/teams) are made in its console and can also be limited to some groups and device tags: they then send only inside them and see only the activities sent inside them ([details](https://pushward.app/docs/teams#limited-keys)).
+
 ## Creating scoped keys
 
 The default key has every resource at its highest level, which is all most integrations need. To limit a service to what it uses, create a dedicated key:
@@ -5166,6 +6444,16 @@ The default key has every resource at its highest level, which is all most integ
 _Requires PushWard iOS app 1.16.0 or later._
 
 The app sets a level for each resource, with presets such as **Notifications only**, and can limit a key to widget slugs and give it an expiry.
+
+  ![Creating a key named Grafana alerts from the Notifications only preset - activities, widgets and emails set to No access, notifications to Send only - with an expiry date set.](https://pushward.app/_app/immutable/assets/key-create-540.Bg71BOOh.jpg)
+
+  ![An existing key with activities at Read & update, notifications at Send & schedule and widgets at Read & write, limited to the widgets cpu and disk-\*, with an expiry date.](https://pushward.app/_app/immutable/assets/key-detail-540.CvURHFuy.jpg)
+
+Tap a key to change its levels, slug limits or expiry later; each change saves right away. The default key's levels, slug limits and expiry stay fixed.
+
+_Requires PushWard iOS app 1.17.0 or later._
+
+The default key is not listed in **Manage Keys**: it always has every resource at its highest level, and the only change it takes is a roll, from **Roll Key** under **Settings -> Integration Key**.
 
 The default key can also create keys over the API (`POST /integrations/keys`, [pushward key create](https://pushward.app/docs/api/cli)), for example a notifications-only key for an alerting bridge:
 
@@ -5275,6 +6563,7 @@ Create a new activity. Starts in \`ended\` state. All user devices are automatic
 | `ended_ttl` | integer | No | Seconds after `ended` transition before server auto-deletes the activity |
 | `stale_ttl` | integer | No | Seconds of inactivity while `ongoing` before server auto-ends the activity |
 | `dismissal_ttl` | integer | No | Seconds after `ended` before the Live Activity is removed from the Lock Screen. `0` removes it immediately; max `14400` (4h, the iOS ceiling). When unset, removal follows `ended_ttl` - see [Lock Screen dismissal](#dismissal) |
+| `target` | object | No | Organization keys only: who in the organization gets it, as `groups`, `tags` and `members`. Re-POSTing an existing slug without it keeps the stored target. See [Teams](https://pushward.app/docs/teams#target). |
 
 Example 
 
@@ -5439,6 +6728,7 @@ Partial update using RFC 7396 JSON Merge Patch semantics. State transitions auto
 | `content` | object | No | Partial template content. Fields present overwrite stored values; fields set to `null` clear them; absent fields are preserved. See [Live Activities](https://pushward.app/docs/live-activities). |
 | `priority` | integer | No | Update eviction priority (0-10). Also drives APNs `relevance-score`, so higher-priority activities are ordered ahead of others on the iOS Lock Screen and Dynamic Island. |
 | `sound` | string | No | Optional Live Activity alert sound. Plays on Lock Screen and Dynamic Island and marks the push `time-sensitive` so it breaks through Focus modes. Request-scoped (not persisted) and ignored on `ended` transitions. One of `default`, `chime`, `alert`, `success`, `warning`, `bell`, `ding`, `buzz`, `notification`. |
+| `target` | object or null | No | Organization keys only: an object replaces who gets the activity, `null` sends it back to everyone the routing rules allow, and leaving it out keeps it. Devices that lose it end it; devices that gain it start it. See [Teams](https://pushward.app/docs/teams#target). |
 
 ### Merge-patch semantics
 
@@ -5731,10 +7021,10 @@ Match on the stable `code` field - not the human-readable `detail` string (rewor
 | --- | --- |
 | `400` | Malformed JSON or wrong shape. Semantic validation now uses `422`. |
 | `401` | Missing or invalid token |
-| `403` | Integration key not allowed for this activity, or its `activities` level is too low |
-| `404` | Activity not found |
+| `403` | Integration key not allowed for this activity, or its `activities` level is too low, or an organization key limited to some groups and tags sending outside them |
+| `404` | Activity not found, also for an activity outside the groups and tags of a limited organization key |
 | `409` | Conflict - e.g. activity limit reached or demo cooldown active. Pairs with a `Retry-After` response header and a `retry_after_ms` extension. |
-| `422` | Unprocessable: semantic validation failure (e.g. arming `alarm: true` without `end_date`, or `POST /notifications` referencing an unknown `activity_slug`). |
+| `422` | Unprocessable: semantic validation failure (e.g. arming `alarm: true` without `end_date`, `POST /notifications` referencing an unknown `activity_slug`, or a `target` that names nothing or an unknown group). |
 | `429` | Distinguish the cases via the `code` field (`rate_limit.exceeded`, `quota.exceeded`, or `answer_wait.limit_exceeded` on a long-poll read). See the [code table below](#known-codes) for per-mode contracts and retry semantics. |
 
 ### Known `code` Values
@@ -5747,9 +7037,18 @@ Match on the stable `code` field - not the human-readable `detail` string (rewor
 | `permission.free_recipient_limit_exceeded` | `403` | The activity owner already has the maximum number of free recipients. See [sharing](https://pushward.app/docs/sharing#who-needs-premium) for the policy. |
 | `permission.editor_requires_paid_recipient` | `403` | Editor access requires the recipient to have an active subscription - returned when granting editor rights to (or upgrading) a free recipient. |
 | `permission.free_share_limit_exceeded` | `403` | The free plan's concurrent shared-activity limit was reached - the recipient must leave another shared activity or upgrade to join more. |
+| `integration_key.target_denied` | `403` | An organization key limited to some groups and tags sent outside them, cleared a target, or tried to create a slug an activity outside them already holds. See [Teams](https://pushward.app/docs/teams#limited-keys). |
+| `org.target_unavailable` | `422` | A `target` sent with a personal key; only organization keys can target. |
+| `org.target_invalid` | `422` | The `target` names nothing or a member by something other than a user id, or (on `PATCH`) more than 20 groups, 20 tags or 100 members. |
+| `org.target_unknown` | `422` | The `target` names groups, tags or members the organization does not have; `detail` lists them. |
 | `rate_limit.exceeded` | `429` | IP rate limit hit - back off using `Retry-After`. |
 | `answer_wait.limit_exceeded` | `429` | Too many long-poll reads (`?wait=` on `GET /activities/{slug}` or `GET /notifications/answers/{id}`) open at once for the account. Retry shortly, or read without `wait`. |
 | `quota.exceeded` | `429` | Free-tier monthly quota exhausted. The Problem Details body includes `kind` (`"notifications"`, `"live_activity_updates"`, `"widget_updates"`, or `"emails"`), `used`, `limit`, and `reset_at` (RFC 3339 UTC, the start of next calendar month). The `Retry-After` header gives seconds until `reset_at`. Upgrading the user's plan clears the quota immediately - retrying before `reset_at` on the free tier will keep failing. |
+| `notification.encrypted_too_large` | `422` | An end-to-end encrypted notification whose push, with its other fields, would exceed 4 KB. See [Encryption limits](https://pushward.app/docs/notifications/encryption#limits). |
+| `notification.encryption_unavailable` | `422` | `encrypted` sent with an organization key; organizations cannot send encrypted notifications yet. |
+| `notification_receipt.limit_exceeded` | `409` | 25 acknowledged notifications are already active for the account (or organization). See [Acknowledged Alerts](https://pushward.app/docs/notifications/acknowledge). |
+| `notification_receipt.not_found` | `404` | No receipt for that id: the notification was not sent with `acknowledge`, was sent by another key, or finished more than 7 days ago. |
+| `notification_receipt.disabled` | `422` | Acknowledged notifications are switched off on the server for now. Send without `acknowledge` or retry later. |
 
 #### Free-Tier Quota Response Example
 
@@ -5792,6 +7091,13 @@ Add the server with one command. OAuth runs interactively the first time the age
 claude mcp add --transport http pushward https://mcp.pushward.app/mcp
 ```
 
+Or install the PushWard plugin, which adds the same server together with the agent skill below, then run `/mcp` and sign in:
+
+```
+/plugin marketplace add mac-lucky/pushward-mcp
+/plugin install pushward@pushward
+```
+
 ## Connect from other clients
 
 Any MCP client that supports remote servers over OAuth - Claude Desktop, the Claude apps, and others - can connect by adding a remote (custom) connector pointed at the endpoint below:
@@ -5812,6 +7118,16 @@ Get your integration key from the iOS app's settings screen. See [Authentication
 
 Create a dedicated integration key for the MCP server instead of reusing your default key. Give it only the permissions the agent needs (for example notifications at `send`), and an expiry, so you can revoke it independently.
 
+## Agent skill
+
+The tools tell an agent what it can call; the `pushward-mcp` skill tells it when. With it, "ping me when the migration finishes" becomes one notification at the end instead of one per step, an approval waits on `wait_for_answer` instead of a polling loop, every Live Activity it starts gets ended, failures included, and it leaves the integration key tools alone unless you ask. The plugin above includes it; for any other agent that reads `SKILL.md` files:
+
+```
+npx skills add mac-lucky/pushward-mcp --skill pushward-mcp
+```
+
+Agents that run shell commands rather than MCP tools have a twin skill for the [CLI](https://pushward.app/docs/api/cli).
+
 ## What you can do
 
 The remote server exposes tools covering the full API surface:
@@ -5824,6 +7140,14 @@ The remote server exposes tools covering the full API surface:
 -   **Health** - liveness and readiness checks for the API.
 -   **Test workflows** - composite helpers that run a full lifecycle (for example, create an activity, push a few updates, then end it) in one call.
 -   **Reference** - built-in tools that return the PushWard docs bundle and integration best practices, so the agent grounds its calls in the real API.
+
+With a key from an [organization](https://pushward.app/docs/teams), `create_activity`, `update_activity`, `create_notification`, `create_scheduled_notification`, `create_widget` and `update_widget` also take a `target` (groups, device tags or members) that narrows who gets the send, and `update_activity` and `update_widget` take `clear_target` to send an activity or widget back to everyone. `send_email` with an organization key reaches only the organization's own recipients, which it registers through the API (see [Email](https://pushward.app/docs/email#organizations)); no tool adds them.
+
+_Requires PushWard iOS app 1.17.0 or later._
+
+From pushward-mcp 1.16.0, `create_notification` and `create_scheduled_notification` take `acknowledge`, `tags` and `callback_url` for [acknowledged alerts](https://pushward.app/docs/notifications/acknowledge), which repeat until someone [acknowledges them](https://pushward.app/docs/notifications/acknowledge#button). Give `acknowledge` at least one field, such as `{"repeat_seconds": 60}`; an empty object is dropped. `get_notification_receipt`, `wait_for_ack` (up to 10 minutes), `cancel_notification_receipt` and `cancel_notification_receipts_by_tag` follow and stop them.
+
+[End-to-end encryption](https://pushward.app/docs/notifications/encryption) needs the server on your own machine: run pushward-mcp 1.16.0 or later over stdio (or in single-user http mode) with `PUSHWARD_E2E_KEY` set to the key from the app, and the notification tools seal the title, subtitle, body and url before they leave the process. The hosted endpoint holds no key and sends plain text.
 
 ℹ Info
 
@@ -5867,6 +7191,16 @@ Or grab an archive from [Releases](https://github.com/mac-lucky/pushward-cli/rel
 docker run --rm -e PUSHWARD_API_TOKEN ghcr.io/mac-lucky/pushward-cli notify --title Hi --body There
 ```
 
+## Agent skill
+
+Coding agents such as Claude Code, Codex and Cursor can drive the CLI for you. The `pushward` skill teaches them which command fits "ping me when the tests pass", "ask me before you push" or "show the migration on my lock screen", to end every Live Activity they start, and to keep your key out of the chat:
+
+```
+npx skills add mac-lucky/pushward-cli --skill pushward
+```
+
+The agent uses the key the CLI already has, so run `pushward auth login` yourself first. A key limited to `agent-*` slugs (see [Creating scoped keys](https://pushward.app/docs/api/authentication#scoped-keys)) keeps it away from your other activities. If your agent talks to the [MCP server](https://pushward.app/docs/api/mcp) instead, use that page's skill.
+
 ## Key
 
 Copy an integration key from the app, then either export it or store it once:
@@ -5899,6 +7233,32 @@ answer=$(pushward notify --title "Deploy to prod?" --body v2.4.0 \
 ```
 
 Nobody answering in time exits `7`. `pushward notification answer <id> --wait 5m` picks up the same answer later. How answers are recorded is covered in [Answers](https://pushward.app/docs/notifications/answers).
+
+_Requires PushWard iOS app 1.17.0 or later._
+
+### Repeat until acknowledged
+
+From CLI 1.4.0, `--ack` on `notify` and `schedule create` sends the notification again until someone acknowledges it on one of their devices or it expires: every minute for an hour, unless `--ack-repeat` (30s to 1h) and `--ack-expire` (1m to 3h) say otherwise. Repeats are free. `--tag` and `--callback-url` go with it, `notify --ack --wait` blocks until it is acknowledged, and `pushward receipt secret` prints the secret callbacks are signed with.
+
+```
+pushward notify --title "db-1 down" --body "Primary unreachable" --level time-sensitive --ack --tag db-1
+pushward receipt 4242 --wait 10m     # exit 7 if it expires, or 10m pass, first
+pushward receipt cancel --tag db-1   # stops what this key sent with the tag
+```
+
+Details, limits and callback verification: [Acknowledged Alerts](https://pushward.app/docs/notifications/acknowledge).
+
+### End-to-end encryption
+
+From CLI 1.4.0, with an encryption key from `PUSHWARD_E2E_KEY` or the config file, `notify`, `notification send` and `schedule create` seal the title, subtitle, body and url before the request leaves your machine. `--no-encrypt` sends one in the clear, `--encrypt` fails when no key is set, and `pushward api` never encrypts. `e2e import --force` replaces a different stored key.
+
+```
+pbpaste | pushward e2e import   # the key from the app's Settings > End-to-End Encryption
+pushward e2e key-id             # compare with the Key ID in the app
+pushward e2e generate --save    # or create one here and add it in the app
+```
+
+What is encrypted, the envelope format and its limits: [End-to-End Encryption](https://pushward.app/docs/notifications/encryption).
 
 ## Live Activities
 
@@ -5947,6 +7307,8 @@ pushward email send --to ops@example.com --subject "Nightly report" --text-file 
 ```
 
 See [Widgets](https://pushward.app/docs/widgets), [Scheduled notifications](https://pushward.app/docs/notifications/scheduled) and [Email](https://pushward.app/docs/email) for what each field does. Email only goes to recipients you have verified in the app.
+
+With a key from an [organization](https://pushward.app/docs/teams), `notify`, `schedule create`, `activity create`, `activity start` and `activity update` take `--target-groups`, `--target-tags` and `--target-members` (CLI 1.3.0 and later), and `activity update --no-target` clears the target. `widget create` and `widget update` take the same flags from CLI 1.5.0, with `widget update --no-target`. Organization email goes only to the organization's own recipients, which it registers through the API (see [Email](https://pushward.app/docs/email#organizations)); the CLI has no command for that, `pushward api` can call it.
 
 ## Request bodies
 
@@ -6455,6 +7817,23 @@ Priority is an integer from **0 to 10** (0 = lowest, 10 = highest).
 
 See [Scheduled Notifications](https://pushward.app/docs/notifications/scheduled) and [Notification Answers](https://pushward.app/docs/notifications/answers).
 
+_Requires PushWard iOS app 1.17.0 or later._
+
+### Acknowledged and Encrypted Notifications
+
+| Limit | Value |
+| --- | --- |
+| Active acknowledged notifications per account (an organization's sends count against the organization) | **25** |
+| Repeats per acknowledged notification (they do not count toward the notification quota) | **50** |
+| `acknowledge.repeat_seconds` | 30 - 3,600 seconds (default 60) |
+| `acknowledge.expire_seconds` | 60 - 10,800 seconds (default 3,600) |
+| `tags` per notification | **10**, each 1 - 64 printable ASCII characters without spaces |
+| Finished receipts readable for | **7** days |
+| Callback delivery attempts | **7** (retries after 1, 2, 4, 8, 16 and 32 minutes), 10 seconds each |
+| `encrypted` envelope | 3,072 characters (about 2,266 bytes of title, subtitle, body and url) |
+
+See [Acknowledged Alerts](https://pushward.app/docs/notifications/acknowledge) and [End-to-End Encryption](https://pushward.app/docs/notifications/encryption).
+
 ### Field Length Limits
 
 | Field | Max Length |
@@ -6641,13 +8020,13 @@ Each bridge has its own README with full configuration and per-event behavior.
 | [github](./github/) | GitHub Actions workflow-run CI/CD progress (poller) | - (outbound only) | `ghcr.io/mac-lucky/pushward-github` |
 | [grafana](./grafana/) | Grafana alert timelines with Prometheus/VictoriaMetrics history + PromQL-polled iOS widgets | 8090 | `ghcr.io/mac-lucky/pushward-grafana` |
 | [sabnzbd](./sabnzbd/) | SABnzbd download + post-processing progress | 8090 | `ghcr.io/mac-lucky/pushward-sabnzbd` |
-| [relay](./relay/) | Multi-tenant webhook gateway: 20 provider routes, plus a universal route for any other JSON webhook | 8090 (+ 9090 metrics) | `ghcr.io/mac-lucky/pushward-relay` |
+| [relay](./relay/) | Multi-tenant webhook gateway: 22 provider routes, plus a universal route for any other JSON webhook | 8090 (+ 9090 metrics) | `ghcr.io/mac-lucky/pushward-relay` |
 
 Images are published to **GitHub Container Registry only** (`ghcr.io/mac-lucky/pushward-<bridge>`). A Docker Hub name is configured in CI but `push_to_dockerhub` is `false`, so no Docker Hub images are pushed.
 
 ### Relay providers
 
-The relay registers 20 provider routes across 16 provider modules (`starr` serves Radarr, Sonarr, and Prowlarr; `gitea` serves Gitea and Forgejo), plus the universal route below. Every route returns `200 {"status":"ok"}` and is wrapped by the middleware chain (per-IP rate limit -> `hlk_` auth -> per-key rate limit). Most providers create Live Activities; the exceptions are noted.
+The relay registers 22 provider routes across 16 provider modules (`starr` serves Radarr, Sonarr, and Prowlarr; `gitea` serves Gitea and Forgejo), plus the universal route below. Every route returns `200 {"status":"ok"}` and is wrapped by the middleware chain (per-IP rate limit -> `hlk_` auth -> per-key rate limit). Most providers create Live Activities; the exceptions are noted.
 
 > The relay's `/forgejo` route and the standalone [forgejo](./forgejo/) bridge cover the same service by different
 > routes: the relay takes Forgejo's terminal `action_run_*` hooks, the bridge polls the API for live per-job
@@ -6674,7 +8053,7 @@ The relay registers 20 provider routes across 16 provider modules (`starr` serve
 | Gitea | `POST /gitea` | Gitea Actions workflow-run build progress (steps) |
 | Forgejo | `POST /forgejo` | Forgejo Actions run result (generic) - for live per-job progress use the [forgejo](./forgejo/) poller bridge instead |
 | Komodo | `POST /komodo` | Resolvable conditions (server + swarm health) as Live Activities, other alerts as push notifications (HTTP Basic auth via URL userinfo) |
-| TrueNAS | `POST /truenas/v2/alerts`, `DELETE /truenas/v2/alerts/{id}` | OpsGenie-compatible alert open/clear (GenieKey auth) |
+| TrueNAS | `POST /truenas/v2/alerts`, `DELETE /truenas/v2/alerts/{id}` | OpsGenie-compatible alert open/clear (GenieKey auth); the same pair under `/truenas/ack` repeats each alert until acknowledged |
 | Universal | `POST /` | Off by default. The relay root hands a payload it recognises to that provider's route; anything else is mapped by one of 67 presets (Alertmanager, PagerDuty, GitHub, GitLab, Sentry and more) or sent as one plain notification |
 
 Auth styles differ by what each service's webhook UI allows: most providers accept `Authorization: Bearer hlk_...`; Radarr, Sonarr, Prowlarr, Bazarr, and Komodo use HTTP Basic Auth with the `hlk_` key as the **password** (username ignored); TrueNAS uses the OpsGenie `GenieKey` scheme. See the [relay README](./relay/) for per-provider setup snippets.
@@ -6763,7 +8142,7 @@ Per-provider knobs (`providers.<name>.enabled`, `priority`, `cleanup_delay`, `st
 | `bambulab` | None - connects **out** to the printer over MQTT (TLS `:8883`) |
 | `sabnzbd` | `POST /webhook` (optional `X-Webhook-Secret`), `GET /health`, `GET /ready` |
 | `grafana` | `POST /webhook` (optional `Authorization: Bearer <webhook_token>`), `GET /health`, `GET /ready` |
-| `relay` | 19 `POST` provider routes plus the TrueNAS `DELETE` (above), `GET /health`, `GET /ready`, `GET /openapi.json`, `GET /docs`; `GET /metrics` on the separate `:9090` listener |
+| `relay` | 19 `POST` provider routes plus the TrueNAS `DELETE` (above) and the TrueNAS pair again under `/truenas/ack`, `GET /health`, `GET /ready`, `GET /openapi.json`, `GET /docs`; `GET /metrics` on the separate `:9090` listener |
 
 The relay's OpenAPI 3.1 spec and interactive docs are auto-generated by [huma](https://huma.rocks/) at `/openapi.json` and `/docs`. Webhook receivers with an unset secret/token are **unauthenticated** and log a warning at startup.
 
@@ -6800,7 +8179,7 @@ pushward-integrations/
   github/          # GitHub Actions poller - standalone bridge
   grafana/         # Grafana alert timelines + widgets - standalone bridge
   sabnzbd/         # SABnzbd webhook + download tracker - standalone bridge
-  relay/           # Multi-tenant webhook gateway (PostgreSQL) - 16 provider modules, 20 routes, universal route
+  relay/           # Multi-tenant webhook gateway (PostgreSQL) - 16 provider modules, 22 routes, universal route
   .github/workflows/   # Per-bridge CI/CD + shared lint + release orchestrator
 ```
 
@@ -6958,13 +8337,16 @@ external service --POST /<provider>--> pushward-relay --REST API--> pushward-ser
 
 A service POSTs its native webhook to a per-provider route (e.g. `POST /grafana`). The relay extracts the tenant's `hlk_` key from the `Authorization` header, decodes the payload, maps the event to the PushWard activity lifecycle (create / update / two-phase end) or a one-shot push notification, and calls the [pushward-server](https://pushward.app) REST API. The server delivers via APNs to the PushWard iOS app. Per-tenant state (alert grouping, ArgoCD sync tracking, download dedup) is persisted in PostgreSQL with TTL cleanup.
 
+Relay notifications are not end-to-end encrypted. The relay never holds a user's encryption key, so the text it builds from a webhook reaches the server readable, like any other notification sent without one.
+
 ## Features
 
 - **Multi-tenant by design** - tenants are identified by their `hlk_` integration key, extracted from every request by shared auth middleware. No per-service key configuration; one relay serves many users.
-- **20 webhook routes** across **16 configurable provider blocks** (the `starr` block serves Radarr, Sonarr, and Prowlarr; the `gitea` block serves Gitea and Forgejo). See [Providers](#providers).
+- **22 webhook routes** across **16 configurable provider blocks** (the `starr` block serves Radarr, Sonarr, and Prowlarr; the `gitea` block serves Gitea and Forgejo). See [Providers](#providers).
 - **Universal webhook** - `POST /` routes a payload it recognises to its provider, and anything else to the universal route: 67 presets map documented payloads (Alertmanager, PagerDuty, GitHub, GitLab, Sentry and more) to alert or progress cards, and any other JSON becomes one plain notification. Off by default. See [Root route](#root-route-post-).
 - **Two-phase end lifecycle** - completion events send a final `ONGOING` update (so the result shows on the Dynamic Island), then `ENDED` after a short display delay. Used by ArgoCD, Radarr, Sonarr, Jellyfin, Paperless, Unmanic, Proxmox, Overseerr, Uptime Kuma, Gatus, Backrest, Gitea, Forgejo, Komodo, and TrueNAS. Grafana, Prowlarr, Bazarr, and Changedetection are fire-and-forget.
 - **Push notifications** - one-shot APNs alerts for events that don't fit a Live Activity (Grafana alerts, Bazarr subtitle downloads, Prowlarr grabs).
+- **Acknowledged alerts** - `?ack=1` makes an alert's push repeat until someone acknowledges it, and the resolve stops it. See [Acknowledged alerts](#acknowledged-alerts-ack1).
 - **Cross-provider notification threads** - Radarr/Sonarr/Overseerr/Jellyfin notifications about the same movie (TMDB id) or show (TVDB id) collapse into one iOS notification thread.
 - **PostgreSQL state store** - persistent alert grouping, sync tracking, and download dedup with a background TTL sweep every 30s.
 - **Per-tenant client pool** - LRU pool of PushWard API clients keyed by `hlk_` hash (up to 1,000 concurrent tenants), wrapped in a shared circuit breaker.
@@ -7153,6 +8535,8 @@ The key itself is only checked when the relay calls PushWard on your behalf, so 
 | POST | `/komodo` | Komodo Custom-alerter webhooks |
 | POST | `/truenas/v2/alerts` | TrueNAS OpsGenie create-alert calls |
 | DELETE | `/truenas/v2/alerts/{id}` | TrueNAS OpsGenie close-alert calls |
+| POST | `/truenas/ack/v2/alerts` | The same, with `ack=1` turned on by the path (see [TrueNAS](#truenas)) |
+| DELETE | `/truenas/ack/v2/alerts/{id}` | The same, and stops the alert's repeats first |
 | POST | `/` | Any webhook: handed to the provider that sent it, else to the universal route (see [Root route](#root-route-post-)) |
 | GET | `/health` | Liveness - returns `ok` |
 | GET | `/ready` | Readiness - `ready`, or `503` if the DB ping fails |
@@ -7194,15 +8578,18 @@ Every route requires the `hlk_` integration key. The relay accepts it two ways (
 
 ### Query parameters
 
-Append query parameters to any webhook URL to override how the relay handles that one request. They work on every route (including the TrueNAS `DELETE`), and an explicit parameter always wins over the provider's computed value and the static config. Leave them off and behavior is byte-for-byte unchanged.
+Append query parameters to a webhook URL to override how the relay handles that one request. The relay reads them on every route, and an explicit parameter always wins over the provider's computed value and the static config. Leave them off and behavior is byte-for-byte unchanged. TrueNAS can't send any: it appends `/v2/alerts` to the API URL it is given, so a query string there never arrives as one. It gets acknowledged alerts from its own path instead (see [TrueNAS](#truenas)).
 
 | Parameter | Values | Effect |
 |---|---|---|
 | `channels` | comma-separated subset of `activity`, `notification` | Restricts delivery to the listed surfaces. `channels=notification` never creates or updates a Live Activity (each event is delivered as a one-shot notification where the provider has one); `channels=activity` drops every push notification the handler would send (new and resolved) but keeps the Live Activity flow. |
 | `priority` | integer `0`-`10` | Overrides the provider's `priority` config for the activity it creates. |
 | `level` | `passive`, `active`, `time-sensitive`, `critical` | Overrides the interruption level of every notification the handler sends. |
+| `ack` | `1` or `0` | `1` makes an alert's push repeat until someone taps **Acknowledge** on it, or until `ack_expire` runs out; the resolve stops it. Grafana, Uptime Kuma, Gatus, Komodo and universal-route alerts. See [Acknowledged alerts](#acknowledged-alerts-ack1). |
+| `ack_repeat` | seconds, `30`-`3600` (default `300`) | How often the alert repeats. Needs `ack=1`. |
+| `ack_expire` | seconds, `60`-`10800` (default `3600`) | How long it keeps repeating if nobody acknowledges it. Needs `ack=1`. |
 
-An unknown `channels` value, an out-of-range or non-integer `priority`, or an invalid `level` returns `400` before the handler runs.
+An unknown `channels` value, an out-of-range or non-integer `priority`, an invalid `level`, an `ack` that is not `1`/`0`, an `ack_repeat` or `ack_expire` out of range or without `ack=1`, and `ack=1` with `level=passive` (a passive push doesn't alert, so there is nothing to repeat) return `400` before the handler runs.
 
 Example: deliver Komodo as notifications only, at priority 8, with a passive interruption level:
 
@@ -7211,6 +8598,18 @@ https://relay.pushward.app/komodo?channels=notification&priority=8&level=passive
 ```
 
 Note the asymmetry: Live-Activity-only providers (ArgoCD, Proxmox, Gitea/Forgejo, Jellyfin playback) have no one-shot notification to fall back to, so `channels=notification` suppresses their output entirely; notification-only providers (Grafana, Prowlarr, Bazarr) have no Live Activity, so `channels=activity` suppresses theirs.
+
+#### Acknowledged alerts (`ack=1`)
+
+```
+https://relay.pushward.app/uptimekuma?ack=1&ack_repeat=60
+```
+
+The push for a new alert (Grafana firing, Uptime Kuma DOWN, Gatus TRIGGERED, a Komodo condition, a TrueNAS alert, a universal-route alert card) repeats until someone taps **Acknowledge** on it or `ack_expire` runs out. Repeats don't count against the notification quota, and the server stops after 50 of them. Only that push repeats: resolved notifications, passive ones (a Komodo `OK` event) and every other provider's notifications go out as before, and so does everything with `channels=activity`, which sends no push at all.
+
+Each repeating alert is tagged `relay.<collapse id>`, the collapse id the provider already gives that alert: one per Grafana alert name, Uptime Kuma monitor, Gatus endpoint, Komodo condition or TrueNAS alias, and the card's slug on the universal route. When the alert resolves (nothing left firing in the Grafana group, Uptime Kuma UP, Gatus RESOLVED, Komodo `resolved`, the TrueNAS clear, a universal card ending), the relay cancels that tag first and sends the resolved notification after it, so a late repeat can't land on top of "Resolved". The Grafana tag follows the existing per-alertname collapse: with a contact point that groups by instance or folder, one subgroup resolving cancels the repeats of another that still fires under the same alert name. A Grafana group that changes while it still fires starts repeats again only for an alert that wasn't firing before, so one of its alerts resolving doesn't restart what someone already acknowledged. The tag is rebuilt from the resolve webhook alone, so a relay restart between the two changes nothing; the resolve has to carry `ack=1` as well, which it does when the service posts both to the same URL. The cancel waits at most 5 seconds and a failure is only logged: the resolved notification still goes out. Komodo one-shot events (build failed, container stopped, ...) never resolve, so they repeat until acknowledged or expired. With `ack=1` they are keyed on their condition (target and alert type, and a Custom alert's source) rather than on each event, so a crash loop's next event replaces the receipt of the one before instead of taking another of the 25.
+
+The server allows 25 repeating alerts per account at a time, shared with everything else that sends acknowledged notifications with your keys (the CLI, MCP server, Home Assistant integration, Grafana plugin). When it refuses the acknowledge for that or any other reason of its own (acknowledged alerts switched off on the server, an acknowledge field it rejects), the relay sends the same notification once more without it, so the alert still arrives, only without repeats; `pushward_relay_ack_fallback_total{provider,reason}` counts these. A `401`, `403`, `429` or server error is not retried this way. Two known gaps: a repeat already on its way when the cancel runs can still arrive once, and a key only cancels what it sent itself, so after moving a service to a new `hlk_` key the alerts still repeating from the old one run until they are acknowledged, expire, or the old key is revoked.
 
 ### Root route: `POST /`
 
@@ -7242,7 +8641,7 @@ Anything the relay doesn't recognise goes to the universal route, and so does a 
 https://relay.pushward.app/?source=alertmanager
 ```
 
-`channels`, `priority` and `level` pass through to whichever route handles the request.
+`channels`, `priority`, `level`, `ack`, `ack_repeat` and `ack_expire` pass through to whichever route handles the request.
 
 The relay reads the body for detection only when the request carries an `hlk_` key and a JSON `Content-Type`, declares no `Content-Length` of 1 MB or more, and comes from an IP that is still under its rate limit. A missing or `text/plain` `Content-Type` counts as JSON, because it is rewritten to `application/json` before this check. A chunked body declares no length, so it is read up to 1 MB and passed on undetected if it gets that far. A request that fails any of these goes to the universal route, which answers `401` for a missing key, `413` for a body over the limit and `429` over the rate limit; with the universal route off, it gets `404`. `pushward_relay_root_dispatch_total{route,via}` counts where requests to `/` went and why: `header` or `body` for a detected sender, `disabled`, `veto`, `none`, or `skipped` for one whose body was not inspected.
 
@@ -7842,7 +9241,9 @@ Emulates the OpsGenie alert service that TrueNAS ships with. TrueNAS opens an al
 
 **Setup:** In TrueNAS, go to **System Settings > Alert Services > Add**. Set **Type** to **OpsGenie**, **API Key** to your `hlk_` key, and **API URL** to `https://relay.pushward.app/truenas` (no trailing slash). Pick the alert **Level** to forward, then **Send Test Alert** to verify (a test flows as a real create then clear).
 
-**Limitations:** TrueNAS's OpsGenie payload carries no hostname (multi-NAS setups cannot tell boxes apart in the activity) and no severity level, so alerts render with a fixed warning style; filter what you forward using the per-service **Level** in TrueNAS. The API URL must have no trailing slash.
+**Acknowledged alerts:** set the **API URL** to `https://relay.pushward.app/truenas/ack` instead. Each alert's push then repeats every 5 minutes, for up to an hour, until someone acknowledges it, and the clear stops it (see [Acknowledged alerts](#acknowledged-alerts-ack1)). This is `ack=1` turned on by the path, at the default `ack_repeat` and `ack_expire`: TrueNAS appends `/v2/alerts` to the API URL, so it can't carry a query string.
+
+**Limitations:** TrueNAS's OpsGenie payload carries no hostname (multi-NAS setups cannot tell boxes apart in the activity) and no severity level, so alerts render with a fixed warning style; filter what you forward using the per-service **Level** in TrueNAS. The API URL must have no trailing slash and can't take [query parameters](#query-parameters).
 
 ## Development
 
@@ -9040,6 +10441,8 @@ The surfaces are independent (separate config, managers, and caches) and share o
 - **Two widget trigger modes**: `event` (state-change) or `poll` (10-3600 s interval), plus an optional
   staleness heartbeat that keeps a rarely-changing widget from greying out
 - **To-do reminders**: a push for every dated item on a to-do list, with a Done button that completes the item
+- **Acknowledged notifications** that repeat until someone answers, with tags to cancel them and an optional signed callback
+- **End-to-end encryption** of notification text with a key only your devices hold
 - **Account usage sensors**: notifications, Live Activity updates, widget updates, and emails consumed vs. plan limits, plus subscription tier
 - **Template auto-suggestion** picks the best activity template from entity domain and device class
 - **14 domain defaults**: pre-filled start/end states and a default icon per HA domain
@@ -9090,16 +10493,27 @@ Setup is UI-driven (config flow). The **only** value you enter is your integrati
 
 1. Go to **Settings > Devices & Services > Add Integration**
 2. Search for **PushWard**
-3. Paste your **integration key** (validated against `GET /auth/me`)
+3. Paste your **integration key** (validated against `GET /auth/me`; the entry is named after your account, e.g. `PushWard (Anna)`)
 
-Once the entry exists, add tracked entities and widgets through the integration's **Configure** / **Add tracked entity** / **Add tracked widget** subentry flows. The key can be replaced later via **Reconfigure**, and the integration auto-prompts for reauth if the key becomes invalid.
+Once the entry exists, add tracked entities and widgets through the integration's **Configure** / **Add tracked entity** / **Add tracked widget** subentry flows. The key can be replaced later via **Reconfigure** (a key of another account moves the entry to that account, as long as no other entry has it), and the integration auto-prompts for reauth if the key becomes invalid. Reauth only takes a key of the same account.
 
 | Setting | Required | Default | Description |
 |---------|:--------:|---------|-------------|
 | Integration key | Yes | - | PushWard key (`hlk_` prefix). Stored on the config entry; validated on setup. |
 | Server URL | No | `https://api.pushward.app` | Fixed by the integration; not shown in the UI. |
+| Encryption key | No | - | Set under **Configure**; turns on [end-to-end encryption](#end-to-end-encryption) of notification text. |
 
 Every field label and its help text is shown live in the Home Assistant config-flow UI, so the tables below are a reference, not something you need to read before setting up.
+
+### More than one account
+
+Each PushWard account gets its own entry. On a Family plan every member has their own account, so to reach someone else's iPhone they create an integration key in their PushWard app and you add the integration a second time with that key. A key for an account that already has an entry is refused.
+
+- Tracked entities, widgets and to-do lists belong to one entry and only push to that account. Add the same entity under both entries if both of you should get it.
+- Actions reach every account unless you pick one, see [Choosing the account](#choosing-the-account).
+- Each entry has its own [account sensors](#account-sensors) and its own quota.
+
+If all you want is to share Live Activities, the app can do it without a second entry. **Settings > Sharing > Create Pattern Share** with a pattern like `ha-*` gives a code the other person redeems once under **Join with Code**. The code expires after 7 days at most; the share doesn't. Every current and future activity whose slug matches reaches them, including the ones your automations end and create again. Notifications are not shared this way.
 
 ### Add a tracked entity (Live Activity)
 
@@ -9427,9 +10841,31 @@ How it stays in step:
 - After a reminder goes out, the item stays open for you to tick off. With the Done button, the integration watches for the tap for 24 hours: a long-lived request at a time for the first hour, then a quick check every 5 minutes.
 - The pairing between items and reminders is kept in Home Assistant's storage, not in the item, so notes synced to other apps stay clean. Removing the list (or the integration) cancels its pending reminders.
 
+### End-to-end encryption
+
+With an encryption key set, Home Assistant seals the title, subtitle, body and URL of every notification it sends, and PushWard only stores and forwards an envelope it cannot open. Your devices decrypt it with the same key.
+
+1. In the PushWard app (1.17 or later), open **Settings > End-to-End Encryption**, create a key and copy it.
+2. In Home Assistant, open **Settings > Devices & Services > PushWard > Configure** and paste it. The form shows its Key ID, which should match the one in the app.
+
+The form never shows the stored key: leaving the field empty keeps the key in use, pasting another one replaces it, and **Remove the encryption key** turns encryption off. An `hlk_` integration key pasted here is refused.
+
+An integration key that belongs to an organization cannot send encrypted notifications: PushWard answers every encrypted send from it with `422 notification.encryption_unavailable`, and to-do reminders refused that way raise a repair issue. Use a personal integration key, or leave encryption off for that entry.
+
+Only those four fields are encrypted. Level, sound, volume, thread and collapse ids, source, media and icon URLs, metadata, actions, typed replies and the acknowledged-alert settings (`tags`, `callback_url` and the button's `action_title`) stay readable to PushWard, which needs them to deliver the push, and Live Activities and widgets are not encrypted at all. PushWard and Apple also still see when a notification was sent and to which account.
+
+Some side effects:
+
+- `send_notification` and to-do reminders are sealed whether they go out now or are scheduled. Notifications scheduled before you set or change the key go out the way they were queued.
+- The server cannot check sealed text, so the integration does it first: an empty title or body, a blocked URL scheme, or text too long to encrypt fails the action call instead of reaching PushWard. The envelope fits about 2.2 KB of text (title, subtitle, body and URL together), well under the plain-text limits, so a long body that worked before may need trimming. Text in scripts like Hindi or Chinese takes three bytes a character, so it runs out sooner. To-do reminders are cut to fit instead, the description first and then the title.
+- A device without the key, or with an app older than 1.17, shows "Encrypted notification" in place of the text.
+- The key is stored on the config entry next to the integration key. Diagnostics leave it out and show only the Key ID.
+
+The envelope format and test vectors are described at <https://pushward.app/docs/notifications/encryption>.
+
 ## Account sensors
 
-Each config entry registers **5 sensors** under one service device named **PushWard**, fed by a coordinator that polls `GET /auth/me` every **15 minutes**. They report your account's own consumption against its plan limits (these sensors stay *unavailable* on older servers that don't return usage to integration keys):
+Each config entry registers **5 sensors** under one service device named after the entry, fed by a coordinator that polls `GET /auth/me` every **15 minutes**. They report your account's own consumption against its plan limits (these sensors stay *unavailable* on older servers that don't return usage to integration keys):
 
 | Sensor | State | Attributes |
 |--------|-------|------------|
@@ -9443,7 +10879,20 @@ On premium, uncapped resources report `limit: unlimited`, and the notifications 
 
 ## Services
 
-All services live in the `pushward` domain. There are 19 in total: the nine below plus a per-template `update_activity_<template>` for each of the 10 activity templates (and the deprecated `update_activity` alias).
+All services live in the `pushward` domain. There are 22 in total: the twelve described below plus a per-template `update_activity_<template>` for each of the 10 activity templates (and the deprecated `update_activity` alias).
+
+### Choosing the account
+
+Every action except `generate_thumbhash` takes an optional `config_entry_id` (**Account** in the UI): one entry id, or a list of them in YAML. With a single PushWard entry you never need it. With [more than one](#more-than-one-account), leaving it out does this:
+
+| Action | Without `config_entry_id` |
+|--------|---------------------------|
+| `create_activity`, `update_activity_<template>`, `end_activity`, `delete_activity`, `widget_refresh`, `delete_widget` | every account |
+| `send_notification` | every account; name one to read the response |
+| `cancel_notifications` | a `tag` is canceled on every account; a `notification_id` needs one |
+| `get_notification_answer`, `list_scheduled_notifications`, `cancel_scheduled_notification`, `send_email` | fails until you name one |
+
+Notification ids belong to the account that sent them, hence the single-account rows. `send_email` goes to the address you give it, so sending it from every account would only deliver copies. When one account fails (quota, missing permission) the others still get the call, and the action raises the first error once they are done.
 
 ### `pushward.create_activity`
 
@@ -9751,6 +11200,9 @@ Send a push notification.
 | `push` | No | Send as APNs push (default: true); when false, inbox-only |
 | `send_at` | No | Send later instead of now, at most 365 days ahead. A time without a UTC offset is read in Home Assistant's time zone |
 | `recurrence` | No | Repeat on a schedule: `{ cron, timezone, until, count }`, see below |
+| `acknowledge` | No | Re-send the push until someone acknowledges it: `true`, or `{ repeat_seconds, expire_seconds, action_title }`, see [Acknowledged notifications](#acknowledged-notifications) |
+| `tags` | No | Up to 10 labels for canceling acknowledged notifications as a group. Needs `acknowledge` |
+| `callback_url` | No | Public https URL that gets the receipt when the notification is acknowledged or expires. Needs `acknowledge` |
 
 With `send_at`, PushWard holds the notification and sends it at that time; it counts toward your notification quota when it is sent, not when you schedule it. Up to 25 can be waiting at once. Ask for a response to get the id you need to cancel it:
 
@@ -9812,6 +11264,59 @@ It returns `answered`, `status` (`answered` or `pending`), `action_id`, `text` a
     - action: cover.close_cover
       target:
         entity_id: cover.garage_door
+```
+
+#### Acknowledged notifications
+
+For alerts that must not be missed (a leak, an alarm, a door left open), `acknowledge` makes PushWard re-send the push until someone answers it. Any tap on an action without a `url` that does not open the app (`foreground` off) counts; when the notification has no such action, PushWard adds an Acknowledge button for it. The first answer stops the repeats and clears the notification from your other devices (app 1.17 or later).
+
+`acknowledge: true` uses the defaults. An object sets any of:
+
+| Key | Default | Range |
+|-----|---------|-------|
+| `repeat_seconds` | 60 | 30-3600, seconds between repeats (at most 50 are sent) |
+| `expire_seconds` | 3600 | 60-10800, after this the repeats stop and the notification counts as expired |
+| `action_title` | Acknowledge | 1-64 characters, the label of the button PushWard adds |
+
+It needs `push` and a level other than passive, and at most 25 acknowledged notifications can be repeating at once, counted across everything that sends with your account, not just Home Assistant. Repeats do not count toward your notification quota. A new acknowledged notification with the same `collapse_id` replaces an earlier one that is still repeating; one sent now without a `collapse_id` gets a random one, so a send retried after a lost response does not repeat twice. It also works with `send_at` and `recurrence`; the repeats start when the notification goes out.
+
+With a response requested, `send_notification` returns the `receipt` next to `notification_id`: `status` (`active`, `acknowledged`, `expired` or `canceled`), `repeats_sent`, `expires_at`, `tags`, and once answered `acknowledged_at`, `action_id` and, when the app reports it, the device it was answered on. `pushward.get_notification_answer` waits for the answer as usual.
+
+When PushWard refuses the acknowledge itself, most often because 25 are already repeating, a notification sent now still goes out, once and without repeats (its `tags` and `callback_url` are dropped too), and Home Assistant logs a warning. Its response has no `receipt` then, but `acknowledge_refused` with the reason: `receipt_limit`, `receipts_disabled`, `answer_url` or `encrypted_too_large`. Scheduled sends are unchanged: a refusal when scheduling still fails the call. An occurrence that comes due while 25 are repeating, or while acknowledged alerts are switched off on the server, goes out once without repeats.
+
+`callback_url` makes PushWard POST the receipt to a public https URL once the notification is acknowledged or expires, signed the [Standard Webhooks](https://www.standardwebhooks.com/) way with a secret derived from your integration key (`pushward receipt secret` in the PushWard CLI prints it). Addresses on your LAN (private IPs, `.local`, `homeassistant:8123`) are refused because PushWard cannot reach them; for a Home Assistant webhook trigger, use its Home Assistant Cloud URL.
+
+```yaml
+- action: pushward.send_notification
+  data:
+    title: "Water leak"
+    body: "Sensor under the kitchen sink"
+    level: time-sensitive
+    acknowledge:
+      repeat_seconds: 120
+      expire_seconds: 3600
+      action_title: "On it"
+    tags: [leak]
+  response_variable: sent
+```
+
+`pushward.cancel_notifications` stops the repeats, either for one notification or for every active one with a tag. It reaches only notifications sent with this integration's key, and no callback is sent for them. Give one of:
+
+| Field | Description |
+|-------|-------------|
+| `tag` | Cancel every active acknowledged notification sent with this tag. The response is `{ canceled: <count> }` |
+| `notification_id` | Cancel one, by the `notification_id` from `send_notification`. The response is its `receipt`; one that already finished comes back unchanged |
+
+```yaml
+- alias: Leak cleared, stop nagging
+  triggers:
+    - trigger: state
+      entity_id: binary_sensor.kitchen_leak
+      to: "off"
+  actions:
+    - action: pushward.cancel_notifications
+      data:
+        tag: leak
 ```
 
 ### `pushward.send_email`
@@ -10048,7 +11553,19 @@ Then enable the app under Administration > Plugins and data > Plugins > PushWard
 3. Run Connect. It creates the webhook contact point and a scoped viewer service-account token, and routes your alerts to it.
 4. Optional: tune severity mapping, history window, and poll interval, and declare widgets. Fire a test timeline to confirm the whole path before you depend on it.
 
+Every alert's Live Activity gets the same **Priority** (0-10, default 5). Turn on **Priority from severity** (`priorityFromSeverity: true` in `jsonData`) to take it from the severity label instead: critical alerts get 10, info and `none` alerts 1 (or **Priority**, if lower), everything else keeps **Priority**. When a more severe instance of a firing alert shows up, the activity is raised to match. Two things follow from the priority, and both count every app and integration on your PushWard account, not just Grafana. When the account runs out of Live Activity slots, the lowest-priority activities are pushed off first (and come back when a slot frees). And iOS uses it to rank activities in the Dynamic Island and Smart Stack. That is why it is off by default.
+
 Turn on **Also send a push notification** if you want a normal banner / Lock Screen push alongside the timeline Live Activity, one when an alert starts firing and one when it resolves. The Live Activity is quiet by design, so this is the switch to flip when you want an alert to actively interrupt. Pick a **Notification priority** for those pushes: Silent (quiet, Lock Screen only), Normal (a regular alert), or Critical (breaks through Focus and silent mode, if your PushWard account has the critical-alert entitlement, otherwise it falls back to time-sensitive). The priority applies to both the firing and resolved push. It is off by default and applies to every alert routed to the PushWard contact point.
+
+With that push on, **Repeat until acknowledged** makes the firing push come back every **Repeat every** seconds (default 300, 30 to 3600) until someone taps Acknowledge on one of your devices, or until **Stop repeating after** runs out (default 3600, up to 10800). The resolve stops the repeats before the resolved push goes out, and so does ending the activity from the Activities page. Silent pushes never alert, so they cannot repeat and the switch is greyed out there. PushWard keeps at most 25 repeating notifications per account, counting every app and integration that sends them; past that, or whenever the server refuses the acknowledge, the plugin sends the alert once without repeating and the delivery log shows `ack refused` with the reason. Turning the switch off does not stop repeats already running; those stop on Acknowledge or when they expire.
+
+### End-to-end encryption
+
+Paste the key from Settings > End-to-End Encryption in the PushWard app into **End-to-end encryption key** and save. From then on the plugin encrypts the title, subtitle and body of every push notification it sends, and only devices that hold the key can read them. The Configuration page shows the Key ID of the saved key; it should match the Key ID the app shows next to the key. The test notification on the Connect page is encrypted as well and reports the Key ID it used.
+
+What stays readable to PushWard is what it needs to deliver the push: the priority, the thread id (`grafana`), the collapse id, the activity slug the push links to, and the tag on a repeating push. The last three are hashes, not the alert name. The timeline Live Activity is not encrypted, though, and it carries the alert name and summary, so the key keeps the alert text out of your notification history but not out of PushWard entirely. A device without the key, or on a PushWard app older than 1.17, shows a placeholder instead of the text. An integration key that belongs to an organization cannot send encrypted notifications. With one, alert pushes arrive without their text, saying encryption is not available for organization keys, and the test notification on the Connect page reports the problem instead of sending.
+
+A saved key that does not parse is never a reason to send the alert in the clear. The push still goes out, saying only "Grafana alert firing" (or "resolved") and "Encryption key invalid, check the PushWard plugin settings", and the Overview and Configuration pages show what is wrong with the key. To go back to unencrypted pushes, press Reset next to the key and save.
 
 ## Widgets
 
@@ -10150,6 +11667,9 @@ Open Settings > PushWard (in the User Utilities row) and, on the Settings tab, f
 | PushWard API key | An `hlk_...` key (permissions below) |
 | Server display name | Shown under notifications and used to name activities, e.g. "Tower" |
 | Alert notification level | Which PushWard level an Unraid Alert becomes: Normal, Time Sensitive (default) or Critical |
+| Repeat alerts until acknowledged | Off by default. When on, an Unraid Alert [repeats](#repeat-until-acknowledged) until you acknowledge it |
+| Repeat every / Stop repeating after | Seconds between repeats (default 300, 30-3600) and how long to keep going (default 3600, 60-10800) |
+| End-to-end encryption key | Optional. A key from the PushWard app that turns on [end-to-end encryption](#end-to-end-encryption) |
 | Live Activities | Master switch for progress activities |
 | Track parity / appdata backup / mover / VM backup / UPS | Per-source toggles |
 | Poll interval | How often the monitor checks state (default 15s) |
@@ -10178,7 +11698,26 @@ The agent lives at `/boot/config/plugins/dynamix/notifications/agents/PushWard`.
 
 Unraid has three importances. An `ALERT` becomes whatever "Alert notification level" is set to, Time Sensitive out of the box; a `WARNING` becomes a Normal push; anything else stays passive. A subject starting `Alert [` or `Warning [` raises the level to match whatever importance it arrived with, and never lowers it - Unraid sends a parity check that finished *with* errors as `Notice [...]` at Warning importance. Critical is the level that breaks through Do Not Disturb and the silent switch, so it is opt-in, and it needs the critical-alert permission granted to the PushWard app.
 
-Repeats of the same event replace the previous banner rather than stacking, keyed on the server name and the event, so a SMART warning that repeats every hour leaves one banner. The app's notification list still holds every one of them. A notification about a job the monitor is already tracking carries a link to that Live Activity.
+Repeats of the same event replace the previous banner rather than stacking, keyed on the server name and the event, so a SMART warning that repeats every hour leaves one banner. Notifications Unraid files under "Unraid Status", which is what User Scripts and many plugins send when they name no event, are keyed on their subject as well, so unrelated ones keep their own banners. The app's notification list still holds every one of them. A notification about a job the monitor is already tracking carries a link to that Live Activity.
+
+#### Repeat until acknowledged
+
+Off by default. Switch on "Repeat alerts until acknowledged" and every notification that arrives as an Unraid Alert comes back every 300 seconds (or whatever you set) until you tap Acknowledge on one of your devices, or until the stop time passes, an hour by default. Warnings and info never repeat. "Send test notification" sends an Alert, so it is an easy way to try it. Switching the setting off only affects new alerts: the ones already repeating carry on until acknowledged or until their stop time.
+
+Each repeating alert is tagged `unraid-<server name>`, lowercased with dashes, so `pushward receipt cancel --tag unraid-tower` from the [PushWard CLI](https://github.com/mac-lucky/pushward-cli) stops them all; a tag only reaches what the same API key sent. It also gets a second tag hashed from the server and the event, and when a notification for that event arrives that is not an alert, like Unraid's "returned to normal", the plugin cancels the alert's repeats before sending it, so a late repeat cannot cover the good news. Notifications sent without an event name of their own, which Unraid files under "Unraid Status" (User Scripts and many plugins do this), are told apart by their subject instead and never cancel anything. An account holds at most 25 repeating alerts at once. Past that, or when PushWard turns acknowledged alerts off for a while, the plugin sends the alert once as an ordinary notification rather than lose it.
+
+#### End-to-end encryption
+
+With a key set, the agent encrypts the title, subtitle, body and link of every notification on the box before it is sent. PushWard stores and forwards an envelope it cannot open, and your devices decrypt it with the same key.
+
+1. In the PushWard app (1.17 or later), open Settings > End-to-End Encryption, create a key and copy it.
+2. Paste it into "End-to-end encryption key" and click Apply. The status cards show its Key ID, which should match the one in the app.
+
+The page never shows the stored key: leaving the field empty keeps it, pasting another one replaces it, and "Remove key" turns encryption off. An `hlk_` API key pasted there is refused.
+
+PushWard still reads the level, the server name, the timestamp and the importance, the name of the Live Activity a notification links to (`tower-array`, `tower-backup`, `tower-vmbackup`), and the repeat settings and tags when those are on (`unraid-tower` names the server). The event name is replaced by a hash keyed with your encryption key, so repeats of one event still replace each other's banner, but the hash cannot be matched against a list of likely event names. A link is encrypted only as a full `http://` or `https://` address: a web UI path gets the "Unraid web UI URL" in front of it, or is left out when that is unknown. The envelope fits about 2.2 KB of text, so a long message is shortened, the body first. Live Activities and widgets are not encrypted at all, so the jobs they track are visible to PushWard either way.
+
+If the key is not valid, or PHP on the box has no AES-256-GCM, notifications still go out but without the details ("Unraid alert on Tower", with a body saying which of the two it is), the syslog says why, and the Encryption card on the Settings tab turns red. An API key that belongs to an organization cannot send encrypted notifications: PushWard refuses them, so the plugin sends the content-free alert instead and the syslog says why. A device without the key, or with an app older than 1.17, shows "Encrypted notification" in place of the text.
 
 ### Live Activities
 

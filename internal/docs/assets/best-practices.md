@@ -106,8 +106,11 @@ General rules for any code that talks to the PushWard REST API
   HKDF-SHA256, at most 3072 characters (about 2,200 bytes of text). Level,
   sound, thread and collapse ids, source, media, metadata, actions and target
   stay readable to the server and to Apple, so keep secrets out of them.
-  Organization keys cannot send encrypted (`422
-  notification.encryption_unavailable`). Spec and test vectors:
+  Organization keys seal with the organization's own key, which an admin
+  creates (the console never does) and members add in PushWard 1.18 or later
+  under Organization Keys; give each group that must not read the others its
+  own key. A `422 notification.encryption_unavailable` there means PushWard
+  has not enabled encryption for organizations. Spec and test vectors:
   pushward.app/docs/notifications/encryption. A stdio or single-user MCP
   server with `PUSHWARD_E2E_KEY` set, and the CLI with a saved key, seal for
   you; never put the key itself in a request.

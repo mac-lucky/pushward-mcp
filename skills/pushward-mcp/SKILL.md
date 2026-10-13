@@ -225,9 +225,10 @@ and placeholder text, and only the user's devices holding the key can read the r
 actions, metadata, thread, source and target stay readable to the server and to Apple, so keep
 secrets out of those. Live Activities, widgets, emails and the relay tools are never encrypted,
 so a secret belongs in a notification, not on the Lock Screen card. Encrypted text has room for
-about 2,200 bytes in total. An organization
-key cannot send encrypted (`notification.encryption_unavailable`): tell the user, only they can
-unset the key. Never ask for the key itself.
+about 2,200 bytes in total. With an organization key the key this server seals with is the
+organization's, and members read the text once they add it in PushWard 1.18 or later.
+`notification.encryption_unavailable` means PushWard has not enabled encryption for
+organizations: tell the user, only they can unset the key. Never ask for the key itself.
 
 ## Writing code against the API
 

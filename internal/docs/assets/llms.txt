@@ -11,6 +11,9 @@ A fully-expanded Markdown bundle of every docs page lives at [/llms-full.txt](ht
 - [Getting Started](https://pushward.app/docs/getting-started): Start sending push notifications to your iPhone in under 5 minutes.
 - [iOS Live Activities API](https://pushward.app/live-activities): Send iOS Live Activities to the Lock Screen and Dynamic Island over a simple HTTP API
 - [iOS Widgets API](https://pushward.app/widgets): Update iOS Home Screen, Lock Screen, and StandBy widgets over a simple HTTP API
+- [Use cases](https://pushward.app/use-cases): One day of real pushes: which service sends what, through which integration, to which surface
+- [Pricing](https://pushward.app/pricing): Free, PushWard Plan, Family, Lifetime and PushWard Team prices, and where each is sold
+- [PushWard Team](https://pushward.app/teams): Organizations for teams: members, groups, routing rules, limited keys, audit log, trial and seat pricing
 - [API Reference](https://pushward.app/api): Interactive OpenAPI explorer for every endpoint
 - [Playground](https://pushward.app/playground): Interactive iPhone simulator for previewing PushWard widgets
 
@@ -38,6 +41,8 @@ A fully-expanded Markdown bundle of every docs page lives at [/llms-full.txt](ht
 - [Communication Style](https://pushward.app/docs/notifications/communication): Set icon_url to render the notification with iOS Communication Notification styling - a round avatar on the side, like an iMessage. Combine with thread_id for grouping in Notification Center.
 - [Activity Link](https://pushward.app/docs/notifications/activity-link): Tie a notification to an existing Live Activity by setting activity_slug. Tapping the notification deep-links into that activity in the PushWard iOS app.
 - [Scheduled Notifications](https://pushward.app/docs/notifications/scheduled): Queue a notification for later with send_at, or repeat it on a cron schedule. PushWard holds it and sends it when it is due, so nothing on your side has to stay running until then.
+- [Acknowledged Alerts](https://pushward.app/docs/notifications/acknowledge): Send an alert that repeats until someone acknowledges it on one of their devices. Then read who did and when, or let PushWard call your endpoint.
+- [End-to-End Encryption](https://pushward.app/docs/notifications/encryption): Seal a notification's title, subtitle, body and link on your own machine with a key only your devices hold. PushWard stores and delivers text it cannot read.
 - [Notifications API](https://pushward.app/docs/notifications/api): Send a notification to a user's inbox, with optional APNs push delivery to their devices.
 
 ## Siri & Shortcuts
@@ -66,6 +71,10 @@ A fully-expanded Markdown bundle of every docs page lives at [/llms-full.txt](ht
 ## Sharing
 
 - [Sharing](https://pushward.app/docs/sharing): Share a Live Activity with other PushWard users through time-limited codes. Recipients see the same Dynamic Island and Lock Screen surfaces, updated in real time - and joining as a viewer is free.
+
+## Teams
+
+- [Teams](https://pushward.app/docs/teams): Send to a whole team from one organization account. Members join with their own Apple ID, and groups, device tags and routing rules decide who gets which Live Activity and notification.
 
 ## Integrations
 
@@ -100,3 +109,4 @@ A fully-expanded Markdown bundle of every docs page lives at [/llms-full.txt](ht
 - [Support](https://pushward.app/support): Contact and support channels
 - [Privacy Policy](https://pushward.app/privacy): Privacy policy
 - [Terms of Service](https://pushward.app/terms): Terms of service
+- [Refund Policy](https://pushward.app/refunds): Refund policy

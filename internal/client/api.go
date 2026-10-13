@@ -102,11 +102,12 @@ func checkAcknowledge(ack json.RawMessage, tags []string, callbackURL string) er
 }
 
 // explainSealed names the cause when the server refuses a notification this
-// client encrypted because the token is an organization key: the agent
-// cannot see that PUSHWARD_E2E_KEY is set, and only the user can unset it.
+// client encrypted because the token is an organization key and PushWard has
+// not enabled encryption for organizations: the agent cannot see that
+// PUSHWARD_E2E_KEY is set, and only the user can unset it.
 func explainSealed(sealed bool, err error) error {
 	if sealed && err != nil && strings.Contains(err.Error(), "notification.encryption_unavailable") {
-		return fmt.Errorf("%w (PUSHWARD_E2E_KEY is set, so this server encrypts every notification, and an organization key cannot send encrypted ones)", err)
+		return fmt.Errorf("%w (PUSHWARD_E2E_KEY is set, so this server encrypts every notification, and PushWard has not enabled encryption for organizations: unset PUSHWARD_E2E_KEY for now)", err)
 	}
 	return err
 }
