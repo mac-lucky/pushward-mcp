@@ -637,6 +637,17 @@ type CreateIntegrationKeyInput struct {
 	IntegrationKeyFields
 }
 
+// UpdateIntegrationKeyInput is the request body for PATCH /integrations/keys/{id}.
+type UpdateIntegrationKeyInput struct {
+	Name *string `json:"name,omitempty"`
+	IntegrationKeyFields
+}
+
+// IsZero reports whether no field is set.
+func (u UpdateIntegrationKeyInput) IsZero() bool {
+	return u.Name == nil && u.IntegrationKeyFields.IsZero()
+}
+
 // CreateIntegrationKey creates a key; the response carries its secret once.
 func (c *APIClient) CreateIntegrationKey(ctx context.Context, input CreateIntegrationKeyInput) (json.RawMessage, error) {
 	raw, _, err := c.DoJSON(ctx, http.MethodPost, "/integrations/keys", input)
@@ -661,12 +672,12 @@ func (c *APIClient) RevokeIntegrationKey(ctx context.Context, id string) error {
 
 // UpdateIntegrationKey changes a key's scope, slug restriction or capabilities
 // (PATCH /integrations/keys/{key_id}).
-func (c *APIClient) UpdateIntegrationKey(ctx context.Context, id string, fields IntegrationKeyFields) (json.RawMessage, error) {
+func (c *APIClient) UpdateIntegrationKey(ctx context.Context, id string, input UpdateIntegrationKeyInput) (json.RawMessage, error) {
 	path, err := integrationKeyPath(id)
 	if err != nil {
 		return nil, err
 	}
-	raw, _, err := c.DoJSON(ctx, http.MethodPatch, path, fields)
+	raw, _, err := c.DoJSON(ctx, http.MethodPatch, path, input)
 	return raw, err
 }
 

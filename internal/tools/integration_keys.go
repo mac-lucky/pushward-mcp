@@ -93,13 +93,14 @@ func registerIntegrationKeyTools(s *mcpserver.MCPServer, api *client.APIClient) 
 
 	s.AddTool(
 		mcp.NewTool("update_integration_key",
-			mcp.WithDescription("Change an integration key's permissions, slug restrictions or expiry. Omitted fields stay as they are; activity_slugs=[] or widget_slugs=[] removes that restriction and expires_at=\"never\" removes the expiry. Pass at least one field. A default key cannot be changed here (integration_key.default_target), and the result cannot have a permission above the default key's own (integration_key.grant_exceeded)."),
+			mcp.WithDescription("Change an integration key's name, permissions, slug restrictions or expiry. Omitted fields stay as they are; activity_slugs=[] or widget_slugs=[] removes that restriction and expires_at=\"never\" removes the expiry. Pass at least one field. A default key cannot be changed here (integration_key.default_target), and the result cannot have a permission above the default key's own (integration_key.grant_exceeded)."),
 			// Changing a live credential's permissions can break the integration
 			// using it, so this is not an additive update.
 			mcp.WithDestructiveHintAnnotation(true),
 			mcp.WithIdempotentHintAnnotation(true),
 			mcp.WithOpenWorldHintAnnotation(true),
 			mcp.WithString("key_id", mcp.Required(), mcp.Description("Key id (UUID) from list_integration_keys")),
+			mcp.WithString("name", mcp.Description("New name shown in the app (1-256 characters)")),
 			permissionsParam("Levels to change; resources left out keep their level."),
 			mcp.WithArray("activity_slugs", mcp.WithStringItems(), mcp.Description("New activity slug restriction (slugs or trailing-* patterns); [] removes it")),
 			mcp.WithArray("widget_slugs", mcp.WithStringItems(), mcp.Description("New widget slug restriction (slugs or trailing-* patterns); [] removes it")),
@@ -177,10 +178,18 @@ func handleUpdateIntegrationKey(ctx context.Context, req mcp.CallToolRequest, ap
 	if err != nil {
 		return mcp.NewToolResultError(err.Error()), nil
 	}
-	if fields.IsZero() {
-		return mcp.NewToolResultError("nothing to update: pass permissions, activity_slugs, widget_slugs or expires_at"), nil
+	input := client.UpdateIntegrationKeyInput{IntegrationKeyFields: fields}
+	if v, sent := req.GetArguments()["name"]; sent {
+		name, ok := v.(string)
+		if !ok || name == "" {
+			return mcp.NewToolResultError("name must be a non-empty string"), nil
+		}
+		input.Name = &name
 	}
-	raw, err := api.UpdateIntegrationKey(ctx, id, fields)
+	if input.IsZero() {
+		return mcp.NewToolResultError("nothing to update: pass name, permissions, activity_slugs, widget_slugs or expires_at"), nil
+	}
+	raw, err := api.UpdateIntegrationKey(ctx, id, input)
 	if err != nil {
 		return mcp.NewToolResultError(err.Error()), nil
 	}

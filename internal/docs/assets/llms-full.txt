@@ -2,7 +2,7 @@
 
 > Full Markdown bundle of every PushWard docs page, auto-generated from the prerendered HTML at build time. Source: https://pushward.app
 
-> Generated: 2026-10-13T16:19:02.013Z
+> Generated: 2026-10-15T07:07:03.699Z
 
 ---
 <!-- source: https://pushward.app/docs/getting-started -->
@@ -1441,11 +1441,25 @@ Title, body, subtitle, and interruption level - the minimum payload for a push n
 
 | Field | Type | Required | Description |
 | --- | --- | --- | --- |
-| `title` | string | Yes | Notification title shown in bold on the banner and lock screen |
-| `body` | string | Yes | Body text shown under the title |
-| `subtitle` | string | No | Optional subtitle shown between the title and body |
+| `title` | string | Yes | Notification title ([where it shows](#surfaces)) |
+| `body` | string | Yes | Body text, shown under the title |
+| `subtitle` | string | No | Optional subtitle, shown between the title and the body |
 | `level` | string | No | Interruption level. One of `passive`, `active` (default), `time-sensitive`, or `critical`. Controls iOS interruption behavior. |
 | `push` | boolean | No | If `true` (default), sends an APNs push to all of the user's devices. Set `false` to store in the inbox only. |
+
+## Where each field shows
+
+A notification with a `source` is shown on iPhone and iPad as a message from that source ([Communication style](https://pushward.app/docs/notifications/communication)): its icon, and its name (`source_display_name`, or the `source` id, capitalized) on the first line. Audio attachments are the exception and keep the standard layout.
+
+| Surface | What it shows |
+| --- | --- |
+| iPhone and iPad banner, Lock Screen, Notification Center | With a `source`: the source name, then the title, the subtitle and the body. A title that only repeats the source name is not shown twice. Without one: the title in bold, the subtitle and the body. |
+| iPhone Mirroring on a Mac | The same lines as the iPhone |
+| PushWard for Mac | The title, the subtitle and the body |
+| Apple Watch | Long look: the source name (when set), then the title, the subtitle and the body |
+| Notifications list in the app | The source name, then the title, with the subtitle and the body under it. A title that only repeats the source name gives way to the subtitle. Opening a notification shows every field. |
+
+Before PushWard 1.18.2, iPhone and iPad showed only the source name and the body for a notification with a `source`; the title and subtitle were left out.
 
 ## Interruption levels
 
@@ -1905,8 +1919,8 @@ Set icon\_url to render the notification with iOS Communication Notification sty
 | Field | Type | Description |
 | --- | --- | --- |
 | `source` | string | Stable internal id - e.g. `sonarr`, `github-actions`, `home-assistant`. Used for filtering and analytics. |
-| `source_display_name` | string | The pretty version users see - e.g. `Sonarr`, `GitHub Actions`. Shown above the title and used to group notifications under that source in iOS settings and the inbox. |
-| `icon_url` | string | http or https avatar (max 2048 chars). Recommended <=256x256 and <=100 KB; the iOS extension rejects responses larger than 512 KB to protect its 24 MB memory budget. When set, iOS renders the notification in Communication Notification style - a round avatar floating on the side, like an iMessage. |
+| `source_display_name` | string | The pretty version users see - e.g. `Sonarr`, `GitHub Actions`. Shown on the first line of iPhone and iPad banners ([where each field shows](https://pushward.app/docs/notifications/basics#surfaces)) and used to group notifications under that source in iOS settings and the inbox. |
+| `icon_url` | string | http or https avatar (max 2048 chars). Recommended <=256x256 and <=100 KB; the iOS extension rejects responses larger than 512 KB to protect its 24 MB memory budget. Used as the round avatar of the Communication Notification style, which iOS applies to every notification with a `source` (except audio attachments); without it the source's built-in icon is used when PushWard has one. |
 
 ## Example: Home Assistant doorbell
 
@@ -3086,7 +3100,7 @@ Create an in-app notification and optionally push it to all user devices. No sub
 | `thread_id` | string | No | Groups notifications in Notification Center |
 | `collapse_id` | string | No | APNs deduplication key (max 64 chars). Not stored or returned in responses. |
 | `source` | string | No | Source identifier (e.g. integration name) |
-| `source_display_name` | string | No | Human-readable source name shown in notification settings and inbox grouping |
+| `source_display_name` | string | No | Human-readable source name: the first line of iPhone and iPad banners, notification settings and inbox grouping |
 | `url` | string | No | Action URL (max 2048 chars). Any URL scheme except `javascript:`, `data:`, `file:`, or `vbscript:`; `http(s)` URLs also require a host. |
 | `media` | object | No | Rich media attachment. `url` (HTTPS, max 2048 chars) plus `type` (`image`, `video`, or `audio`). iOS renders inline. Apple size caps: image 10 MB, audio 5 MB, video 50 MB. |
 | `actions` | array | No | Up to 10 dynamic action buttons. Each: `id` (string, max 64), `title` (string, max 64), optional `url`, `foreground` (bool), `destructive` (bool), `authentication_required` (bool), `icon` (SF Symbol name). Full field list on [Actions](https://pushward.app/docs/notifications/actions). An action with no `url` and no `foreground` is recorded by the server; see [Notification Answers](https://pushward.app/docs/notifications/answers). |
@@ -8745,6 +8759,8 @@ Push notification events (no Live Activity, no template):
 
 In the default `activity` mode, `Grab` and `Download` also write a notification record (not pushed) alongside the Live Activity; in `notify`/`smart` mode they are delivered as standalone push notifications instead.
 
+When the account is at its Live Activity limit, `Grab` and `Download` still write that notification and answer `200` with `{"status":"ignored_activity","detail":"activity limit reached"}`, so a large import does not show up as failed webhooks. With `?channels=activity` the card is the only delivery, and the limit answers `409`.
+
 Routing is governed by `starr.mode`: `activity` (default, all events -> Live Activity), `notify` (all -> push), or `smart` (handler decides per event).
 
 **Setup:** In Radarr/Sonarr, go to **Settings > Connect > + > Webhook**. Set the URL to `https://relay.pushward.app/radarr` (or `/sonarr`). Leave Username as any value, set Password to your `hlk_` key (Basic Auth). Enable triggers: On Grab, On Import, On Health Issue, On Health Restored. Click Test, then Save.
@@ -9305,6 +9321,7 @@ Logs are structured JSON on stdout (`slog`). View them with `docker logs <contai
 | `config load` fails: `stale_timeout must be > 0` | A provider has a non-positive `stale_timeout`. | Set a positive duration (a non-positive TTL writes state rows that are never cleaned up). |
 | `/ready` returns `503` | DB ping check failed. | Verify `PUSHWARD_DATABASE_DSN` / `password_file` and that PostgreSQL is reachable. |
 | Upstream `401`/`403`/`429` surfaced to the sender | The PushWard server rejected the `hlk_` key or rate-limited. | Check the key is valid and has capacity; the relay forwards these statuses so the source app reports the real cause. |
+| `409` with `upstream conflict: <code>` | The account is at a PushWard limit, most often `activity.limit_exceeded` (too many Live Activities open at once). | End some activities or let them expire. Radarr, Sonarr and Overseerr answer `200 ignored_activity` instead when their notification already went out. |
 | The provider's `Test` button reports a failure | The self-test could not reach PushWard - most often a refused key. | Read the status: it is the upstream's own. A failed test is no longer answered with `200`, so the button reflects whether the integration actually works. |
 
 ## Requirements & License
@@ -11499,7 +11516,7 @@ What it isn't: a native contact-point type. Grafana hardcodes those in core, so 
 ## Features
 
 - Connect wizard: one click creates the PushWard webhook contact point (no manual URL or header copying) and a scoped service-account token.
-- Embedded timeline bridge: the Go backend queries your Grafana datasource for the alert's metric history and pushes a live timeline Live Activity. No `pushward-grafana` container required.
+- Embedded timeline bridge: the Go backend queries your Grafana datasource for the alert's metric history and pushes a live timeline Live Activity. No `pushward-grafana` container required. It reads the rule's query with the Connect wizard's service account, so this works without the `externalServiceAccounts` toggle. On a paid PushWard plan the timeline gets a new point every poll interval while the alert fires; a rule on a different datasource repeats its last alert value instead. The free plan's 250 Live Activity updates a month would not last a day of that, so there the timeline updates only when Grafana sends the alert.
 - Widget engine: declare `value`, `progress`, `status`, `gauge`, `stat_list`, `trend` or `countdown` widgets in the config; the backend polls each on its own interval (`on_change` or `always` mode, multi-series fan-out) and publishes them to your iOS widgets.
 - Management: see current Live Activities and a recent delivery log, send a test notification, or fire a test timeline.
 - Alert-rule links: "View in PushWard" on alert rules and instances.
@@ -11551,6 +11568,8 @@ Then enable the app under Administration > Plugins and data > Plugins > PushWard
 
 Every alert's Live Activity gets the same **Priority** (0-10, default 5). Turn on **Priority from severity** (`priorityFromSeverity: true` in `jsonData`) to take it from the severity label instead: critical alerts get 10, info and `none` alerts 1 (or **Priority**, if lower), everything else keeps **Priority**. When a more severe instance of a firing alert shows up, the activity is raised to match. Two things follow from the priority, and both count every app and integration on your PushWard account, not just Grafana. When the account runs out of Live Activity slots, the lowest-priority activities are pushed off first (and come back when a slot frees). And iOS uses it to rank activities in the Dynamic Island and Smart Stack. That is why it is off by default.
 
+**Live Activities** decides which alerts get a timeline Live Activity. With **All alerts** (the default, `activityMode: "all"`) every alert routed to the contact point gets one. With **Only labeled alerts** (`activityMode: "labeled"`) only alert rules carrying the label `pushward_activity="true"` do. The label works the other way too: `pushward_activity="false"` keeps a rule out of Live Activities even in **All alerts**. Any other value, or no label, follows the setting. An alert left without a Live Activity is not dropped: it gets one push notification when it starts firing and one when it resolves, whether or not **Also send a push notification** is on, with the **Notification priority** and **Repeat until acknowledged** settings below. Those pushes do not link to an activity and the alert does not show on the Activities page. The first instance of an alert decides for the whole alert name, so a rule should carry the label on every instance, not on some of them. Changing the setting does not touch Live Activities that are already running.
+
 Turn on **Also send a push notification** if you want a normal banner / Lock Screen push alongside the timeline Live Activity, one when an alert starts firing and one when it resolves. The Live Activity is quiet by design, so this is the switch to flip when you want an alert to actively interrupt. Pick a **Notification priority** for those pushes: Silent (quiet, Lock Screen only), Normal (a regular alert), or Critical (breaks through Focus and silent mode, if your PushWard account has the critical-alert entitlement, otherwise it falls back to time-sensitive). The priority applies to both the firing and resolved push. It is off by default and applies to every alert routed to the PushWard contact point.
 
 With that push on, **Repeat until acknowledged** makes the firing push come back every **Repeat every** seconds (default 300, 30 to 3600) until someone taps Acknowledge on one of your devices, or until **Stop repeating after** runs out (default 3600, up to 10800). The resolve stops the repeats before the resolved push goes out, and so does ending the activity from the Activities page. Silent pushes never alert, so they cannot repeat and the switch is greyed out there. PushWard keeps at most 25 repeating notifications per account, counting every app and integration that sends them; past that, or whenever the server refuses the acknowledge, the plugin sends the alert once without repeating and the delivery log shows `ack refused` with the reason. Turning the switch off does not stop repeats already running; those stop on Acknowledge or when they expire.
@@ -11580,6 +11599,10 @@ A repeated reading is only recorded once a minute, or once per poll interval if 
 `stale_after` is how many seconds after the last update iOS starts dimming a widget as out of date (60 to 604800, blank for never). Setting it also arms a heartbeat: the last published content is re-sent every `max(30s, stale_after/2)`, which the server records as a touch rather than a push, so a metric that sits flat for hours does not make the widget look dead and does not cost you a notification either. The window has to be at least three times the poll interval. The heartbeat fires on a poll tick, so the longest gap between two refreshes is half the window plus one interval; at three the gap stays comfortably inside the window, whereas at two it would land right on the edge and dim the widget once a cycle.
 
 Any template can render its subtitle as a live timer via `content.subtitle_timer` (`{"date": "<RFC 3339>", "style": "timer"` or `"relative"}`), and a `stat_list` row takes the same object as a per-row `timer`. The static `subtitle` and row `value` stay behind them as the fallback. No form fields for these yet, so set them in the JSON view.
+
+A `stat_list` row can also follow its data, again from the JSON view only. `value_by` names a label, and every series the row's query returns lands in `.Values` under that label's value, so one row can carry two readings: `5h {{printf "%.0f" .Values.five_hour}}% · 7d {{printf "%.0f" .Values.seven_day}}%`. A key the query did not return renders as 0, and a row whose query returns none of them shows `missing_value`. A key that is not a plain identifier (`5h`, `five-hour`) needs `index .Values "5h"`. `label_template` renders the row's label from the same data on every poll, with `.Labels` holding the first series' labels; `label` takes over when it renders empty, so write `{{with .Labels.account}}Reset {{.}}{{end}}` rather than letting a missing label leave a bare `Reset`. Both the label and the value are cut to 32 characters, the server's limit, and a `missing_value` longer than that is refused when the config loads.
+
+A row `timer` can take `"from_value": true` in place of `date`: the polled value is read as Unix seconds and the row counts down to it. Use `bottomk(1, ...)` rather than `min(...)` to pick the earliest of a set of reset times, since `min` drops the labels the label template needs. The row costs a push when the target moves, not every poll. Older clients without timers show the value instead, and `{{clock .Value "Europe/Warsaw"}}` renders that as a time of day in the zone you name (`14:35`, with the date in front when it is not today). Leave the zone out and you get UTC: Grafana starts plugins without the host's `TZ`.
 
 `battery`, `schedule` and `flow` exist on the server but not here. Each needs several independent readings in one payload - per-device charge levels, an hourly price curve, the four sides of an energy flow - which one query per widget cannot express. Use the REST API or the Home Assistant integration for those.
 

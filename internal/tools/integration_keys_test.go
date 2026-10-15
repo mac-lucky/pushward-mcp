@@ -204,6 +204,21 @@ func TestIntegrationKey_ExpiryNever(t *testing.T) {
 	}
 }
 
+func TestUpdateIntegrationKey_Name(t *testing.T) {
+	api, calls := keyServer(t, http.StatusOK, `{}`)
+	if r, _ := handleUpdateIntegrationKey(context.Background(), newReq(map[string]any{"key_id": testKeyID, "name": "Garage door"}), api); r.IsError {
+		t.Fatalf("tool error: %s", resultText(t, r))
+	}
+	if got := string((*calls)[0].rawBody); got != `{"name":"Garage door"}` {
+		t.Errorf("rename sent %s, want only the name", got)
+	}
+	for _, bad := range []any{"", 42} {
+		if r, _ := handleUpdateIntegrationKey(context.Background(), newReq(map[string]any{"key_id": testKeyID, "name": bad}), api); !r.IsError || len(*calls) != 1 {
+			t.Errorf("name %v: IsError=%v calls=%d, want a tool error and no request", bad, r.IsError, len(*calls))
+		}
+	}
+}
+
 func TestUpdateIntegrationKey_NothingToUpdate(t *testing.T) {
 	api, calls := keyServer(t, http.StatusOK, `{}`)
 	r, _ := handleUpdateIntegrationKey(context.Background(), newReq(map[string]any{"key_id": testKeyID}), api)
