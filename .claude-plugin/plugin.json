@@ -1,6 +1,6 @@
 {
   "name": "pushward",
-  "description": "Push notifications, Live Activities and widgets on your iPhone from your agent: the hosted PushWard MCP server, plus a skill for what to send and when.",
+  "description": "Push notifications, Live Activities and widgets on your phone from your agent: the hosted PushWard MCP server, plus a skill for what to send and when.",
   "author": {
     "name": "mac-lucky",
     "url": "https://github.com/mac-lucky"

@@ -1,6 +1,6 @@
 ---
 name: pushward-mcp
-description: Reach the user's iPhone through the PushWard MCP server - push notifications, questions with buttons that wait for their tap, Live Activities on the Lock Screen and Dynamic Island, home screen widgets, scheduled notifications and email. Use when PushWard tools such as create_notification or create_activity are connected and the user says "notify me when done", "ask me before you deploy", "show progress on my lock screen" or "remind me at 6", when they want to connect PushWard to their agent, or when writing code that integrates with the PushWard API.
+description: Reach the user's phone through the PushWard MCP server - push notifications, questions with buttons that wait for their tap, Live Activities on the Lock Screen and Dynamic Island, home screen widgets, scheduled notifications and email. Use when PushWard tools such as create_notification or create_activity are connected and the user says "notify me when done", "ask me before you deploy", "show progress on my lock screen" or "remind me at 6", when they want to connect PushWard to their agent, or when writing code that integrates with the PushWard API.
 ---
 
 # PushWard MCP
@@ -207,7 +207,7 @@ API cannot list group or tag names or member user ids: they live in the organiza
 console, so ask the user for them.
 
 `update_widget` replaces or clears a widget's target the same way. Organization widgets show
-on members' iPhone and iPad home screens (and Apple Watch from PushWard 1.18.0), and all of an organization's
+on members' home screens (and Apple Watch from PushWard 1.18.0), and all of an organization's
 widgets share one push window of at least 60 seconds: `push_throttle` is ignored, and updates
 closer together than that reach the devices as one reload, so more than one a minute buys
 nothing.
