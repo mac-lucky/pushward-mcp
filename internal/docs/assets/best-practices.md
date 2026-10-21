@@ -121,8 +121,9 @@ Writing Live Activity content that renders well on the Dynamic Island and Lock
 Screen.
 
 - **Pick the right template.** Ten templates, each with a distinct layout:
-  `generic` (progress for builds/downloads/deploys), `countdown` (server-managed
-  timer with automatic warning/completion pushes), `steps` (CI/CD multi-stage
+  `generic` (progress for builds/downloads/deploys), `timer` (also accepted as
+  `countdown`: counts down to a deadline with automatic warning/completion
+  pushes, or up from a start time, and pauses either way), `steps` (CI/CD multi-stage
   matrix), `alert` (severity-based monitoring with deep links), `gauge`
   (numeric value within min/max, progress auto-computed server-side), `timeline`
   (real-time sparkline; each push appends a data point and the server keeps the
@@ -157,9 +158,17 @@ Screen.
 - **`tap_action` routing.** Set `content.tap_action` to make the activity
   tappable: a foreground HTTPS URL opens in-app, a custom scheme routes
   cross-app, and an HTTP URL with method/headers/body fires a silent webhook.
-- **Countdown specifics.** For `countdown`, set it and forget it: the server
+- **Timer specifics.** Counting down, set it and forget it: the server
   drives the warning and completion pushes from the target time. Use
-  `snooze_seconds` to extend rather than recreating the activity.
+  `snooze_seconds` to extend rather than recreating the activity. With
+  `direction: "up"` the clock counts from `start_date` (now when omitted, or a
+  past time for something that already started) and takes no `end_date` or
+  `duration`; an optional `goal` such as `"2h"` fills the ruler and then shows
+  overtime in orange. Nothing has to be pushed while it runs. Send `paused: true`
+  and `paused: false` to pause and resume in either direction; re-sending the
+  current state is harmless, so a producer can send it on every update.
+  Responses still say `countdown`. iOS builds older than 1.19.0 show neither
+  counting up nor a pause, so keep `state` meaningful.
 - **Media specifics.** The device ticks the scrubber itself from
   `position_seconds` and `position_at`, so re-send `position_seconds` on every
   play/pause/seek transition (leave `position_at` out; it defaults to the

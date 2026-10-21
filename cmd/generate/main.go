@@ -669,10 +669,14 @@ var (
 		"value", "progress", "status", "gauge", "stat_list",
 		"trend", "countdown", "battery", "schedule", "flow",
 	}
+	// timer and countdown are one template: timer is the name the docs use,
+	// countdown the one stored rows and responses still report, and the spec
+	// maps both to the same schema.
 	activityTemplateNames = []string{
-		"generic", "countdown", "steps", "alert", "gauge",
+		"generic", "timer", "countdown", "steps", "alert", "gauge",
 		"timeline", "board", "log", "media", "approval",
 	}
+	countdownDirections = []string{"down", "up"}
 	// The image trio is rejected outright on the wrong template (422, not a
 	// silent drop), so the restriction leads the clause that carries it.
 	imageTemplates      = []string{"generic", "media", "steps"}
@@ -720,8 +724,8 @@ var (
 	activityTemplateEnumClause = "Fields: template (" + strings.Join(activityTemplateNames, "|") + "), "
 	activitySharedFieldsClause = "progress (0.0-1.0), state, icon, subtitle, compact_label (up to 4 characters shown on the left of the compact Dynamic Island in place of the icon, steps ring or timeline stack; trimmed server-side; needs app 1.14.0), remaining_time (seconds), accent_color, background_color, text_color, plus three tap targets every template takes: tap_action {url, foreground, method, headers, body} makes the whole card tappable, url_action and secondary_url_action take that shape plus title and icon and draw buttons, and the legacy url / secondary_url strings still work but lose to them. "
 
-	activityTimingClause        = "Timing (generic, countdown, steps): end_date [unix timestamp], start_date, duration as integer seconds (60) or string (\"60s\", \"1h30m\") which sets both from now; end_date wins when both are sent. live_progress (generic, steps) animates the bar and ETA on device between pushes instead of a static fill, needs end_date, and has to be re-anchored on each step change. Template-specific: "
-	activityCountdownClause     = "countdown (warning_threshold, completion_message, alarm, snooze_seconds (60-3600, default 300; how far the /snooze action and iOS AlarmKit snooze extend the timer, only with alarm)), "
+	activityTimingClause        = "Timing (generic, steps, and timer counting down): end_date [unix timestamp], start_date, duration as integer seconds (60) or string (\"60s\", \"1h30m\") which sets both from now; end_date wins when both are sent. live_progress (generic, steps) animates the bar and ETA on device between pushes instead of a static fill, needs end_date, and has to be re-anchored on each step change. Template-specific: "
+	activityCountdownClause     = "timer (also sent as countdown, the name responses report; direction: " + strings.Join(countdownDirections, "|") + ", default down. Down counts to end_date and takes warning_threshold, completion_message, alarm, snooze_seconds (60-3600, default 300; how far the /snooze action and iOS AlarmKit snooze extend the timer, only with alarm). Up counts up from start_date [defaults to now, may be in the past] and 422s on any of those and on end_date or duration; nothing has to be pushed while it runs, and ending it freezes the clock. goal [up only, integer seconds or a string like \"2h\"] fills the ruler, then the card turns orange and keeps counting as overtime. show_ruler [bool, default true]. paused [write-only, either direction: true pauses, false resumes, re-sending the current state changes nothing; the clock state comes back as the server-kept paused_at and, counting up, paused_seconds]. Counting up and pausing need iOS app 1.19.0 or later and older builds show neither, so always set state), "
 	activityStepsClause         = "steps (current_step, total_steps, step_labels, step_rows [per-step row index, 1-10, for multi-row layouts], step_weights [relative widths, one positive number per step], step_colors [named or hex, empty entries fall back to accent_color]), "
 	activityAlertClause         = "alert (severity: critical|warning|info, fired_at, severity_label), "
 	activityGaugeClause         = "gauge (value, min_value, max_value, unit, decimals), "

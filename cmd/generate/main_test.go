@@ -556,11 +556,13 @@ func TestActivityContentFieldParity(t *testing.T) {
 	}
 
 	// A read-only field is normally invisible to an agent: naming one in the
-	// description invites a write the server strips. log_backlog and answer are
-	// the deliberate exceptions, documented as things to fetch rather than send
-	// (answer is the whole outcome API of the approval template).
-	documented := []string{"answer", "log_backlog"}
-	want := []string{"answer", "answer_round", "log_backlog", "snoozed_until", "warning_pushed"}
+	// description invites a write the server strips. log_backlog, answer and the
+	// timer's pause fields are the deliberate exceptions, documented as things to
+	// fetch rather than send (answer is the whole outcome API of the approval
+	// template, and paused is write-only, so paused_at is the only way to read a
+	// pause back).
+	documented := []string{"answer", "log_backlog", "paused_at", "paused_seconds"}
+	want := []string{"answer", "answer_round", "log_backlog", "paused_at", "paused_seconds", "snoozed_until", "warning_pushed"}
 	got := sortedClone(serverOwned)
 	if !slices.Equal(got, want) {
 		t.Errorf("the spec marks %v read-only, the exemption list is %v", got, want)
@@ -572,6 +574,60 @@ func TestActivityContentFieldParity(t *testing.T) {
 		if mentionsField(desc, name) {
 			t.Errorf("server-owned field %q is named in the content_json description", name)
 		}
+	}
+}
+
+// The general sweep passes a timer field named anywhere in the description, and
+// paused already appears in the media clause, so deleting it from the timer
+// clause would go unnoticed there. Every writable property only the timer
+// schema carries has to be in its own clause, and the direction list the clause
+// is built from has to match the spec enum.
+func TestActivityCountdownFieldParity(t *testing.T) {
+	spec := apiSpec(t)
+	mapping := activityContentMapping(t, spec)
+	ref, ok := mapping["countdown"]
+	if !ok {
+		t.Fatal("the spec mapping carries no countdown template")
+	}
+	if alias := mapping["timer"]; alias != ref {
+		t.Errorf("timer maps to %q and countdown to %q; the clause documents them as one template", alias, ref)
+	}
+	countdown, ok := spec.Components.Schemas[refTypeName(ref)]
+	if !ok {
+		t.Fatalf("countdown maps to %q, which is not a component schema", ref)
+	}
+	shared := make(map[string]bool)
+	for _, other := range mapping {
+		if other == ref {
+			continue
+		}
+		if schema, ok := spec.Components.Schemas[refTypeName(other)]; ok {
+			for name := range schema.Properties {
+				shared[name] = true
+			}
+		}
+	}
+	var own []string
+	for name, prop := range countdown.Properties {
+		if !shared[name] && !prop.ReadOnly {
+			own = append(own, name)
+		}
+	}
+	if len(own) == 0 {
+		t.Fatal("ContentCountdown carries no timer-only properties - the committed openapi.yaml is behind the server")
+	}
+	for _, name := range sortedClone(own) {
+		if !mentionsField(activityCountdownClause, name) {
+			t.Errorf("timer field %q is in the spec but absent from the timer clause", name)
+		}
+	}
+
+	direction, ok := countdown.Properties["direction"]
+	if !ok || len(direction.Enum) == 0 {
+		t.Fatal("ContentCountdown.direction carries no enum")
+	}
+	if listed, want := sortedClone(countdownDirections), sortedClone(direction.Enum); !slices.Equal(listed, want) {
+		t.Errorf("the description offers directions %v, the spec enum is %v", listed, want)
 	}
 }
 

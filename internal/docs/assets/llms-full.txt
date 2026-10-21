@@ -2,7 +2,7 @@
 
 > Full Markdown bundle of every PushWard docs page, auto-generated from the prerendered HTML at build time. Source: https://pushward.app
 
-> Generated: 2026-10-15T07:07:03.699Z
+> Generated: 2026-10-18T12:15:20.113Z
 
 ---
 <!-- source: https://pushward.app/docs/getting-started -->
@@ -8177,7 +8177,7 @@ The `pushward.Client` retries up to 5 attempts with exponential backoff + jitter
 
 ## Project structure
 
-This is a Go workspace (`go.work`, Go 1.26.5) with one shared module plus seven independently-versioned bridge modules under `github.com/mac-lucky/pushward-integrations/<module>`:
+This is a Go workspace (`go.work`, Go 1.27.2) with one shared module plus seven independently-versioned bridge modules under `github.com/mac-lucky/pushward-integrations/<module>`:
 
 ```
 pushward-integrations/
@@ -8233,11 +8233,11 @@ The build context is the **repo root** (not the bridge directory) so the Dockerf
 docker build -f relay/Dockerfile -t pushward-relay .
 docker build -f grafana/Dockerfile -t pushward-grafana .
 
-# Pin the Go toolchain (Dockerfile ARG default is 1.26.5)
-docker build --build-arg GO_VERSION=1.26.5 -f github/Dockerfile -t pushward-github .
+# Pin the Go toolchain (Dockerfile ARG default is 1.27.2)
+docker build --build-arg GO_VERSION=1.27.2 -f github/Dockerfile -t pushward-github .
 ```
 
-Each image builds from a `golang:<ver>-alpine` builder into an `alpine:3.23` runtime, statically (`CGO_ENABLED=0`), and runs as non-root UID 1000.
+Each image builds from a `golang:<ver>-alpine` builder into an `alpine:3.24` runtime, statically (`CGO_ENABLED=0`), and runs as non-root UID 1000.
 
 ## CI/CD & Releases
 
@@ -8302,7 +8302,7 @@ Bridges log structured JSON to stdout - `docker logs -f <container>` (or `kubect
 
 ## Requirements
 
-- Go 1.26.5 (workspace toolchain) and Docker for builds.
+- Go 1.27.2 (workspace toolchain) and Docker for builds.
 - A running PushWard server, an `hlk_` integration key, the PushWard iOS app, and the backend each bridge integrates with (see [Prerequisites](#prerequisites)).
 
 ---
@@ -9279,7 +9279,7 @@ golangci-lint run
 
 # Docker (context is the repo root so the Dockerfile can COPY shared/)
 docker build -f relay/Dockerfile -t pushward-relay .
-docker build -f relay/Dockerfile --build-arg GO_VERSION=1.26.5 -t pushward-relay .
+docker build -f relay/Dockerfile --build-arg GO_VERSION=1.27.2 -t pushward-relay .
 ```
 
 > The Postgres state tests (`relay/internal/state/...`) sit behind the `integration` build tag, use testcontainers-go and need a running Docker daemon: `go test -tags integration ./relay/internal/state/... -race -count=1`.
@@ -9326,7 +9326,7 @@ Logs are structured JSON on stdout (`slog`). View them with `docker logs <contai
 
 ## Requirements & License
 
-- **Go** `1.26.x` (toolchain `1.26.5`; Docker builds default to `golang:1.26.5-alpine`, final image `alpine:3.23`).
+- **Go** `1.27.x` (toolchain `1.27.2`; Docker builds default to `golang:1.27.2-alpine`, final image `alpine:3.24`).
 - **PostgreSQL** for the state store.
 - A running **PushWard server** and a per-tenant `hlk_` integration key.
 
@@ -9580,10 +9580,10 @@ golangci-lint run
 docker build -f grafana/Dockerfile -t pushward-grafana .
 
 # Override the Go toolchain at build time if needed
-docker build -f grafana/Dockerfile --build-arg GO_VERSION=1.26.5 -t pushward-grafana .
+docker build -f grafana/Dockerfile --build-arg GO_VERSION=1.27.2 -t pushward-grafana .
 ```
 
-> The module targets `go 1.26.5` (`go.mod`), matching the Dockerfile's default `GO_VERSION` build arg (`1.26.5`); override it with `--build-arg GO_VERSION=<x.y.z>` only if you need a different toolchain.
+> The module targets `go 1.27.2` (`go.mod`), matching the Dockerfile's default `GO_VERSION` build arg (`1.27.2`); override it with `--build-arg GO_VERSION=<x.y.z>` only if you need a different toolchain.
 
 ## CI/CD & Releases
 
@@ -9624,7 +9624,7 @@ Logs are structured JSON on stdout (`docker logs pushward-grafana`). The process
 
 ## Requirements & License
 
-- Go 1.26.x toolchain (for building from source); Docker for the container image.
+- Go 1.27.x toolchain (for building from source); Docker for the container image.
 - A running PushWard server, an `hlk_` integration key, a Prometheus/VictoriaMetrics endpoint, and the PushWard iOS app.
 
 Part of the public [pushward-integrations](https://github.com/mac-lucky/pushward-integrations) repository.
@@ -9813,7 +9813,7 @@ Each tracked run becomes one PushWard activity:
 
 ## Development
 
-This bridge is part of the `pushward-integrations` Go workspace (`go.work`), with a `replace` directive pointing `shared` at `../shared`. `go.mod` requires Go `1.26.5`.
+This bridge is part of the `pushward-integrations` Go workspace (`go.work`), with a `replace` directive pointing `shared` at `../shared`. `go.mod` requires Go `1.27.2`.
 
 ```bash
 # Build from source (from the pushward-integrations workspace root)
@@ -9839,8 +9839,8 @@ The build context is the **repository root** (so the Dockerfile can `COPY shared
 ```bash
 docker build -f github/Dockerfile -t pushward-github .
 
-# Optionally pin the build-time Go version (Dockerfile default: 1.26.5)
-docker build -f github/Dockerfile --build-arg GO_VERSION=1.26.5 -t pushward-github .
+# Optionally pin the build-time Go version (Dockerfile default: 1.27.2)
+docker build -f github/Dockerfile --build-arg GO_VERSION=1.27.2 -t pushward-github .
 ```
 
 ## CI/CD & Releases
@@ -10082,8 +10082,8 @@ Docker builds use the **repo root as the build context** with `-f sabnzbd/Docker
 # Build the image (note the trailing "." = repo root, not the sabnzbd dir)
 docker build -f sabnzbd/Dockerfile -t pushward-sabnzbd .
 
-# Optional: override the Go toolchain (Dockerfile default ARG GO_VERSION=1.26.5, matching go.mod)
-docker build -f sabnzbd/Dockerfile --build-arg GO_VERSION=1.26.5 -t pushward-sabnzbd .
+# Optional: override the Go toolchain (Dockerfile default ARG GO_VERSION=1.27.2, matching go.mod)
+docker build -f sabnzbd/Dockerfile --build-arg GO_VERSION=1.27.2 -t pushward-sabnzbd .
 ```
 
 ## CI/CD & Releases
@@ -10122,7 +10122,7 @@ docker logs -f pushward-sabnzbd
 
 ## Requirements & License
 
-- Go 1.26.x (build), Docker (deploy).
+- Go 1.27.x (build), Docker (deploy).
 - A running PushWard server, a SABnzbd instance, and the PushWard iOS app.
 
 Part of the public [pushward-integrations](https://github.com/mac-lucky/pushward-integrations) repository - see the repository root for license details.
@@ -10331,11 +10331,11 @@ golangci-lint run
 The Docker build context is the **repository root** (not the bridge directory) so the Dockerfile can `COPY shared/`:
 
 ```bash
-# Build (default Go toolchain ARG is 1.26.5)
+# Build (default Go toolchain ARG is 1.27.2)
 docker build -f bambulab/Dockerfile -t pushward-bambulab .
 
 # Pin the Go toolchain to match go.mod
-docker build --build-arg GO_VERSION=1.26.5 -f bambulab/Dockerfile -t pushward-bambulab .
+docker build --build-arg GO_VERSION=1.27.2 -f bambulab/Dockerfile -t pushward-bambulab .
 ```
 
 ## CI/CD & Releases
@@ -10372,7 +10372,7 @@ Logs are structured JSON on stdout at `Info` level. With Docker: `docker logs -f
 
 ## Requirements
 
-- Go **1.26+** (the module declares `go 1.26.5`).
+- Go **1.27+** (the module declares `go 1.27.2`).
 - A reachable Bambu Lab printer (MQTT/TLS on port `8883`) and a running PushWard server.
 
 ## License
