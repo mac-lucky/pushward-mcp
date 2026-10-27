@@ -112,6 +112,28 @@ func TestExtractErrorMessage_LocalModeKeepsDetail(t *testing.T) {
 	}
 }
 
+func TestDoJSON_TransportErrorHidesUpstreamAddress(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
+	base := srv.URL
+	srv.Close() // nothing listens there now, so the dial is refused
+	host := strings.TrimPrefix(base, "http://")
+
+	SetRemoteMode(true)
+	_, _, err := NewBase(base, "t").DoJSON(context.Background(), http.MethodGet, "/auth/me", nil)
+	SetRemoteMode(false)
+	if err == nil {
+		t.Fatal("expected a transport error")
+	}
+	if msg := err.Error(); strings.Contains(msg, host) || !strings.Contains(msg, "GET /auth/me: upstream unreachable") {
+		t.Fatalf("remote-mode transport error = %q, want the operation without the upstream address", msg)
+	}
+
+	_, _, err = NewBase(base, "t").DoJSON(context.Background(), http.MethodGet, "/auth/me", nil)
+	if err == nil || !strings.Contains(err.Error(), host) {
+		t.Fatalf("local mode should keep the transport detail, got %v", err)
+	}
+}
+
 func TestRelayClient_RejectsBadProvider(t *testing.T) {
 	c := NewRelayClient("https://relay.example", "t")
 	for _, bad := range []string{"../etc/passwd", "a/b", "Bad Provider", "", "evil.com/path"} {

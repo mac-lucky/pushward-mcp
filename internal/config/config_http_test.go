@@ -44,6 +44,35 @@ func TestLoad_AllowsLoopbackHTTP(t *testing.T) {
 	}
 }
 
+func TestLoad_ClusterServiceHTTP(t *testing.T) {
+	t.Setenv("PUSHWARD_MCP_TRANSPORT", "http")
+	t.Setenv("PUSHWARD_API_TOKEN", "")
+	t.Setenv("PUSHWARD_RELAY_TOKEN", "")
+	for _, u := range []string{
+		"http://pushward-server.pushward-server.svc:8080",
+		"http://pushward-server.pushward-server.svc.cluster.local:8080",
+		"http://API.Server.SVC.cluster.local.",
+	} {
+		t.Setenv("PUSHWARD_API_URL", u)
+		if _, err := Load(); err != nil {
+			t.Errorf("%s: in-cluster Service over http should be allowed: %v", u, err)
+		}
+	}
+	for _, u := range []string{
+		"http://svc",
+		"http://server.svc",
+		"http://a.b.c.svc",
+		"http://server.ns.svc.example.com",
+		"http://server.ns.svc.evil.example",
+		"http://10.0.0.5:8080",
+	} {
+		t.Setenv("PUSHWARD_API_URL", u)
+		if _, err := Load(); err == nil {
+			t.Errorf("%s: expected rejection of http to a host that is not a Service name", u)
+		}
+	}
+}
+
 func TestLoad_RejectsBadTransport(t *testing.T) {
 	t.Setenv("PUSHWARD_API_TOKEN", "atok")
 	t.Setenv("PUSHWARD_RELAY_TOKEN", "rtok")

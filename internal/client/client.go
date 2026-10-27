@@ -4,8 +4,10 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"strings"
 	"sync"
@@ -119,6 +121,9 @@ func (b *Base) DoJSON(ctx context.Context, method, path string, body any) (json.
 
 	resp, err := b.httpClient.Do(req)
 	if err != nil {
+		if remoteMode {
+			return nil, 0, transportError(method, path, err)
+		}
 		return nil, 0, fmt.Errorf("sending request: %w", err)
 	}
 	defer resp.Body.Close()
@@ -149,6 +154,18 @@ func (b *Base) DoJSON(ctx context.Context, method, path string, body any) (json.
 		return json.RawMessage(`{}`), resp.StatusCode, nil
 	}
 	return json.RawMessage(respBody), resp.StatusCode, nil
+}
+
+// transportError is the caller-facing form of a failed round trip in remote
+// mode. The transport's own message quotes the upstream URL and the address it
+// dialed, which can be an in-cluster Service that callers of a public endpoint
+// have no business seeing, so only the operation and whether it timed out stay.
+func transportError(method, path string, err error) error {
+	var ne net.Error
+	if errors.As(err, &ne) && ne.Timeout() {
+		return fmt.Errorf("%s %s: upstream timed out", method, path)
+	}
+	return fmt.Errorf("%s %s: upstream unreachable", method, path)
 }
 
 // extractErrorMessage pulls a human-friendly message from an RFC 9457 Problem

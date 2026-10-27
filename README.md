@@ -113,7 +113,8 @@ Environment variables (stdio mode):
 - `PUSHWARD_RELAY_TOKEN` - required only when relay tools are enabled (they are, by default,
   in stdio mode).
 - `PUSHWARD_API_URL` / `PUSHWARD_RELAY_URL` - default to the production hosts; override to
-  point at a staging server. Non-loopback hosts must be https.
+  point at a staging server. Hosts must be https, except loopback and Kubernetes Service
+  names (`<service>.<namespace>.svc`, optionally with `.cluster.local`).
 - `PUSHWARD_E2E_KEY` - optional, the 64-hex-character key from Settings > End-to-End
   Encryption in the app (1.17.0 or later, which is also what decrypts on the devices). With
   it set, the notification tools encrypt title, subtitle, body and url before they leave the

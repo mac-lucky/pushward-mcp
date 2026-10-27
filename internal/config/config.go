@@ -95,7 +95,8 @@ func (c *Config) RedactUpstreamErrors() bool {
 //
 // PUSHWARD_API_URL defaults to https://api.pushward.app and
 // PUSHWARD_RELAY_URL to https://relay.pushward.app. Upstream URLs must be https
-// unless the host is loopback (local development).
+// unless the host is loopback (local development) or a Kubernetes Service name
+// (a hosted server calling pushward-server inside its cluster).
 //
 // PUSHWARD_E2E_KEY (optional, 64 hex characters) turns on end-to-end
 // encryption in stdio and single-user http mode; OAuth http mode ignores it
@@ -228,10 +229,10 @@ func validateUpstreamURL(name, raw string) error {
 	case "https":
 		return nil
 	case "http":
-		if isLoopbackHost(u.Hostname()) {
+		if isLoopbackHost(u.Hostname()) || isClusterServiceHost(u.Hostname()) {
 			return nil
 		}
-		return fmt.Errorf("%s must use https for non-loopback host %q", name, u.Hostname())
+		return fmt.Errorf("%s must use https for host %q (http is accepted only for loopback and Kubernetes Service names)", name, u.Hostname())
 	default:
 		return fmt.Errorf("%s has unsupported scheme %q (want https)", name, u.Scheme)
 	}
@@ -245,6 +246,17 @@ func isLoopbackHost(host string) bool {
 		return ip.IsLoopback()
 	}
 	return false
+}
+
+// isClusterServiceHost reports whether host is a Kubernetes Service name,
+// <service>.<namespace>.svc with or without the default cluster domain
+// cluster.local. Only the cluster's DNS resolves it, to a Service address, so a
+// request to it does not leave the cluster network.
+func isClusterServiceHost(host string) bool {
+	h := strings.TrimSuffix(strings.ToLower(host), ".")
+	h = strings.TrimSuffix(h, ".cluster.local")
+	labels := strings.Split(h, ".")
+	return len(labels) == 3 && labels[0] != "" && labels[1] != "" && labels[2] == "svc"
 }
 
 // validateHostPort checks that addr parses as a "host:port" listen address.
