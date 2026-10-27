@@ -49,8 +49,8 @@ func TestLoad_ClusterServiceHTTP(t *testing.T) {
 	t.Setenv("PUSHWARD_API_TOKEN", "")
 	t.Setenv("PUSHWARD_RELAY_TOKEN", "")
 	for _, u := range []string{
-		"http://pushward-server.pushward-server.svc:8080",
-		"http://pushward-server.pushward-server.svc.cluster.local:8080",
+		"http://api.example.svc",
+		"http://api.example.svc.cluster.local:8080",
 		"http://API.Server.SVC.cluster.local.",
 	} {
 		t.Setenv("PUSHWARD_API_URL", u)

@@ -250,8 +250,10 @@ func isLoopbackHost(host string) bool {
 
 // isClusterServiceHost reports whether host is a Kubernetes Service name,
 // <service>.<namespace>.svc with or without the default cluster domain
-// cluster.local. Only the cluster's DNS resolves it, to a Service address, so a
-// request to it does not leave the cluster network.
+// cluster.local. Only a cluster's DNS resolves such a name, so it is a Service
+// the operator defined. That alone does not keep the traffic in the cluster (an
+// ExternalName Service can point anywhere): naming one that does is the
+// operator's call.
 func isClusterServiceHost(host string) bool {
 	h := strings.TrimSuffix(strings.ToLower(host), ".")
 	h = strings.TrimSuffix(h, ".cluster.local")
