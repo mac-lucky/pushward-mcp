@@ -17,7 +17,9 @@ import (
 // is the original schema (idempotent CREATE ... IF NOT EXISTS, so it no-ops on an
 // already-provisioned database and just records the version); later migrations
 // evolve it with idempotent ALTERs. APPEND new migrations - never edit or reorder
-// existing entries, or deployed databases will diverge.
+// existing entries, or deployed databases will diverge. All of them run in one
+// transaction (see migrate), so a migration must be valid inside a transaction
+// block: no CREATE INDEX CONCURRENTLY, VACUUM or the like.
 var migrations = []string{
 	// 1: initial schema.
 	`
@@ -65,9 +67,9 @@ ALTER TABLE oauth_clients ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NU
 CREATE INDEX IF NOT EXISTS idx_oauth_clients_updated ON oauth_clients(updated_at);`,
 }
 
-// migrationAdvisoryLock is a fixed key for pg_advisory_lock so only one pod runs
-// migrations at a time (CREATE/ALTER ... IF NOT EXISTS are not race-safe against
-// the system catalogs on simultaneous first boot).
+// migrationAdvisoryLock is a fixed key for pg_advisory_xact_lock so only one pod
+// runs migrations at a time (CREATE/ALTER ... IF NOT EXISTS are not race-safe
+// against the system catalogs on simultaneous first boot).
 const migrationAdvisoryLock int64 = 0x70757368776d6967 // "pushwmig"
 
 type pgStore struct {
@@ -120,47 +122,46 @@ func newPostgresStore(ctx context.Context, dsn, passwordFile string) (*pgStore, 
 	return s, nil
 }
 
-// migrate applies any unapplied migrations in order under a session-level advisory
-// lock, so simultaneously-booting replicas serialize their DDL instead of racing
-// CREATE/ALTER ... IF NOT EXISTS against the catalogs. It is idempotent: an
-// already-provisioned database whose schema_migrations is empty records the
-// existing schema as version 1 (the CREATE IF NOT EXISTS no-op), then applies the
-// rest.
+// migrate applies any unapplied migrations in order, in one transaction that
+// starts with a transaction-scoped advisory lock, so simultaneously-booting
+// replicas serialize their DDL instead of racing CREATE/ALTER ... IF NOT EXISTS
+// against the catalogs. Not a session lock: behind a transaction-mode pooler
+// each autocommit statement can run on a different server connection, so a lock
+// and its unlock may land on different backends, which excludes nobody and can
+// leave the lock held on a pooled connection for the next replica to wait on. A
+// transaction keeps one server connection, and its lock ends with it. A failed
+// migration rolls the whole run back. It is idempotent: an already-provisioned
+// database whose schema_migrations is empty records the existing schema as
+// version 1 (the CREATE IF NOT EXISTS no-op), then applies the rest.
 func (s *pgStore) migrate(ctx context.Context) error {
-	conn, err := s.pool.Acquire(ctx)
-	if err != nil {
-		return fmt.Errorf("acquire migration conn: %w", err)
-	}
-	defer conn.Release()
-
-	if _, err := conn.Exec(ctx, `SELECT pg_advisory_lock($1)`, migrationAdvisoryLock); err != nil {
-		return fmt.Errorf("acquire migration lock: %w", err)
-	}
-	defer func() { _, _ = conn.Exec(ctx, `SELECT pg_advisory_unlock($1)`, migrationAdvisoryLock) }()
-
-	if _, err := conn.Exec(ctx, `CREATE TABLE IF NOT EXISTS schema_migrations (
+	return pgx.BeginFunc(ctx, s.pool, func(tx pgx.Tx) error {
+		if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock($1)`, migrationAdvisoryLock); err != nil {
+			return fmt.Errorf("acquire migration lock: %w", err)
+		}
+		if _, err := tx.Exec(ctx, `CREATE TABLE IF NOT EXISTS schema_migrations (
   version    INT PRIMARY KEY,
   applied_at TIMESTAMPTZ NOT NULL DEFAULT now()
 )`); err != nil {
-		return fmt.Errorf("ensure schema_migrations: %w", err)
-	}
-	var current int
-	if err := conn.QueryRow(ctx, `SELECT COALESCE(MAX(version), 0) FROM schema_migrations`).Scan(&current); err != nil {
-		return fmt.Errorf("read schema version: %w", err)
-	}
-	for i, stmt := range migrations {
-		v := i + 1
-		if v <= current {
-			continue
+			return fmt.Errorf("ensure schema_migrations: %w", err)
 		}
-		if _, err := conn.Exec(ctx, stmt); err != nil {
-			return fmt.Errorf("apply migration %d: %w", v, err)
+		var current int
+		if err := tx.QueryRow(ctx, `SELECT COALESCE(MAX(version), 0) FROM schema_migrations`).Scan(&current); err != nil {
+			return fmt.Errorf("read schema version: %w", err)
 		}
-		if _, err := conn.Exec(ctx, `INSERT INTO schema_migrations (version) VALUES ($1)`, v); err != nil {
-			return fmt.Errorf("record migration %d: %w", v, err)
+		for i, stmt := range migrations {
+			v := i + 1
+			if v <= current {
+				continue
+			}
+			if _, err := tx.Exec(ctx, stmt); err != nil {
+				return fmt.Errorf("apply migration %d: %w", v, err)
+			}
+			if _, err := tx.Exec(ctx, `INSERT INTO schema_migrations (version) VALUES ($1)`, v); err != nil {
+				return fmt.Errorf("record migration %d: %w", v, err)
+			}
 		}
-	}
-	return nil
+		return nil
+	})
 }
 
 func (s *pgStore) SaveClient(ctx context.Context, c *Client) error {
