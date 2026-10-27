@@ -2,11 +2,15 @@ package oauth
 
 import (
 	"context"
+	"errors"
 	"os"
 	"regexp"
+	"strings"
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/jackc/pgx/v5/pgconn"
 )
 
 // notInTransaction matches statements Postgres refuses inside a transaction
@@ -80,5 +84,52 @@ func TestPostgresMigrateConcurrent(t *testing.T) {
 	}
 	if held != 0 {
 		t.Fatalf("migration advisory lock still held by %d backend(s)", held)
+	}
+}
+
+// TestPostgresMigrateLockTimeout holds the migration lock in another
+// transaction and checks that a boot gives up after migrationLockTimeout with
+// an error that says why, instead of waiting for as long as the lock is held.
+func TestPostgresMigrateLockTimeout(t *testing.T) {
+	dsn := os.Getenv("PUSHWARD_MCP_TEST_DB_DSN")
+	if dsn == "" {
+		t.Skip("PUSHWARD_MCP_TEST_DB_DSN not set")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	s, err := newPostgresStore(ctx, dsn, "")
+	if err != nil {
+		t.Fatalf("store: %v", err)
+	}
+	defer s.Close()
+
+	holder, err := s.pool.Begin(ctx)
+	if err != nil {
+		t.Fatalf("begin holder: %v", err)
+	}
+	defer func() { _ = holder.Rollback(ctx) }()
+	if _, err := holder.Exec(ctx, `SELECT pg_advisory_xact_lock($1)`, migrationAdvisoryLock); err != nil {
+		t.Fatalf("hold migration lock: %v", err)
+	}
+
+	prev := migrationLockTimeout
+	migrationLockTimeout = 300 * time.Millisecond
+	t.Cleanup(func() { migrationLockTimeout = prev })
+
+	start := time.Now()
+	err = s.migrate(ctx)
+	if err == nil {
+		t.Fatal("migrate succeeded while another transaction held the lock")
+	}
+	var pgErr *pgconn.PgError
+	if !errors.As(err, &pgErr) || pgErr.Code != "55P03" {
+		t.Fatalf("want a 55P03 lock_not_available, got %v", err)
+	}
+	if !strings.Contains(err.Error(), "another session held it for over 300ms") {
+		t.Fatalf("error should say why the boot gave up, got %v", err)
+	}
+	if waited := time.Since(start); waited > 5*time.Second {
+		t.Fatalf("migrate waited %s, want about the 300ms lock timeout", waited)
 	}
 }

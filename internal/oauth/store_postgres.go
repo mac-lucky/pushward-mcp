@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -71,6 +72,13 @@ CREATE INDEX IF NOT EXISTS idx_oauth_clients_updated ON oauth_clients(updated_at
 // runs migrations at a time (CREATE/ALTER ... IF NOT EXISTS are not race-safe
 // against the system catalogs on simultaneous first boot).
 const migrationAdvisoryLock int64 = 0x70757368776d6967 // "pushwmig"
+
+// migrationLockTimeout bounds every lock wait in the migration transaction,
+// that lock first. A replica migrating this small schema holds it for well
+// under a second; what holds it longer is a session lock stuck on a pooled
+// connection (an older build took one), and without a bound the boot would
+// wait until its probes kill the pod. A var so a test can shorten it.
+var migrationLockTimeout = 30 * time.Second
 
 type pgStore struct {
 	pool *pgxpool.Pool
@@ -135,7 +143,18 @@ func newPostgresStore(ctx context.Context, dsn, passwordFile string) (*pgStore, 
 // version 1 (the CREATE IF NOT EXISTS no-op), then applies the rest.
 func (s *pgStore) migrate(ctx context.Context) error {
 	return pgx.BeginFunc(ctx, s.pool, func(tx pgx.Tx) error {
+		// set_config with is_local is SET LOCAL lock_timeout, with a bind parameter.
+		if _, err := tx.Exec(ctx, `SELECT set_config('lock_timeout', $1, true)`,
+			fmt.Sprintf("%dms", migrationLockTimeout.Milliseconds())); err != nil {
+			return fmt.Errorf("set migration lock timeout: %w", err)
+		}
 		if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock($1)`, migrationAdvisoryLock); err != nil {
+			var pgErr *pgconn.PgError
+			if errors.As(err, &pgErr) && pgErr.Code == "55P03" { // lock_not_available
+				return fmt.Errorf("acquire migration lock: another session held it for over %s "+
+					"(a replica still migrating, or a session lock left on a pooled connection): %w",
+					migrationLockTimeout, err)
+			}
 			return fmt.Errorf("acquire migration lock: %w", err)
 		}
 		if _, err := tx.Exec(ctx, `CREATE TABLE IF NOT EXISTS schema_migrations (
