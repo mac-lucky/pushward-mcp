@@ -35,6 +35,7 @@ func main() {
 	client.SetRemoteMode(cfg.RedactUpstreamErrors())
 
 	log := observability.NewLogger(slog.LevelInfo)
+	client.SetLogger(log)
 	if cfg.IsRemote() {
 		log.Info("pushward-mcp starting", "version", version, "commit", commit, "buildDate", buildDate, "transport", string(cfg.Transport), "httpAuth", string(cfg.HTTPAuth))
 	}

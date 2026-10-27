@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net"
 	"net/http"
 	"strings"
@@ -26,6 +27,26 @@ var remoteMode bool
 
 // SetRemoteMode toggles caller-facing error redaction. Call once at startup.
 func SetRemoteMode(v bool) { remoteMode = v }
+
+// logger receives what remote mode withholds from callers - the transport
+// error, or the upstream Problem detail behind a redacted message - so an
+// operator can still tell a refused dial from a rejected key. Like remoteMode
+// it is set once at startup. Nothing logged through it carries the
+// Authorization header or a request body.
+var logger = slog.Default()
+
+// SetLogger sets where remote mode logs withheld upstream errors. Call once at
+// startup.
+func SetLogger(l *slog.Logger) { logger = l }
+
+// logWithheld logs the cause behind a redacted caller-facing error.
+func logWithheld(ctx context.Context, level slog.Level, msg, method, path string, attrs ...slog.Attr) {
+	logger.LogAttrs(ctx, level, msg, append([]slog.Attr{
+		slog.String("method", method),
+		slog.String("path", path),
+		slog.String("user", UserIDFromContext(ctx)),
+	}, attrs...)...)
+}
 
 // Base is the shared HTTP client for both API and relay requests.
 type Base struct {
@@ -122,6 +143,7 @@ func (b *Base) DoJSON(ctx context.Context, method, path string, body any) (json.
 	resp, err := b.httpClient.Do(req)
 	if err != nil {
 		if remoteMode {
+			logWithheld(ctx, slog.LevelWarn, "upstream request failed", method, path, slog.String("err", err.Error()))
 			return nil, 0, transportError(method, path, err)
 		}
 		return nil, 0, fmt.Errorf("sending request: %w", err)
@@ -132,6 +154,12 @@ func (b *Base) DoJSON(ctx context.Context, method, path string, body any) (json.
 	// "truncated". A truncated success body is no longer valid JSON.
 	respBody, err := io.ReadAll(io.LimitReader(resp.Body, maxRespBytes+1))
 	if err != nil {
+		if remoteMode {
+			// The read error names both ends of the connection, like a dial error.
+			logWithheld(ctx, slog.LevelWarn, "upstream response cut off", method, path,
+				slog.Int("status", resp.StatusCode), slog.String("err", err.Error()))
+			return nil, resp.StatusCode, fmt.Errorf("%s %s: upstream response cut off", method, path)
+		}
 		return nil, resp.StatusCode, fmt.Errorf("reading response: %w", err)
 	}
 	overLimit := len(respBody) > maxRespBytes
@@ -141,6 +169,15 @@ func (b *Base) DoJSON(ctx context.Context, method, path string, body any) (json.
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		msg := extractErrorMessage(respBody)
+		if remoteMode {
+			// A 4xx is mostly the caller's own mistake; a 5xx is ours.
+			level := slog.LevelInfo
+			if resp.StatusCode >= 500 {
+				level = slog.LevelWarn
+			}
+			logWithheld(ctx, level, "upstream error response", method, path,
+				slog.Int("status", resp.StatusCode), slog.String("detail", fullErrorMessage(respBody)))
+		}
 		return nil, resp.StatusCode, fmt.Errorf("%s %s returned %d: %s", method, path, resp.StatusCode, msg)
 	}
 
@@ -159,7 +196,8 @@ func (b *Base) DoJSON(ctx context.Context, method, path string, body any) (json.
 // transportError is the caller-facing form of a failed round trip in remote
 // mode. The transport's own message quotes the upstream URL and the address it
 // dialed, which can be an in-cluster Service that callers of a public endpoint
-// have no business seeing, so only the operation and whether it timed out stay.
+// have no business seeing, so only the operation and whether it timed out stay
+// (DoJSON logs the raw error).
 func transportError(method, path string, err error) error {
 	var ne net.Error
 	if errors.As(err, &ne) && ne.Timeout() {
@@ -174,32 +212,44 @@ func transportError(method, path string, err error) error {
 // In remote mode the upstream's free-text title/detail and any raw body are
 // withheld from the caller-facing error (they can leak internal field names,
 // DB messages, or PII) - only the machine-readable Problem `code` and any
-// retry hint are surfaced. The full message is still available to the operator
-// via server-side logs.
+// retry hint are surfaced. DoJSON logs the full message (fullErrorMessage)
+// for the operator.
 func extractErrorMessage(body []byte) string {
-	var p struct {
-		Title        string `json:"title"`
-		Detail       string `json:"detail"`
-		Code         string `json:"code"`
-		RetryAfterMs int64  `json:"retry_after_ms"`
+	if !remoteMode {
+		return fullErrorMessage(body)
 	}
-	parsed := json.Unmarshal(body, &p) == nil && (p.Detail != "" || p.Title != "" || p.Code != "")
-
-	if remoteMode {
-		var parts []string
-		if parsed && p.Code != "" {
-			parts = append(parts, "["+p.Code+"]")
-		}
-		if parsed && p.RetryAfterMs > 0 {
-			parts = append(parts, fmt.Sprintf("(retry_after_ms=%d)", p.RetryAfterMs))
-		}
-		if len(parts) == 0 {
-			return "upstream error (detail withheld)"
-		}
-		return strings.Join(parts, " ")
+	p, parsed := parseProblem(body)
+	var parts []string
+	if parsed && p.Code != "" {
+		parts = append(parts, "["+p.Code+"]")
 	}
+	if parsed && p.RetryAfterMs > 0 {
+		parts = append(parts, fmt.Sprintf("(retry_after_ms=%d)", p.RetryAfterMs))
+	}
+	if len(parts) == 0 {
+		return "upstream error (detail withheld)"
+	}
+	return strings.Join(parts, " ")
+}
 
-	if parsed {
+type problem struct {
+	Title        string `json:"title"`
+	Detail       string `json:"detail"`
+	Code         string `json:"code"`
+	RetryAfterMs int64  `json:"retry_after_ms"`
+}
+
+// parseProblem decodes an RFC 9457 Problem body; ok is false when the body is
+// not one or carries none of code, title and detail.
+func parseProblem(body []byte) (p problem, ok bool) {
+	ok = json.Unmarshal(body, &p) == nil && (p.Detail != "" || p.Title != "" || p.Code != "")
+	return p, ok
+}
+
+// fullErrorMessage is the unredacted message for an upstream error body: the
+// Problem code, detail (or title) and retry hint, or a truncated raw snippet.
+func fullErrorMessage(body []byte) string {
+	if p, parsed := parseProblem(body); parsed {
 		var parts []string
 		if p.Code != "" {
 			parts = append(parts, "["+p.Code+"]")

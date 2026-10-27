@@ -192,7 +192,10 @@ func (p *Provider) authorizePost(w http.ResponseWriter, r *http.Request) {
 	apiKey := strings.TrimSpace(r.PostFormValue("api_key"))
 	userID, err := validateHLK(r.Context(), p.cfg.APIBaseURL, apiKey)
 	if err != nil {
-		// Re-render the consent page with an error rather than leaking detail.
+		// Re-render the consent page with an error rather than leaking detail. The
+		// page reads the same for a wrong key and an unreachable upstream, so the
+		// cause goes to the log (never the key: no validateHLK error carries it).
+		p.log.Warn("api key validation failed", "client_id", pr.ClientID, "err", err)
 		p.renderConsent(w, pr, c, "That API key was not accepted. Check it and try again.", http.StatusUnauthorized)
 		return
 	}
