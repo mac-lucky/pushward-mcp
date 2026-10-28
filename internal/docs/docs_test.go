@@ -155,15 +155,15 @@ func TestSection_RealFullBundle(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	text, ok, _ := Section(full, "Countdown Template")
+	text, ok, _ := Section(full, "Timer Template")
 	if !ok {
-		t.Fatal("expected to find 'Countdown Template' in llms-full.txt")
+		t.Fatal("expected to find 'Timer Template' in llms-full.txt")
 	}
-	if !strings.Contains(text, "Countdown") {
-		t.Error("Countdown section missing its own content")
+	if !strings.Contains(text, "counts down") {
+		t.Error("Timer section missing its own content")
 	}
 	if strings.Contains(text, "# Steps Template") || strings.Contains(text, "# Generic Template") {
-		t.Errorf("Countdown slice leaked into adjacent H1 sections:\n%.200s", text)
+		t.Errorf("Timer slice leaked into adjacent H1 sections:\n%.200s", text)
 	}
 }
 

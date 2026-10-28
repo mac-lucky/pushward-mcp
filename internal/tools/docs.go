@@ -38,7 +38,7 @@ func registerDocsTools(s *mcpserver.MCPServer) {
 			),
 			mcp.WithString("section",
 				mcp.Description("Optional. For kind=\"index\" or kind=\"full\": return only the section whose heading matches this name "+
-					"(case-insensitive substring or anchor slug, e.g. \"Countdown Template\" or \"live-activities\"), up to the next heading "+
+					"(case-insensitive substring or anchor slug, e.g. \"Timer Template\" or \"live-activities\"), up to the next heading "+
 					"of equal-or-higher level. Ignored for the OpenAPI kinds. On no match, the response lists the available headings."),
 			),
 		),

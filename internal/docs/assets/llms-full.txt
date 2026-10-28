@@ -2,7 +2,7 @@
 
 > Full Markdown bundle of every PushWard docs page, auto-generated from the prerendered HTML at build time. Source: https://pushward.app
 
-> Generated: 2026-10-18T12:15:20.113Z
+> Generated: 2026-10-27T08:43:52.436Z
 
 ---
 <!-- source: https://pushward.app/docs/getting-started -->
@@ -11,7 +11,7 @@
 
 Start sending push notifications to your iPhone in under 5 minutes.
 
-## 1\. Install the iOS App
+## 1\. Install the App
 
 Download PushWard from the App Store on your iPhone running iOS 26 or later.
 
@@ -23,19 +23,23 @@ PushWard is now a universal app, so the same App Store listing also installs on 
 
 PushWard requires iOS 26+ for Live Activity support.
 
+### On Android
+
+The Android app runs on Android 12 or later. It is in closed testing on Google Play right now, and the public listing opens soon; [PushWard for Android](https://pushward.app/android) shows what it does. Everything below works the same once it is installed.
+
 ## 2\. Sign In and Get Your Key
 
-Open the app and sign in with your Apple ID. This creates your PushWard account and automatically generates a **default integration key** (`hlk_`) with every permission at its highest level - push [notifications](https://pushward.app/docs/notifications), [widgets](https://pushward.app/docs/widgets), and [email](https://pushward.app/docs/email) - so it works with every endpoint out of the box.
+Open the app and sign in: with your Apple ID on iPhone, with Google or Sign in with Apple on Android. This creates your PushWard account and automatically generates a **default integration key** (`hlk_`) with every permission at its highest level - push [notifications](https://pushward.app/docs/notifications), [widgets](https://pushward.app/docs/widgets), and [email](https://pushward.app/docs/email) - so it works with every endpoint out of the box.
 
 Copy your integration key from the app's settings screen. You'll need it for all API requests.
 
 💡 Tip
 
-For production use, create separate integration keys in the iOS app with scoped access for each service instead of sharing the default key.
+For production use, create separate integration keys in the app with scoped access for each service instead of sharing the default key.
 
 ## 3\. Create an Activity
 
-Activities are the things you want to track on your Lock Screen. Each activity has a unique `slug` and a display `name`.
+Activities are the things you want to track on your Lock Screen (on Android: lock screen and in the notification shade). Each activity has a unique `slug` and a display `name`.
 
 Create an activity 
 
@@ -53,7 +57,7 @@ The activity starts in the `ended` state. Your devices are automatically subscri
 
 ## 4\. Start a Live Activity
 
-Send your first push notification by updating the activity state to `ongoing`. This starts a Live Activity on your device's Lock Screen.
+Send your first push notification by updating the activity state to `ongoing`. This starts a Live Activity on your device's Lock Screen. On Android: This starts a Live Update in your phone's notification shade.
 
 Start the Live Activity 
 
@@ -115,7 +119,7 @@ curl -X PATCH https://api.pushward.app/activities/my-build \
 
 💡 Tip
 
-After ending, the Live Activity remains visible on the Lock Screen for up to 4 hours (iOS behavior). The activity returns to `ended` state and can be started again.
+After ending, the Live Activity remains visible on the Lock Screen for up to 4 hours (iOS behavior). On Android: After ending, the Live Update stays in the shade as a regular notification for up to 4 hours, unless it is swiped away. The activity returns to `ended` state and can be started again.
 
 ---
 
@@ -126,6 +130,8 @@ After ending, the Live Activity remains visible on the Lock Screen for up to 4 h
 A Live Activity is an iOS feature that shows live, glanceable information right on the Lock Screen, in the Dynamic Island, and in StandBy - without the recipient ever opening an app. PushWard turns a single HTTP request into one.
 
 Unlike a regular push notification - which appears once and then slips into the notification list - a Live Activity stays pinned and updates in real time, then ends and clears itself when the task finishes. You create, update, and end activities entirely through PushWard's REST API, choosing one of ten templates, each with a layout tuned to a different job.
+
+On Android, every template below is a Live Update in the notification shade, and the same request updates the iPhone and the Android phone. Android 16 and later promote Live Updates to the top of the shade and the lock screen, with a status bar chip from the Android 16 QPR2 update on, and Android 17 draws gauges and boards as metric cards. On Android 12 to 15 they are notifications that update in place.
 
 ## Templates
 
@@ -141,15 +147,15 @@ Track any progress with a customizable bar, state label, and countdown timer.
 
 ](https://pushward.app/docs/live-activities/generic)[
 
-### Countdown
+### Timer
 
-Auto-managed timer with server-side warning and completion pushes.
+Counts down with server-side warning and completion pushes, or up from a start time toward an optional goal.
 
 ![](https://pushward.app/_app/immutable/assets/timer-nolock-poster.CXzZFg_b.webp)
 
 
 
-](https://pushward.app/docs/live-activities/countdown)[
+](https://pushward.app/docs/live-activities/timer)[
 
 ### Steps
 
@@ -240,6 +246,8 @@ Question card with 2-4 answer buttons - the server records the tapped option, pu
 A flexible progress-based template suitable for builds, downloads, deployments, and any long-running task.
 
 ![Live Activity demonstration](https://pushward.app/_app/immutable/assets/bambu-poster.CnFQS_70.webp)
+
+On Android, a generic activity is a [Live Update](https://pushward.app/docs/live-activities) in the notification shade: `progress` fills the bar, and the status bar chip shows the percentage, or the time left while `live_progress` runs.
 
 ## Fields
 
@@ -363,34 +371,42 @@ Several [Relay](https://pushward.app/docs/integrations/relay) providers do all o
 
 ---
 
-<!-- source: https://pushward.app/docs/live-activities/countdown -->
+<!-- source: https://pushward.app/docs/live-activities/timer -->
 
-# Countdown Template
+# Timer Template
 
-A timer with server-managed lifecycle: send one start push and the server fires the warning and completion updates itself.
+A clock that counts down to an end or up from a start, ticking on the device between pushes. Counting down, the server sends the warning and completion updates itself.
 
 ![Live Activity demonstration](https://pushward.app/_app/immutable/assets/timer-poster.Cfb8TqW1.webp)
+
+On Android, a timer is a [Live Update](https://pushward.app/docs/live-activities) in the notification shade: the bar fills as the countdown runs (toward the goal when counting up) unless `show_ruler` is `false`, and the status bar chip carries the running clock.
 
 ## Fields
 
 | Field | Type | Description |
 | --- | --- | --- |
-| `template` | string | **Required.** Must be `"countdown"` |
-| `progress` | float | **Required.** Initial progress (usually `0.0`) |
-| `duration` | string | **Required** (or `end_date`). Server-side convenience - converted to `end_date` before reaching the device. Accepts: `"30s"`, `"5m"`, `"1h30m"`, or plain seconds (`"1500"`) |
-| `end_date` | integer | **Required** (or `duration`). Unix timestamp when the countdown expires |
-| `start_date` | integer | Unix timestamp when the countdown began. Must be less than `end_date`. Used to compute progress on-device. |
-| `warning_threshold` | integer | Seconds before `end_date` to send a warning push (accent turns orange) |
-| `completion_message` | string | Text shown when countdown expires (default: "Completed") |
+| `template` | string | **Required.** `"timer"`, or `"countdown"`, the template's original name. Both are accepted; responses and pushes report `"countdown"` |
+| `progress` | float | Initial progress (usually `0.0`); the completion push sets `1.0` |
+| `duration` | string | Counting down: **required** (or `end_date`). Server-side convenience - converted to `end_date` before reaching the device. Accepts: `"30s"`, `"5m"`, `"1h30m"`, or plain seconds (`"1500"`). Rejected counting up |
+| `end_date` | integer | Counting down: **required** (or `duration`). Unix timestamp when the countdown expires. Rejected counting up |
+| `start_date` | integer | Counting down: Unix timestamp when the countdown began, less than `end_date`; used to compute progress on-device. Counting up: the instant the clock counts up from; defaults to now and may be in the past, at most 5 minutes ahead |
+| `warning_threshold` | integer | Counting down only: seconds before `end_date` to send a warning push (accent turns orange) |
+| `completion_message` | string | Counting down only: text shown when the countdown expires (default: "Completed") |
 | `state` | string | Status text (e.g. "Baking", "Printing") |
 | `icon` | string | SF Symbol name or MDI icon with `mdi:` prefix (e.g. `"mdi:timer-outline"`) |
 | `subtitle` | string | Secondary text |
 | `accent_color` | string | Named color or hex |
 | `background_color` | string | Background color override |
 | `text_color` | string | Text color override |
-| `alarm` | boolean | Opt-in: schedule an iOS AlarmKit alarm at `end_date` that rings through silent mode and Focus, with built-in Dismiss and Snooze. iOS 26+ only. Persists across partial updates until cleared with `alarm: null` or a transition to `ended` - see [Alarms](https://pushward.app/docs/api/activities#alarm). |
-| `snooze_seconds` | integer | How long the alarm's **Snooze** button defers the alarm, in seconds (60-3600). Defaults to `300` (5 minutes). |
+| `alarm` | boolean | Counting down only. Opt-in: schedule an iOS AlarmKit alarm at `end_date` that rings through silent mode and Focus, with built-in Dismiss and Snooze. iOS 26+ only. Persists across partial updates until cleared with `alarm: null` or a transition to `ended` - see [Alarms](https://pushward.app/docs/api/activities#alarm). |
+| `snooze_seconds` | integer | Counting down only: how long the alarm's **Snooze** button defers the alarm, in seconds (60-3600). Defaults to `300` (5 minutes). |
 | `compact_label` | string | Optional, max 4 characters. Replaces the icon in the Dynamic Island compact leading ear. The minimal presentation ignores it. |
+| `direction` | string | `"down"` (the default) counts down to `end_date`; `"up"` counts up from `start_date`. See [Counting up](#counting-up) |
+| `goal` | integer or string | Counting up only: a target in seconds (`7200`) or a duration string (`"2h"`, `"90m"`), returned as seconds. See [Goal](#goal) |
+| `show_ruler` | boolean | Whether the card draws its ruler, in either direction. Defaults to `true`. See [Hiding the ruler](#ruler) |
+| `paused` | boolean | Write-only switch: `true` pauses the clock, `false` resumes it, in either direction. Never stored or returned. See [Pausing](#pausing) |
+| `paused_at` | integer | Read-only, set by the server: the Unix timestamp the clock was paused at. Absent while it runs |
+| `paused_seconds` | integer | Read-only, counting up only: the seconds spent paused so far, which the clock leaves out |
 
 Accepts `url_action`, `secondary_url_action`, and `tap_action` - `tap_action` is useful for deep-linking back into the timer's source app while it runs. See [Tap actions](https://pushward.app/docs/api/activities#tap-actions).
 
@@ -402,7 +418,7 @@ Start a countdown
 {
   "state": "ongoing",
   "content": {
-    "template": "countdown",
+    "template": "timer",
     "progress": 0.0,
     "state": "Baking",
     "icon": "flame",
@@ -418,13 +434,74 @@ Start a countdown
 
 ## Auto-Managed Lifecycle
 
-After the start push the server manages the remaining lifecycle, in this order; the timer display itself is computed on-device from `start_date` and `end_date`, so it counts down in real time without additional pushes.
+Counting down, the server manages the rest of the lifecycle after the start push, in this order; the timer display itself is computed on-device from `start_date` and `end_date`, so it counts down in real time without additional pushes.
 
 | Phase | Trigger | What the server sends |
 | --- | --- | --- |
 | Start | Your push | Nothing -- your update sets `ended -> ongoing` with the countdown content |
 | Warning | `warning_threshold` seconds remain | An update with `accent_color: "orange"`, automatically |
 | Completion | `end_date` reached | An end push with `completion_message` and `progress: 1.0` |
+
+`direction`, `goal`, `show_ruler` and `paused` belong to this template: any other template rejects them.
+
+## Counting up
+
+Set `direction: "up"` and the clock counts up from `start_date` instead of down to an end: how long a deploy has been running, how long the baby has been asleep, how long the dryer has been on. `start_date` defaults to now when the run starts and may lie in the past (and at most 5 minutes ahead, for clock drift), so a timer for something that began earlier shows the real elapsed time from the first push.
+
+Count up from when it started, toward a 2-hour goal 
+
+```
+{
+  "state": "ongoing",
+  "content": {
+    "template": "timer",
+    "direction": "up",
+    "start_date": 1767225600,
+    "goal": "2h",
+    "state": "Sleeping",
+    "icon": "moon.zzz.fill",
+    "subtitle": "Afternoon nap",
+    "accent_color": "indigo"
+  }
+}
+```
+
+-   **No end.** A count-up has no `end_date`, so `end_date`, `duration`, `warning_threshold`, `completion_message`, `alarm` and `snooze_seconds` are rejected while `direction` is `"up"`. There is no warning and no completion push: it runs until you end it.
+-   **Nothing to push while it runs.** The clock ticks on the device. The server keeps the activity alive past the 8-hour limit iOS puts on a Live Activity, for about three days, and redraws the card itself at the first hour, every whole day and the goal. A `stale_ttl` you set still ends a forgotten run.
+-   **Ending freezes the clock.** Set `state: "ended"` and the card keeps the final elapsed time, captioned "Started 21:04 · ended 23:12".
+-   **Switching to up starts a new run.** Switching to `"up"` from `"down"` or from another template, or setting an ended count-up back to `ongoing`, replaces an unsent `start_date` with now and drops the count-down fields. Switching back to `"down"` drops `goal`, the pause state and an unsent `start_date`, and needs `end_date` or `duration` again.
+-   **A different `start_date` restarts the clock** and clears the time spent paused. Re-sending the stored one changes nothing.
+
+### Goal
+
+`goal` gives a count-up a target: integer seconds (`7200`) or a duration string (`"2h"`, `"90m"`, `"1h30m"`), from 1 second to 5 years, stored and returned as seconds. The ruler fills toward it, captioned "Goal 2h" opposite the start time. Once the goal passes, the clock, the ruler and the caption turn orange and the clock keeps counting, with "+12:05 over 2h" for the overtime; the server redraws the card at that moment, so no push is needed. Clear it with `"goal": null`. Without a goal the card shows the clock and "Started 21:04". On a count-down, `goal` is a `422`.
+
+ℹ Info
+
+Counting up, pausing and `show_ruler` need PushWard 1.19.0 or later on the device. Older versions show a count-up timer as finished, ignore `show_ruler` and keep counting down through a pause, so set `state` to text that still reads right there.
+
+## Pausing
+
+`paused` is a switch, not a stored field: send `true` to pause a running clock and `false` to resume it, in either direction. Re-sending the switch's current state changes nothing, so a producer can include `paused` on every update; counting down, leave the window fields out of those updates (below). While paused the clock stands still, dimmed, with a Paused pill and the pause glyph in place of the icon.
+
+Pause, then resume 
+
+```
+{ "content": { "paused": true } }
+
+{ "content": { "paused": false } }
+```
+
+-   **Counting up,** the time spent paused is left out of the clock. On resume the server adds the gap to `paused_seconds`, so the clock carries on from where it stopped and "Started 18:19" stays true: the clock reads `paused_at` (or now, while running) minus `start_date` minus `paused_seconds`. A count-up that ends while paused stops at the moment it was paused.
+-   **Counting down,** a resume moves `end_date` (and `start_date`) on by the paused time, so the time left is where it was and the activity is a plain countdown again. The warning and completion updates wait while it is paused, and an armed alarm is cancelled for the pause and rescheduled at the new end. A countdown that ran out but has not ended yet cannot be paused (`422`).
+-   **Once the activity has ended, its clock is frozen.** A pause, a resume or a re-sent `end_date` changes nothing, so the final reading stays where the end left it.
+-   **Any `end_date` or `duration` in a request starts a new window** on an activity that has not ended, even the stored value, and clears a count-down's pause. A producer that re-sends its whole state would re-pause at the moment of each update and lose the paused time on resume, so leave both out of a count-down's updates while it is paused and when resuming it.
+-   **Reading the state back.** A paused activity carries the server-set `paused_at`, and a count-up carries `paused_seconds` once it has been resumed. Both are read-only: values you send are ignored, only the switch moves them.
+-   **No pushes while paused.** A paused timer stays alive past the 8-hour limit the same way a running count-up does.
+
+## Hiding the ruler
+
+The ruler under the clock shows the countdown's span, or a count-up's way to its goal. It is on by default; `"show_ruler": false` hides it in either direction and leaves the big clock and its caption. A count-up without a goal has no ruler to hide.
 
 ---
 
@@ -435,6 +512,8 @@ After the start push the server manages the remaining lifecycle, in this order; 
 A step-based template designed for CI/CD pipelines and multi-stage workflows. Visualizes parallel jobs with a matrix indicator.
 
 ![Live Activity demonstration](https://pushward.app/_app/immutable/assets/steps-sampler-poster.COEPOYNU.webp)
+
+On Android, a steps activity is a [Live Update](https://pushward.app/docs/live-activities) in the notification shade with one bar segment per step. The current step fills to `progress` when `step_weights` is set and is painted full otherwise, and more than 10 steps collapse into three segments: done, current and remaining. The status bar chip shows the step count, or counts down to `end_date` while `live_progress` runs.
 
 ## Fields
 
@@ -644,6 +723,8 @@ A severity-based template for monitoring alerts. Displays firing alerts with dee
 
 ![Live Activity demonstration](https://pushward.app/_app/immutable/assets/alert-poster.67WWFVCt.webp)
 
+On Android, an alert is a [Live Update](https://pushward.app/docs/live-activities) in the notification shade: a full bar in the severity's color (or `accent_color` when set), the severity in its header, and a status bar chip that counts the time since `fired_at`.
+
 ## Fields
 
 | Field | Type | Description |
@@ -720,6 +801,8 @@ Monitor a numeric value within a range: the current reading with unit, min/max e
 
 ![Live Activity demonstration](https://pushward.app/_app/immutable/assets/gauge-poster.B0wl5Au_.webp)
 
+On Android, a gauge is a [Live Update](https://pushward.app/docs/live-activities) in the notification shade: the bar shows where `value` sits between `min_value` and `max_value`, and the status bar chip shows the value. Android 17 draws it as a metric card with the value, the minimum and the maximum.
+
 ## Fields
 
 | Field | Type | Description |
@@ -795,6 +878,8 @@ Gauge complete
 A real-time sparkline chart for tracking values over time. Each push sends a data point; the server accumulates history and delivers the sparkline data to iOS via push notifications.
 
 ![Live Activity demonstration](https://pushward.app/_app/immutable/assets/timeline-poster.CNIwLB3x.webp)
+
+On Android, a timeline is a [Live Update](https://pushward.app/docs/live-activities) in the notification shade: the primary series on a bar within its range, the thresholds as points on it, and the latest value in the status bar chip.
 
 ## Fields
 
@@ -891,6 +976,8 @@ A compact dashboard of up to four labeled tiles - each with a value, icon, trend
 
 ![Live Activity demonstration](https://pushward.app/_app/immutable/assets/board-poster.tdV2awap.webp)
 
+On Android, a board is a [Live Update](https://pushward.app/docs/live-activities) in the notification shade. Android 17 draws it as a metric card with the first three tiles; earlier versions list the tiles as lines. The status bar chip shows the first tile.
+
 ## Fields
 
 | Field | Type | Description |
@@ -968,6 +1055,8 @@ Service status board
 A streaming feed of up to 20 newest-first lines, each with optional timestamp and severity. The server keeps a scroll-back backlog you can fetch in-app, while the Live Activity always shows the most recent lines.
 
 ![Live Activity demonstration](https://pushward.app/_app/immutable/assets/log-poster.BQPeLDfS.webp)
+
+On Android, a log is a [Live Update](https://pushward.app/docs/live-activities) in the notification shade that lists the newest lines, with a status bar chip that counts the time since the newest one.
 
 ## Fields
 
@@ -1219,6 +1308,8 @@ Backdating a position sample
 
 A question card with 2-4 answer buttons that fire your webhook or record the answer server-side - built for agents, deploy gates, and home automations.
 
+On Android, an approval is a [Live Update](https://pushward.app/docs/live-activities) in the notification shade: the question, its details and source, with the options as buttons under it. Android shows at most three buttons, so a fourth option is left off there. An option answers in the background, or opens its app when its `url` is a custom scheme. The status bar chip counts down to `end_date` when one is set, shows a question mark while the question is open and a check mark once it is answered.
+
 _Requires PushWard iOS app 1.11.0 or later._
 
 The question rides `state`; the buttons are `options` -- each one either fires **your** webhook directly from the device, or is recorded by the server into the read-only `answer` field. The second form is what lets an agent script, a CI job or a Home Assistant automation block on a human decision without exposing any endpoint to the internet.
@@ -1437,6 +1528,8 @@ Title, body, subtitle, and interruption level - the minimum payload for a push n
 
   ![PushWard app detail view of the notification, showing title, subtitle, and body](https://pushward.app/_app/immutable/assets/notif-basics-view-540.AGFUQr11.jpg)
 
+On Android, a notification shows its title and body in the notification shade and on the lock screen, with the subtitle above the body once it is expanded. Every notification also lands in the app's inbox, one row per service that sent it.
+
 ## Fields
 
 | Field | Type | Required | Description |
@@ -1591,6 +1684,8 @@ Add up to 10 buttons that appear when the user long-presses (or pulls down) the 
   ![Lock screen notification with image attachment and long-press action menu](https://pushward.app/_app/immutable/assets/notif-img-lock-540.pzwl4yoE.jpg)
 
   ![PushWard app detail view of the notification with full-size image attachment](https://pushward.app/_app/immutable/assets/notif-img-lock-view-540.B7iI3TIv.jpg)
+
+On Android, the first three actions become buttons under the notification in the shade (Android shows no more), and the app's detail view lists every action. A webhook action fires in the background without opening the app, a `text_input` action takes its reply inline in the shade, a link or another app's URL asks before it opens unless you trusted it, and a `foreground` action without a `url` opens the app. `authentication_required` asks to unlock the phone first; `icon` and `destructive` are not drawn.
 
 ## The `actions` array
 
@@ -1913,6 +2008,8 @@ Set icon\_url to render the notification with iOS Communication Notification sty
   ![Notification rendered in iOS Communication style with a source avatar](https://pushward.app/_app/immutable/assets/notif-communication-540.DTcela5q.jpg)
 
   ![PushWard app detail view of the Communication-style notification with sender avatar](https://pushward.app/_app/immutable/assets/notif-img-lock-view-540.B7iI3TIv.jpg)
+
+On Android, a notification with a `source` posts as a conversation instead: a message from a person named after the source, with the service's icon as the avatar, listed under Conversations in the shade. Message-Style Notifications in the app's settings turns it off, and audio attachments keep the standard layout.
 
 ## Source identity
 
@@ -3271,15 +3368,19 @@ For notifications driven by an external service or a server rather than your own
 
 Push-driven iOS Home Screen, Lock Screen, and StandBy widgets. Declare a widget once, update its content with a PATCH, and the user's WidgetKit instances refresh automatically.
 
+On Android, widgets go on the home screen: long-press it, choose Widgets and add PushWard, then pick which of your widgets it shows. It draws the small, medium or large layout for the space it gets, and long-pressing it again picks another widget.
+
 ℹ Info
 
 Widgets require **iOS 26 or later**. On older versions the iOS app hides the widget management screen and your widgets remain dormant - the server keeps the content current so they render correctly once the user upgrades.
 
-Widgets are persistent - once the user pins one to their Home Screen, Lock Screen, or StandBy, it stays there until they remove it. Use a widget for ambient state that should always be glanceable (a sensor reading, a server health indicator, a daily counter). For something that _is currently happening and has a known end_ - a download, a timer, a print - reach for a [Live Activity](https://pushward.app/docs/live-activities) instead.
+On Android: Widgets work on every Android version the app runs on, **Android 12 or later**.
+
+Widgets are persistent - once the user pins one to their Home Screen, Lock Screen, or StandBy (on Android: home screen), it stays there until they remove it. Use a widget for ambient state that should always be glanceable (a sensor reading, a server health indicator, a daily counter). For something that _is currently happening and has a known end_ - a download, a timer, a print - reach for a [Live Activity (on Android: Live Update)](https://pushward.app/docs/live-activities) instead.
 
 ## Templates
 
-Each template is tuned for a different shape of data. Tap a card for that template's field list, worked example, and behavior notes; the shared content fields they all accept live in the [API reference](https://pushward.app/docs/widgets/api).
+Each template is tuned for a different shape of data. Tap a card for that template's field list, worked example, and behavior notes; the shared content fields they all accept live in the [API reference](https://pushward.app/docs/widgets/api). On Android the same templates draw in the app's own home screen layout, like the widgets above; the cards show the iPhone ones.
 
 [### `value` - Value
 
@@ -3352,15 +3453,15 @@ Preview any of them on the [playground](https://pushward.app/playground).
 ## How it works
 
 1.  Your integration calls `POST /widgets` to declare a widget by `slug`, with a `template` and initial `content`.
-2.  The user opens the widget picker on their device and selects your slug for any system widget family they want - small, medium, large, accessory-rectangular, accessory-circular, or accessory-inline. The same slug can appear in multiple slots.
-3.  Your integration calls `PATCH /widgets/{slug}` whenever the underlying value changes. The server merges (RFC 7396) and pushes a thin update; the iOS widget extension reloads its timeline.
-4.  If a push is missed (background fetch coalescing, no network), iOS calls back into the extension every ~30 minutes for a freshness pull - `GET /widgets/{slug}` always returns the latest content.
+2.  The user opens the widget picker on their device and selects your slug for any system widget family they want - small, medium, large, accessory-rectangular, accessory-circular, or accessory-inline. The same slug can appear in multiple slots. On Android: The user long-presses the home screen, adds the PushWard widget and picks your slug. The widget draws the small, medium or large layout for the space it is given.
+3.  Your integration calls `PATCH /widgets/{slug}` whenever the underlying value changes. The server merges (RFC 7396) and pushes a thin update; the iOS widget extension reloads its timeline (on Android: the Android app fetches the new content and redraws the widget).
+4.  If a push is missed (background fetch coalescing, no network), iOS calls back into the extension every ~30 minutes for a freshness pull (on Android: If a push is missed, the Android app refreshes its placed widgets every 15 minutes and whenever it comes to the foreground) - `GET /widgets/{slug}` always returns the latest content.
 
 ## Two ways to create widgets
 
 Widgets don't require an integration to exist. There are two paths to the same backend, and both can target the same slug - a widget created in the app can later be driven by an integration, and vice versa.
 
--   **In the iOS app.** Open the **Widgets** tab in PushWard, choose a template, and fill in the slug, name, and initial content. This is the right path for personal widgets - a temperature you key in by hand, a morale dial, a counter you bump from a Shortcut. The new slug appears immediately in the iOS widget picker for Home Screen, Lock Screen, and StandBy.
+-   **In the iOS app.** Open the **Widgets** tab in PushWard, choose a template, and fill in the slug, name, and initial content. This is the right path for personal widgets - a temperature you key in by hand, a morale dial, a counter you bump from a Shortcut. The new slug appears immediately in the iOS widget picker for Home Screen, Lock Screen, and StandBy. On Android: **In the Android app.** The **Widgets** tab creates the same widgets: choose a template and fill in the slug, name, and initial content. For the templates an integration usually feeds (trend, battery, schedule, flow, stat list) it starts the widget with a placeholder that your first `PATCH` replaces, and each widget previews its small, medium and large layouts before you place it.
 -   **Via the HTTP API.** Use this when an external service should keep the widget content current - a homelab probe, a CI job, a smart-home automation. See the [API reference](https://pushward.app/docs/widgets/api).
 
 ## Authentication
@@ -4718,6 +4819,8 @@ notification
 
 ![Live Activity demonstration](https://pushward.app/_app/immutable/assets/alert-poster.67WWFVCt.webp)
 
+On Android, this provider's activities show as Live Updates and its notifications as Android notifications, in the notification shade.
+
 ## Public Relay
 
 PushWard hosts a public relay at `relay.pushward.app` - no deployment required. Just point your services at it with your integration key. It supports every provider listed above; if you prefer to self-host, see the [self-hosted setup](#self-hosted) further down.
@@ -5094,6 +5197,8 @@ Turn Grafana alerts into a timeline Live Activity on your iPhone Lock Screen. Se
 
 ![Live Activity demonstration](https://pushward.app/_app/immutable/assets/timeline-poster.CNIwLB3x.webp)
 
+On Android, the alert timeline is a [Live Update](https://pushward.app/docs/live-activities) in the notification shade: the primary series on a bar, with the thresholds as points on it.
+
 Two ways to bring Grafana into PushWard. The **app plugin** below is the recommended path - it runs the timeline bridge and a widget engine _inside_ Grafana, with one-click setup. For simple alert-style notifications (firing/resolved, no history), the [Relay](https://pushward.app/docs/integrations/relay) integration needs no plugin or container at all.
 
 ## Get Your Integration Key
@@ -5341,7 +5446,7 @@ After setup, click "Add tracked entity" on the integration card. Each entity bec
 | Activity Name | Entity ID | Display name shown on iPhone |
 | Icon | Domain default | SF Symbol name (e.g., `washer`, `thermometer`) or MDI icon with `mdi:` prefix (e.g., `mdi:washing-machine`, `mdi:thermometer`) |
 | Priority | 1 | 0-10 eviction priority |
-| Template | `generic` | `generic`, `countdown`, `alert`, `steps`, `gauge`, `timeline`, `board`, or `log` |
+| Template | `generic` | `generic`, `countdown` (Timer), `alert`, `steps`, `gauge`, `timeline`, `board`, or `log` |
 | Start States | Domain default | Comma-separated states that start the activity |
 | End States | Domain default | Comma-separated states that end the activity |
 | Min. Update Interval | 5s | Cooldown between mid-activity updates |
@@ -5401,6 +5506,44 @@ Beyond mirroring entities to Live Activities, the integration exposes services f
 -   **Transactional email** - the `pushward.send_email` service delivers [email](https://pushward.app/docs/email) to a verified recipient of your account. Needs `emails` at `send`.
 
 For driving an activity straight from an automation (rather than tracking an entity), the create, update, end, and delete services are all available. Update actions are template-specific - `pushward.update_activity_generic`, `..._steps`, `..._gauge`, and so on - so each action's form only shows the fields that template uses.
+
+### Timers: counting up, goals and pausing
+
+Integration 0.53.0 and later drive the [timer template](https://pushward.app/docs/live-activities/timer) (`countdown`) in both directions. `pushward.update_activity_countdown` takes four fields on top of `end_date`, `duration`, `start_date`, `warning_threshold`, `alarm` and `snooze_seconds`:
+
+| Field | Description |
+| --- | --- |
+| `direction` | `down` (the default) counts down to the end; `up` counts up from `start_date`. Leave `start_date` out to start now, or give a past timestamp for something that began earlier |
+| `goal` | Up only: a target in seconds or a duration string such as `"2h"`. The ruler fills toward it; past it the clock turns orange and keeps counting as overtime. The goal stays on the slug, so a timer restarted on the same slug still has the last run's target: send `goal: null` to remove it (an empty string is refused) |
+| `show_ruler` | `false` hides the ruler in either direction. On by default |
+| `paused` | `true` freezes the clock and `false` resumes it, in either direction. Sending the state the timer is already in changes nothing, so an automation can send it on every update |
+
+An up timer has no end, so the action refuses `end_date`, `duration`, `warning_threshold`, `alarm`, `snooze_seconds` and `completion_message` next to `direction: up`, and a `goal` next to `direction: down`; `goal: null`, the clear, passes in either direction. A call without `direction` keeps the stored one, which only the server knows, so a wrong pairing there fails with the server's message instead. Leave the message out of `pushward.end_activity` for an up timer as well.
+
+```
+- action: pushward.update_activity_countdown
+  data:
+    slug: kid-nap
+    state: ongoing
+    state_text: Asleep
+    direction: up
+    goal: 2h
+```
+
+`pushward.pause_timer` pauses a timer by `slug`, or resumes it with `paused: false` (`paused` defaults to `true`). Counting up, the paused time is left out of the clock, so the start time on the card stays right; counting down, the end moves on by the length of the pause. While a count-down is paused, leave `end_date` and `duration` out of its updates: either one starts a new window and clears the pause (see [Pausing](https://pushward.app/docs/live-activities/timer#pausing)).
+
+```
+- action: pushward.pause_timer
+  data:
+    slug: kid-nap
+    paused: false
+```
+
+The action sends only the switch and the template stays what it is. An ended timer ignores it, so the time it stopped at stays put.
+
+On any other template the server refuses the pause and the action fails with its message. A timer that the 5-activity limit has moved off the phone fails too, with `invalid activity state: "preempted"`: send `pushward.update_activity_countdown` with `state: ongoing` to ask for it back, with `paused` in the same call if you want it paused.
+
+On iPhone, counting up and pausing need PushWard 1.19.0 or later: older versions show an up timer as finished and keep counting down through a pause.
 
 ## Scheduled and repeating notifications
 
@@ -5627,6 +5770,8 @@ Track a washing machine using a sensor entity with a progress attribute:
 Send notifications, show a job as a Live Activity and wait for an answer from inside a workflow with the PushWard action, or track every run with the polling bridge.
 
 ![Live Activity demonstration](https://pushward.app/_app/immutable/assets/github-poster.CIGWInoZ.webp)
+
+On Android, a workflow run from the bridge is a [Live Update](https://pushward.app/docs/live-activities) in the notification shade with one bar segment per step. The bridge turns `live_progress` on by default, so while the current step has an estimate from earlier runs the status bar chip counts down to it; otherwise it shows the step count.
 
 There are two ways in. The [PushWard action](#action) is a step in your workflow: you decide what it sends and when, and it can stop a job until you answer on your phone. The [polling bridge](#bridge) is a container that watches your repositories from outside and shows every run as a Live Activity without touching any workflow file.
 
@@ -5897,6 +6042,8 @@ Track SABnzbd download progress as a Live Activity on your iPhone Lock Screen. S
 
 ![Live Activity demonstration](https://pushward.app/_app/immutable/assets/sabnzbd-poster.4_7r6Srt.webp)
 
+On Android, the download and its post-processing are a [Live Update](https://pushward.app/docs/live-activities) in the notification shade, in either display template below.
+
 ## How It Works
 
 The `pushward-sabnzbd` bridge container runs an HTTP server that receives webhooks from SABnzbd and tracks download and post-processing progress.
@@ -6005,6 +6152,8 @@ Uses a fixed slug: `sabnzbd`. All downloads are tracked under a single activity.
 Track Bambu Lab 3D print progress as a Live Activity on your iPhone Lock Screen - layer counts, nozzle temperature, and ETA via local MQTT.
 
 ![Live Activity demonstration](https://pushward.app/_app/immutable/assets/bambu-poster.CnFQS_70.webp)
+
+On Android, the print is a [Live Update](https://pushward.app/docs/live-activities) in the notification shade with its progress on the bar. While the printer reports a time remaining, the bridge sends `live_progress` with an `end_date`, so the status bar chip counts down to the finish; while the print is preparing or paused, the chip shows the percentage.
 
 ## How It Works
 
@@ -6814,7 +6963,7 @@ Shared fields on `content`; each template adds its own required fields on top (s
 
 | Field | Type | Description |
 | --- | --- | --- |
-| `template` | string | **Required.** One of: `generic`, `countdown`, `steps`, `alert`, `gauge`, `timeline`, `board`, `log`, `media`, `approval` |
+| `template` | string | **Required.** One of: `generic`, `countdown` (also accepted as `timer`), `steps`, `alert`, `gauge`, `timeline`, `board`, `log`, `media`, `approval` |
 | `progress` | float | Optional. Value between `0.0` and `1.0`. Computed automatically for `gauge` from `value`/`min_value`/`max_value`. |
 | `alarm` | boolean | Optional. Opt-in iOS AlarmKit alarm at `end_date`. Rings through silent mode and Focus. Requires `end_date`; iOS 26+ only. See [Alarms](#alarm). |
 | `snooze_seconds` | integer | Optional. How many seconds `POST /activities/{slug}/snooze` extends `end_date`, and the iOS AlarmKit snooze window. `60`-`3600`; defaults to `300` (5 min) when omitted. Only meaningful with `alarm: true`. |
@@ -6962,7 +7111,7 @@ Setting `content.alarm: true` schedules a native iOS alarm at `content.end_date`
 -   **Requires `end_date`.** Sending `alarm: true` without `content.end_date` returns `422 Unprocessable Entity`.
 -   **Updating `end_date` reschedules the alarm.** Send a new PATCH with the new `end_date`; the armed alarm re-derives automatically.
 -   **Past `end_date` is a no-op.** If the push arrives after `end_date` has already elapsed, no alarm is scheduled (but the Live Activity content still updates).
--   **Designed for the [countdown template](https://pushward.app/docs/live-activities/countdown).** Other templates accept the field if they set `end_date`, but only `countdown` meaningfully uses it.
+-   **Designed for the [timer template](https://pushward.app/docs/live-activities/timer).** Other templates accept the field if they set `end_date`, but only the timer (`countdown`) meaningfully uses it.
 -   **What the user sees.** When the alarm fires, iOS presents a full-screen alarm using the activity's `name` as the title with **Dismiss** and **Snooze** buttons. Snooze extends `end_date` by the configured snooze window and sets `snoozed_until` so the Live Activity shows a "Snoozed" banner. The PushWard Live Activity continues to display alongside.
 -   **Configurable snooze window.** Set `content.snooze_seconds` (`60`-`3600`) to control how long Snooze extends the timer; it defaults to `300` (5 min) when omitted. iOS reads this value to size its AlarmKit snooze countdown, so a changed value applies to the next scheduled alarm.
 
@@ -7883,8 +8032,12 @@ The `slug` must start with an alphanumeric character and may contain letters, nu
 | Template | Field | Constraint |
 | --- | --- | --- |
 | Generic, Steps | `progress` | 0.0 - 1.0 |
-| Countdown | `duration` or `end_date` | Required. `duration` accepts seconds (`"30"`) or units (`"1h30m"`, `"5m"`). `end_date` must be a positive Unix timestamp. |
-| Countdown | `warning_threshold` | >= 0 seconds |
+| Timer | `direction` | `down` (default) or `up` |
+| Timer, counting down | `duration` or `end_date` | Required. `duration` accepts seconds (`"30"`) or units (`"1h30m"`, `"5m"`). `end_date` must be a positive Unix timestamp. |
+| Timer, counting down | `warning_threshold` | >= 0 seconds |
+| Timer, counting up | `duration`, `end_date`, `warning_threshold`, `completion_message`, `alarm`, `snooze_seconds` | Rejected: a count-up has no end |
+| Timer, counting up | `start_date` | Defaults to now; may be in the past, at most 5 minutes ahead |
+| Timer, counting up | `goal` | 1 second - 5 years, as seconds or units (`"2h"`, `"90m"`) |
 | Steps | `total_steps` | 1 - 64 |
 | Steps | `current_step` | 0 - `total_steps` |
 | Steps | `step_rows` values | 1 - 10 per row |
@@ -7998,9 +8151,9 @@ The `#` prefix is optional. Both `"#FF5733"` and `"FF5733"` are accepted.
 
 [![CI](https://github.com/mac-lucky/pushward-integrations/actions/workflows/ci.yml/badge.svg)](https://github.com/mac-lucky/pushward-integrations/actions/workflows/ci.yml)
 
-Turn events from the services you already run - GitHub Actions, Forgejo Actions, SABnzbd, a Bambu Lab printer, Grafana, and ~19 self-hosted apps behind the relay - into real-time **PushWard Live Activities, widgets, and push notifications** on your iPhone (Dynamic Island + Lock Screen). This is a Go [workspace](https://go.dev/ref/mod#workspaces) of small "bridge" programs, each shipped as its own Docker image.
+Turn events from the services you already run - GitHub Actions, Forgejo Actions, SABnzbd, a Bambu Lab printer, Grafana, and ~19 self-hosted apps behind the relay - into real-time **PushWard Live Activities, widgets, and push notifications** on your phone, with Live Activities on the iPhone Dynamic Island and Lock Screen. This is a Go [workspace](https://go.dev/ref/mod#workspaces) of small "bridge" programs, each shipped as its own Docker image.
 
-> **New to PushWard?** PushWard is a push-notification platform whose iOS app renders live, updating Live Activities and widgets from any source. Learn more at **[pushward.app](https://pushward.app)** and get the iOS app on the **[App Store](https://apps.apple.com/app/id6759689999)**.
+> **New to PushWard?** PushWard is a push-notification platform whose app renders live, updating Live Activities and widgets from any source. Learn more at **[pushward.app](https://pushward.app)** and get the app on the **[App Store](https://apps.apple.com/app/id6759689999)**.
 
 ## How it works
 
@@ -8028,7 +8181,7 @@ Each bridge has its own README with full configuration and per-event behavior.
 | [bambulab](./bambulab/) | Bambu Lab 3D-print progress via local MQTT (TLS) | - (outbound only) | `ghcr.io/mac-lucky/pushward-bambulab` |
 | [forgejo](./forgejo/) | Forgejo Actions workflow-run CI/CD progress (poller) | - (outbound only) | `ghcr.io/mac-lucky/pushward-forgejo` |
 | [github](./github/) | GitHub Actions workflow-run CI/CD progress (poller) | - (outbound only) | `ghcr.io/mac-lucky/pushward-github` |
-| [grafana](./grafana/) | Grafana alert timelines with Prometheus/VictoriaMetrics history + PromQL-polled iOS widgets | 8090 | `ghcr.io/mac-lucky/pushward-grafana` |
+| [grafana](./grafana/) | Grafana alert timelines with Prometheus/VictoriaMetrics history + PromQL-polled widgets | 8090 | `ghcr.io/mac-lucky/pushward-grafana` |
 | [sabnzbd](./sabnzbd/) | SABnzbd download + post-processing progress | 8090 | `ghcr.io/mac-lucky/pushward-sabnzbd` |
 | [relay](./relay/) | Multi-tenant webhook gateway: 22 provider routes, plus a universal route for any other JSON webhook | 8090 (+ 9090 metrics) | `ghcr.io/mac-lucky/pushward-relay` |
 
@@ -8071,8 +8224,8 @@ Auth styles differ by what each service's webhook UI allows: most providers acce
 ## Prerequisites
 
 - A reachable **PushWard server** - the public base is `https://api.pushward.app`.
-- A **PushWard integration key** (`hlk_` prefix), created in the PushWard iOS app under Settings -> Integration Keys. Publishing widgets (the `grafana` bridge) needs a key with the `widgets` scope.
-- The **PushWard iOS app** installed and subscribed to the activity/widget slugs the bridge produces.
+- A **PushWard integration key** (`hlk_` prefix), created in the PushWard app under Settings -> Integration Keys. Publishing widgets (the `grafana` bridge) needs a key with the `widgets` scope.
+- The **PushWard app** installed and subscribed to the activity/widget slugs the bridge produces.
 - The **backend each bridge talks to**: a GitHub token (github), a Forgejo instance URL + API token (forgejo), a Backrest instance (backrest), a SABnzbd instance (sabnzbd), a Bambu Lab printer on the LAN (bambulab), a Prometheus/VictoriaMetrics endpoint (grafana), or PostgreSQL plus the external services' webhooks (relay).
 
 ## Installation
@@ -8293,7 +8446,7 @@ Bridges log structured JSON to stdout - `docker logs -f <container>` (or `kubect
 | Symptom | Likely cause / fix |
 |---|---|
 | `401`/`403` from the server | Wrong or scope-limited `hlk_` key. Publishing widgets needs a key with the `widgets` scope |
-| Nothing appears on iPhone | Wrong `PUSHWARD_URL`, or the iOS app isn't subscribed to the activity/widget slug the bridge produces |
+| Nothing appears on the phone | Wrong `PUSHWARD_URL`, or the app isn't subscribed to the activity/widget slug the bridge produces |
 | "webhook is unauthenticated" warning | `sabnzbd.webhook_secret` / grafana `webhook_token` is unset - set one and configure the matching header on the sender |
 | Relay won't start | `PUSHWARD_DATABASE_DSN` missing, or `server.metrics_address` equals `server.address` (they must differ) |
 | Relay rate-limits real traffic to one bucket | Set `trusted_proxy_cidrs` so the relay trusts your proxy's forwarded-IP headers |
@@ -8303,7 +8456,7 @@ Bridges log structured JSON to stdout - `docker logs -f <container>` (or `kubect
 ## Requirements
 
 - Go 1.27.2 (workspace toolchain) and Docker for builds.
-- A running PushWard server, an `hlk_` integration key, the PushWard iOS app, and the backend each bridge integrates with (see [Prerequisites](#prerequisites)).
+- A running PushWard server, an `hlk_` integration key, the PushWard app, and the backend each bridge integrates with (see [Prerequisites](#prerequisites)).
 
 ---
 
@@ -8369,7 +8522,7 @@ Relay notifications are not end-to-end encrypted. The relay never holds a user's
 
 - A running **PushWard server** (`https://api.pushward.app`, or your own deployment)
 - A **PostgreSQL** database for the relay state store
-- The **PushWard iOS app** ([App Store](https://apps.apple.com/app/id6759689999)) subscribed to the slugs you push to
+- The **PushWard app** ([App Store](https://apps.apple.com/app/id6759689999)) subscribed to the slugs you push to
 - One **PushWard integration key** (`hlk_` prefix) per tenant - created in the PushWard app
 
 ## Quickstart (Docker)
@@ -9344,7 +9497,7 @@ Part of the public [`pushward-integrations`](https://github.com/mac-lucky/pushwa
 [![CI](https://github.com/mac-lucky/pushward-integrations/actions/workflows/ci.yml/badge.svg)](https://github.com/mac-lucky/pushward-integrations/actions/workflows/ci.yml)
 [![Image](https://img.shields.io/badge/ghcr.io-pushward--grafana-2496ED?logo=docker&logoColor=white)](https://github.com/mac-lucky/pushward-integrations/pkgs/container/pushward-grafana)
 
-Turns Grafana alerts into [PushWard](https://pushward.app) **Live Activity timelines** on iPhone - a live sparkline of the firing metric on the Dynamic Island and Lock Screen, backfilled from Prometheus / VictoriaMetrics history and updated as the metric moves. It can also poll PromQL on a schedule and publish the results as PushWard **iOS Home / Lock Screen widgets**.
+Turns Grafana alerts into [PushWard](https://pushward.app) **Live Activity timelines** on iPhone - a live sparkline of the firing metric on the Dynamic Island and Lock Screen, backfilled from Prometheus / VictoriaMetrics history and updated as the metric moves. It can also poll PromQL on a schedule and publish the results as PushWard **Home / Lock Screen widgets**.
 
 > **New to PushWard?** Learn what it is at **[pushward.app](https://pushward.app)** and download the app from the **[App Store](https://apps.apple.com/app/id6759689999)**.
 
@@ -9377,7 +9530,7 @@ Grafana POSTs a firing alert to `POST /webhook`. The bridge resolves the series'
 - A **Prometheus or VictoriaMetrics** endpoint reachable from the bridge - queried directly for series history and instant values.
 - A **Grafana** instance configured to send alert webhooks to this bridge.
 - *(Optional)* A **Grafana service-account token** (Editor role) to enable PromQL auto-extraction and missed-resolve recovery.
-- The **PushWard iOS app** installed and subscribed to the relevant activity slugs.
+- The **PushWard app** installed and subscribed to the relevant activity slugs.
 
 ## Quickstart (Docker)
 
@@ -9617,7 +9770,7 @@ Logs are structured JSON on stdout (`docker logs pushward-grafana`). The process
 | Process exits immediately on start | A required value is missing: `pushward.url` / `PUSHWARD_URL`, `pushward.api_key` / `PUSHWARD_API_KEY`, or `metrics.url` / `PUSHWARD_METRICS_URL`. |
 | `403` on first widget create | The integration key lacks the `widgets` scope. Use a key with widget capability. |
 | Empty sparkline / no history | `pushward_query` is missing and auto-extraction is off (set `grafana.url` + `grafana.api_token`), or the metrics backend can't run the PromQL. Verify `metrics.url` and any `metrics.username` / `bearer_token` auth. |
-| Webhook accepted (`200`) but no activity appears | Processing is async - check logs for the firing alert. Confirm the alert has a non-empty fingerprint and that the activity slug is subscribed in the iOS app. |
+| Webhook accepted (`200`) but no activity appears | Processing is async - check logs for the firing alert. Confirm the alert has a non-empty fingerprint and that the activity slug is subscribed in the app. |
 | Activity never ends | The `resolved` webhook was dropped. Enable missed-resolve recovery with `grafana.url` + `grafana.api_token` + `alert_check_interval`; otherwise the stale sweeper closes it out after `stale_timeout`. |
 | `401`/`403` from Grafana to the bridge, or vice-versa | The `webhook_token` in the contact point's `Authorization: Bearer` header must match `PUSHWARD_WEBHOOK_TOKEN`; the Grafana service-account token must have Editor role. |
 | Firing alerts silently dropped | The in-memory active-alert cap (500) was hit; a rate-limited warning is logged. Reduce alert volume or tune grouping. |
@@ -9625,7 +9778,7 @@ Logs are structured JSON on stdout (`docker logs pushward-grafana`). The process
 ## Requirements & License
 
 - Go 1.27.x toolchain (for building from source); Docker for the container image.
-- A running PushWard server, an `hlk_` integration key, a Prometheus/VictoriaMetrics endpoint, and the PushWard iOS app.
+- A running PushWard server, an `hlk_` integration key, a Prometheus/VictoriaMetrics endpoint, and the PushWard app.
 
 Part of the public [pushward-integrations](https://github.com/mac-lucky/pushward-integrations) repository.
 
@@ -9646,7 +9799,7 @@ Polls the GitHub Actions API for in-progress workflow runs and pushes their live
 
 If you would rather not run a poller, [pushward-action](https://github.com/mac-lucky/pushward-action) does the same from inside a workflow: a step starts the card, a final `if: always()` step ends it, and it can also send notifications and wait for an approval. Pick one per repository, since both at once give every run two cards.
 
-> **New to PushWard?** Learn more at **[pushward.app](https://pushward.app)** and get the iOS app on the **[App Store](https://apps.apple.com/app/id6759689999)**.
+> **New to PushWard?** Learn more at **[pushward.app](https://pushward.app)** and get the app on the **[App Store](https://apps.apple.com/app/id6759689999)**.
 
 ## How it works
 
@@ -9681,7 +9834,7 @@ GitHub Actions API --poll--> pushward-github --POST/PATCH /activities--> PushWar
 - A running [PushWard](https://pushward.app) server (the public API is `https://api.pushward.app`).
 - A PushWard integration key (`hlk_` prefix) with the activity-manage capability.
 - A GitHub personal access token with `actions:read` (read workflow runs and jobs); add `repo` to discover and monitor private repositories.
-- The PushWard iOS app installed and subscribed to the repos you want to see.
+- The PushWard app installed and subscribed to the repos you want to see.
 
 ## Installation
 
@@ -9880,7 +10033,7 @@ Logs are structured JSON written to stdout at info level. View them with `docker
 | `configured poll rate exceeds the forge's hourly request budget` at startup | Too many repos for the configured `idle_interval`. Raise it, or narrow `github.owner` / `github.repos`. See [Request budget](#request-budget). |
 | `detection interval paced by the forge's request budget` | The window is running short, so new runs are noticed less often until it refills. Runs already being tracked are unaffected. Use a dedicated token if it is shared with heavy usage. |
 | `repo has no workflows` / `repo has no Actions` | Expected, and the point: that repo is skipped for half an hour rather than probed every pass. |
-| No Live Activity appears on the phone | No in-progress run yet, the iOS app isn't subscribed to that repo's slug, or no compatible iOS build is installed. |
+| No Live Activity appears on the phone | No in-progress run yet, the app isn't subscribed to that repo's slug, or no compatible app build is installed. |
 
 ## License
 
@@ -9899,7 +10052,7 @@ Logs are structured JSON written to stdout at info level. View them with `docker
 
 Tracks SABnzbd downloads and post-processing as a live-updating [PushWard](https://pushward.app) Live Activity on iPhone (Dynamic Island + Lock Screen). SABnzbd calls the bridge's webhook when an NZB is added; the bridge then polls the SABnzbd JSON API through the download and unpack phases and pushes progress, speed, ETA, and a completion summary to the PushWard server.
 
-> **New to PushWard?** Learn what it does at **[pushward.app](https://pushward.app)** and get the iOS app on the **[App Store](https://apps.apple.com/app/id6759689999)**.
+> **New to PushWard?** Learn what it does at **[pushward.app](https://pushward.app)** and get the app on the **[App Store](https://apps.apple.com/app/id6759689999)**.
 
 ## How it works
 
@@ -9930,7 +10083,7 @@ SABnzbd (NZB added)  --webhook-->  pushward-sabnzbd  --REST-->  PushWard server 
 - A running **PushWard server** (public API: `https://api.pushward.app`).
 - A **PushWard integration key** (`hlk_` prefix).
 - A **SABnzbd** instance reachable over HTTP with its API key.
-- The **PushWard iOS app** installed and subscribed to the `sabnzbd` activity slug.
+- The **PushWard app** installed and subscribed to the `sabnzbd` activity slug.
 
 ## Installation
 
@@ -10117,13 +10270,13 @@ docker logs -f pushward-sabnzbd
 | `webhook secret not configured -- webhook endpoint is unauthenticated` | Expected when no secret is set; set `PUSHWARD_SABNZBD_WEBHOOK_SECRET` to require `X-Webhook-Secret`. |
 | Webhook returns `401 unauthorized` | A secret is configured but the request's `X-Webhook-Secret` is missing or wrong. |
 | `SABnzbd never started downloading, giving up` | The queue stayed idle after the bounded wait and nothing was post-processing - check that SABnzbd actually queued the NZB and isn't paused. |
-| No Live Activity on the phone | Confirm the iOS app is subscribed to the `sabnzbd` slug, the `hlk_` key is valid, and `PUSHWARD_URL` points at your server. |
+| No Live Activity on the phone | Confirm the app is subscribed to the `sabnzbd` slug, the `hlk_` key is valid, and `PUSHWARD_URL` points at your server. |
 | `fetching queue` / `unexpected status` errors | The bridge can't reach SABnzbd (5s HTTP timeout) or the API key is wrong - verify `sabnzbd.url` resolves and the key is correct (it is redacted in logs). |
 
 ## Requirements & License
 
 - Go 1.27.x (build), Docker (deploy).
-- A running PushWard server, a SABnzbd instance, and the PushWard iOS app.
+- A running PushWard server, a SABnzbd instance, and the PushWard app.
 
 Part of the public [pushward-integrations](https://github.com/mac-lucky/pushward-integrations) repository - see the repository root for license details.
 
@@ -10140,7 +10293,7 @@ Part of the public [pushward-integrations](https://github.com/mac-lucky/pushward
 
 Mirrors a Bambu Lab 3D printer's print progress as a [PushWard](https://pushward.app) Live Activity on iOS - progress bar, layer count, remaining time, and nozzle temperature live on the Dynamic Island and Lock Screen. Connects directly to the printer over local MQTT (no Bambu cloud), and reports paused, finished, failed, and cancelled prints in real time.
 
-> **New to PushWard?** Learn more at **[pushward.app](https://pushward.app)** and get the iOS app on the **[App Store](https://apps.apple.com/app/id6759689999)**.
+> **New to PushWard?** Learn more at **[pushward.app](https://pushward.app)** and get the app on the **[App Store](https://apps.apple.com/app/id6759689999)**.
 
 ## How it works
 
@@ -10169,7 +10322,7 @@ One Live Activity is maintained per printer, keyed by the constant slug `bambu-<
 
 - A running **PushWard server** (public production base: `https://api.pushward.app`).
 - A PushWard **integration key** (`hlk_` prefix) with the `activity:manage` scope.
-- The **PushWard iOS app** (from the [App Store](https://apps.apple.com/app/id6759689999)), subscribed to the activity.
+- The **PushWard app** (from the [App Store](https://apps.apple.com/app/id6759689999)), subscribed to the activity.
 - A **Bambu Lab printer** with **LAN-only Mode** and its **Developer Mode** option enabled (Developer Mode is what opens the local MQTT channel), reachable on your local network. You will need:
   - The printer's local **IP address** (or hostname).
   - The **Access Code**, read from the printer's screen - the exact path is model-dependent (Settings -> WLAN on P1P/P1S, the General tab in Settings on X1/H2, the LAN Only Mode screen on A1/A1 mini). Used as the MQTT password.
@@ -10366,7 +10519,7 @@ Logs are structured JSON on stdout at `Info` level. With Docker: `docker logs -f
 | `MQTT connect` auth errors | Wrong `access_code`. Re-read it from the printer's LAN settings screen (path varies by model). |
 | `peer cert fingerprint mismatch` | The pinned `cert_fingerprint_sha256` no longer matches (printer regenerated its cert). Re-extract the fingerprint, or clear it to fall back to auto-pin. |
 | `BambuLab TLS verification disabled via insecure_skip_verify` (warning) | Expected only if you set `insecure_skip_verify: true`. Prefer fingerprint pinning. |
-| No activity appears on iPhone | Check `PUSHWARD_URL`/`PUSHWARD_API_KEY`, that the key has `activity:manage` scope, and that the iOS app is installed and subscribed. |
+| No activity appears on the phone | Check `PUSHWARD_URL`/`PUSHWARD_API_KEY`, that the key has `activity:manage` scope, and that the app is installed and subscribed. |
 | `polling.update_interval must be >= 2s` | Raise `update_interval` (or `PUSHWARD_POLL_INTERVAL`) to at least `2s`. |
 | `pushward.priority must be 0-10` | Set `priority` within `0`-`10`. |
 
@@ -10393,7 +10546,7 @@ Part of the [pushward-integrations](https://github.com/mac-lucky/pushward-integr
 [![Release](https://img.shields.io/github/v/release/mac-lucky/pushward-hass?sort=semver)](https://github.com/mac-lucky/pushward-hass/releases)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-Mirror Home Assistant entities onto iPhone via [PushWard](https://pushward.app), as **Live Activities** (Dynamic Island + Lock Screen) and **Home/Lock Screen widgets**, plus account usage sensors and services to send push notifications, transactional email, and activity/widget updates from your automations.
+Mirror Home Assistant entities onto your phone via [PushWard](https://pushward.app), as **Live Activities** (Dynamic Island + Lock Screen) and **Home/Lock Screen widgets**, plus account usage sensors and services to send push notifications, transactional email, and activity/widget updates from your automations.
 
 > **New to PushWard?** Learn more at **[pushward.app](https://pushward.app)**. The iOS app is on the **[App Store](https://apps.apple.com/app/id6759689999)**; you control everything from this integration and your automations.
 
@@ -10415,7 +10568,7 @@ The entity you track shows up on the phone as a Live Activity, a Home/Lock Scree
 
 ## How it works
 
-The integration watches HA entity state changes and surfaces them on your iPhone two independent ways, while polling your account's own usage counters for sensors:
+The integration watches HA entity state changes and surfaces them on your phone two independent ways, while polling your account's own usage counters for sensors:
 
 ```mermaid
 flowchart LR
@@ -10426,7 +10579,7 @@ flowchart LR
     SVC["pushward.* services"]
     API["PushWard API (api.pushward.app)"]
     APNS["APNs"]
-    IOS["iPhone: Live Activity, widget, push, email"]
+    PHONE["Phone: Live Activity, widget, push, email"]
     SENS["Account usage and quota sensors"]
 
     HA --> AM
@@ -10436,7 +10589,7 @@ flowchart LR
     WM --> API
     SVC --> API
     API --> APNS
-    APNS --> IOS
+    APNS --> PHONE
     API -.->|"GET /auth/me every 15 min"| SENS
 ```
 
@@ -10470,15 +10623,15 @@ The surfaces are independent (separate config, managers, and caches) and share o
 - **6-level icon fallback**: attribute -> config -> entity -> registry -> device class -> domain default
 - **Color support**: RGB, HSV, XY, Kelvin, named colors
 - **TTL controls**: auto-delete after end, auto-end on stale activity, auto-dismiss from the Lock Screen
-- **Services** for the whole surface: create/update/end/delete activities (with a per-template update action), send notifications, send email, refresh/delete widgets, generate a ThumbHash
+- **Services** for the whole surface: create/update/end/delete activities (with a per-template update action), pause and resume timers, send notifications, send email, refresh/delete widgets, generate a ThumbHash
 
 ## Prerequisites
 
 - **Home Assistant 2025.7.0** or newer
-- A **PushWard account** with an **integration key** (`hlk_` prefix), created in the PushWard iOS app under **Settings > Integration Keys** (recommended scope `ha-*`)
+- A **PushWard account** with an **integration key** (`hlk_` prefix), created in the PushWard app under **Settings > Integration Keys** (recommended scope `ha-*`)
   - The key needs the **`widgets`** permission to publish widgets
   - The key needs the **`emails`** capability *and* a verified recipient to use `send_email`
-- The **[PushWard iOS app](https://pushward.app)** installed on the iPhone that will display the Live Activities / widgets
+- The **[PushWard app](https://pushward.app)** installed on the phone that will display the Live Activities / widgets
 
 ## Installation
 
@@ -10520,7 +10673,7 @@ Every field label and its help text is shown live in the Home Assistant config-f
 
 ### More than one account
 
-Each PushWard account gets its own entry. On a Family plan every member has their own account, so to reach someone else's iPhone they create an integration key in their PushWard app and you add the integration a second time with that key. A key for an account that already has an entry is refused.
+Each PushWard account gets its own entry. On a Family plan every member has their own account, so to reach someone else's phone they create an integration key in their PushWard app and you add the integration a second time with that key. A key for an account that already has an entry is refused.
 
 - Tracked entities, widgets and to-do lists belong to one entry and only push to that account. Add the same entity under both entries if both of you should get it.
 - Actions reach every account unless you pick one, see [Choosing the account](#choosing-the-account).
@@ -10552,7 +10705,7 @@ A two-step flow. **Step 1** picks the entity and a template (a better template i
 | Field | Description |
 |-------|-------------|
 | Slug | Unique ID, max 128 chars (auto-generated from entity if blank) |
-| Activity Name | Display name on iPhone |
+| Activity Name | Display name on the phone |
 | Icon / Icon Attribute | Static MDI/SF Symbol, or an entity attribute for a dynamic icon |
 | Priority | 0-10 (default: 1) |
 | Start / End States | States that trigger start or end |
@@ -10608,7 +10761,7 @@ A **timeline** can plot up to **10 named series** on one chart, each its own lin
 - **Series** is a row table, one row per attribute of the tracked entity, mapping the attribute to a series label.
 - **Series Entities** is a row table that binds *separate* entities as lines, so values from unrelated sensors share one chart (a PM2.5 sensor per room, solar arrays, etc.). Each row takes an **entity** (required; its state, or an **attribute** you name) and an optional **label**. Left off, the label defaults to the entity's friendly name (with the attribute name appended for attribute sources so two attributes of one entity stay distinct). Labels are frozen when you save (the server merges series by label), truncated to 32 chars, and de-duplicated with a numeric suffix.
 
-Each series entity is tracked as a companion, so a change to any one re-samples the chart while the anchor entity owns start/end. Units auto-default from each state-sourced entity's `unit_of_measurement`; the **Per-Series Units** table (a series label and its unit per row) overrides them. Numeric attributes in the 0-255 range (e.g. `brightness`) are rescaled to 0-100. The 10-line cap covers Series and Series Entities combined; the server and iOS app already render multi-series timelines, so this is a Home Assistant configuration option only.
+Each series entity is tracked as a companion, so a change to any one re-samples the chart while the anchor entity owns start/end. Units auto-default from each state-sourced entity's `unit_of_measurement`; the **Per-Series Units** table (a series label and its unit per row) overrides them. Numeric attributes in the 0-255 range (e.g. `brightness`) are rescaled to 0-100. The 10-line cap covers Series and Series Entities combined; the server and the app already render multi-series timelines, so this is a Home Assistant configuration option only.
 
 </details>
 
@@ -10667,7 +10820,7 @@ Everything on it is read from the player's own attributes, so there is nothing t
 
 - **Title**: `media_title`, else `media_series_title`, else `media_channel`, else `source`.
 - **Subtitle**: `media_artist`, else `media_album_name`, else `app_name`. Setting a Subtitle Entity or Attribute overrides that chain.
-- **Scrubber**: `media_position` paired with `media_position_updated_at`, plus `media_duration`. The position is sent *with* the moment it was read, and iOS advances it from there while the state is playing - so the bar keeps moving between pushes. A player that reports a position but not the timestamp gets no scrubber rather than a wrong one, and a stale anchor (a player paused since yesterday) is dropped for the same reason.
+- **Scrubber**: `media_position` paired with `media_position_updated_at`, plus `media_duration`. The position is sent *with* the moment it was read, and the app advances it from there while the state is playing - so the bar keeps moving between pushes. A player that reports a position but not the timestamp gets no scrubber rather than a wrong one, and a stale anchor (a player paused since yesterday) is dropped for the same reason.
 - **Volume**: `volume_level`.
 - **Playback state**: `playing`, `paused` and `buffering` map straight through; anything else reads as stopped.
 
@@ -10750,7 +10903,7 @@ The original five templates are unaffected.
 | Expired Text | Shown once the end date passes, max 64 chars (countdown) |
 | Devices | Rows binding a separate entity to a battery ring, max 8 (battery) |
 | Period Attributes / Start Key / Value Key | Where to read the period arrays and their keys (schedule) |
-| Low Band Maximum / High Band Minimum | Optional band thresholds; leave both empty to let iOS derive them (schedule) |
+| Low Band Maximum / High Band Minimum | Optional band thresholds; leave both empty to let the app derive them (schedule) |
 | Flow Nodes | Rows binding a separate entity to a slot, max 3 inputs (flow) |
 | Label / Label Attribute | Static label or an entity attribute |
 | Subtitle Attribute | Subtitle text from an attribute |
@@ -10760,7 +10913,7 @@ The original five templates are unaffected.
 | Tap Action URL / Foreground | Deep link opened when the widget is tapped |
 | Trigger Mode | `event` (state-change) or `poll` |
 | Poll Interval | Seconds between re-evaluations in poll mode (10-3600, default 60) |
-| Stale After | Seconds before iOS greys the widget out; blank = never (60-604800) |
+| Stale After | Seconds before the widget greys out; blank = never (60-604800) |
 
 </details>
 
@@ -10778,7 +10931,7 @@ A flow row's **Slot** decides where it renders: up to three `input` rows, plus o
 `storage` and `exchange`. `Rate` comes from the row's entity (or its attribute); `Total entity` supplies a
 cumulative total for the day and `Level entity` a 0-100 fill for a storage node.
 
-The sign convention is yours to choose, but the iOS rendering assumes the energy one: **exchange is positive
+The sign convention is yours to choose, but the app's rendering assumes the energy one: **exchange is positive
 inbound** (importing) and negative outbound (exporting), and **storage is positive while filling** and
 negative while draining. Nothing in the template is energy-specific though - water, data and money use the
 same four slots.
@@ -10816,13 +10969,13 @@ read the value.
 #### Timers
 
 **Timer Entity / Attribute / Style** renders the subtitle as a live countdown (future date) or count-up (past
-date), re-rendered by iOS itself rather than by a push. `timer` ticks like `01:23:45`; `relative` shows coarse
+date), re-rendered on the device itself rather than by a push. `timer` ticks like `01:23:45`; `relative` shows coarse
 units like `2 min`. Stat rows get the same treatment per row: set a row's **Timer** and, when its value parses
 as a date, it renders as a timer while the plain string stays as the fallback.
 
 #### Staleness and the heartbeat
 
-**Stale After** tells iOS how long after the last update the widget should render as stale. Because that
+**Stale After** tells the app how long after the last update the widget should render as stale. Because that
 clock keeps running even when nothing in HA changes, setting it also arms a heartbeat: every `stale_after / 2`
 seconds (minimum 30) the integration re-sends the current content. Identical content is a no-op server-side
 that re-stamps `updated_at` without pushing to the device.
@@ -10914,7 +11067,7 @@ Create a new activity.
 | Field | Required | Description |
 |-------|:--------:|-------------|
 | `slug` | Yes | Unique activity identifier |
-| `name` | Yes | Display name on iPhone |
+| `name` | Yes | Display name on the phone |
 | `priority` | No | 0-10 (default: 1) |
 | `ended_ttl` | No | Seconds after end before auto-delete (1-2592000) |
 | `stale_ttl` | No | Seconds of inactivity before auto-end (1-2592000) |
@@ -10966,7 +11119,7 @@ implied by the action name; you no longer pass a `template` field.
 | Action | Extra fields |
 |--------|--------------|
 | `update_activity_generic` | `live_progress`, `image_url`, `image_shape`, `image_thumbhash` |
-| `update_activity_countdown` | `end_date`, `duration`, `start_date`, `warning_threshold`, `alarm`, `snooze_seconds` |
+| `update_activity_countdown` | `end_date`, `duration`, `start_date`, `warning_threshold`, `alarm`, `snooze_seconds`, `direction`, `goal`, `show_ruler`, `paused` |
 | `update_activity_steps` | `total_steps` (max 64), `current_step`, `step_labels`, `step_rows`, `step_weights`, `step_colors`, `duration`, `live_progress`, `image_url`, `image_shape`, `image_thumbhash` |
 | `update_activity_alert` | `severity`, `fired_at` |
 | `update_activity_gauge` | `value`, `min_value`, `max_value`, `unit` |
@@ -10991,11 +11144,38 @@ implied by the action name; you no longer pass a `template` field.
 
 > `duration` (integer seconds or a string like `"30m"` / `"1h30m"`) is the set-and-forget
 > alternative to `end_date`: the server re-anchors `start_date = now` and
-> `end_date = now + duration`, which is what lets iOS animate the countdown's progress bar.
+> `end_date = now + duration`, which is what lets the app animate the countdown's progress bar.
 > Send `end_date` directly for mid-flight updates that must preserve the original timer;
 > **if both are sent, `duration` wins** (it overwrites start/end). `timeline`'s `history`
 > is a one-time seed (`{ series: [{ timestamp, value }] }`); the server owns the series
 > after the first update.
+
+> **Counting up and pausing.** `countdown` (also called Timer) runs either way.
+> `direction: up` counts from `start_date` instead of toward an end: leave `start_date` out
+> to start now, or give a past timestamp ("asleep since 18:19"). An up timer has no end, so the
+> action refuses `end_date`, `duration`, `warning_threshold`, `alarm`, `snooze_seconds` and a
+> `completion_message` next to it; leave the message out of `end_activity` for it as well, the
+> server refuses that too. `goal` (seconds, or a string like `"2h"`; up only) fills the ruler
+> toward a target, and past it the clock turns orange and keeps counting as overtime. The goal
+> stays on the slug, so a restarted timer still has yesterday's target: send `goal: null` to
+> remove it (an empty string does not work, the server reads it as an empty duration).
+> `show_ruler: false` hides the bar in either direction. `paused: true` freezes the clock and
+> `paused: false` starts it again. Counting up, the paused time is left out of the count, so
+> the start time on the card stays right; counting down, the end moves on by the length of the
+> pause. Sending the state the timer is already in changes nothing, so an automation can send
+> `paused` on every update; [`pause_timer`](#pushwardpause_timer) sends nothing else. Both
+> need PushWard 1.19.0 or newer on the phone: older builds show an up timer as finished and
+> keep counting down through a pause.
+>
+> ```yaml
+> - action: pushward.update_activity_countdown
+>   data:
+>     slug: kid-nap
+>     state: ongoing
+>     state_text: Asleep
+>     direction: up
+>     goal: 2h
+> ```
 
 > `live_progress` (generic + steps) fills the progress bar smoothly and counts down an ETA to
 > the finish time using the remaining-time source; on steps it fills the current step rather
@@ -11190,6 +11370,29 @@ Delete an activity immediately (no completion animation).
 |-------|:--------:|-------------|
 | `slug` | Yes | Activity identifier |
 
+### `pushward.pause_timer`
+
+Pause a countdown, or start it again with `paused: false`. Only the switch is sent and the
+template stays what it is. An ended timer ignores it, so the time it stopped at stays put.
+
+On any other template the server refuses it and the action fails with its message. A timer
+that the 5-activity limit has moved off the phone fails too, with
+`invalid activity state: "preempted"`: send `update_activity_countdown` with `state: ongoing`
+to ask for it back, with `paused` in the same call if you want it paused. The phone needs
+PushWard 1.19.0 or newer to show the pause.
+
+| Field | Required | Description |
+|-------|:--------:|-------------|
+| `slug` | Yes | Activity identifier |
+| `paused` | No | `true` (default) pauses, `false` resumes |
+
+```yaml
+- action: pushward.pause_timer
+  data:
+    slug: kid-nap
+    paused: false
+```
+
 ### `pushward.send_notification`
 
 Send a push notification.
@@ -11334,7 +11537,7 @@ When PushWard refuses the acknowledge itself, most often because 25 are already 
 
 ### `pushward.send_email`
 
-Send a transactional email. Requires the key's **`emails`** capability; the recipient must already be added and confirmed in the PushWard iOS app (the integration cannot verify recipients itself).
+Send a transactional email. Requires the key's **`emails`** capability; the recipient must already be added and confirmed in the PushWard app (the integration cannot verify recipients itself).
 
 | Field | Required | Description |
 |-------|:--------:|-------------|
@@ -11479,7 +11682,7 @@ Narrow to one area with `custom_components.pushward.api` (HTTP calls) or `custom
 
 **Common failures:**
 
-- **Setup / reauth fails**: the integration key is invalid or expired (401). Create a fresh key in the iOS app and re-enter it.
+- **Setup / reauth fails**: the integration key is invalid or expired (401). Create a fresh key in the PushWard app and re-enter it.
 - **Service call rejected with a server reason**: fixable problems surface as a validation error (e.g. a missing `widgets`/`emails` capability, or an unverified email recipient). Read the `custom_components.pushward.api` debug lines for the HTTP status and body.
 - **`slug` doesn't match an existing activity**: create it first with `pushward.create_activity`.
 - **Wrong field for the chosen template**: see [which fields apply to which template](#pushwardupdate_activity_template).
@@ -11493,7 +11696,7 @@ Narrow to one area with `custom_components.pushward.api` (HTTP calls) or `custom
 - **Home Assistant 2025.7.0+** (set in `hacs.json`)
 - **Python 3.13.2+**
 - A [PushWard](https://pushward.app) account and integration key
-- The PushWard iOS app on your iPhone ([App Store](https://apps.apple.com/app/id6759689999))
+- The PushWard app on your phone ([App Store](https://apps.apple.com/app/id6759689999))
 
 Licensed under [MIT](LICENSE).
 
@@ -11507,7 +11710,7 @@ Licensed under [MIT](LICENSE).
 [![Website](https://img.shields.io/badge/pushward.app-5B4FE5?logo=safari&logoColor=white)](https://pushward.app)
 [![App Store](https://img.shields.io/badge/App_Store-Download-0D96F6?logo=apple&logoColor=white)](https://apps.apple.com/app/id6759689999)
 
-A Grafana App plugin that turns Grafana alerts into PushWard Live Activities on your iPhone: a live timeline sparkline on the Lock Screen and Dynamic Island that updates while an alert is firing and closes out when it resolves. It can also poll PromQL on a schedule and publish the results as PushWard iOS Home and Lock Screen widgets, so it replaces the standalone `pushward-grafana` container.
+A Grafana App plugin that turns Grafana alerts into PushWard Live Activities on your phone: a live timeline sparkline on the Lock Screen and Dynamic Island that updates while an alert is firing and closes out when it resolves. It can also poll PromQL on a schedule and publish the results as PushWard Home and Lock Screen widgets, so it replaces the standalone `pushward-grafana` container.
 
 What it is: the in-Grafana setup and management layer for PushWard. One click wires up a webhook contact point, validates your key, and (with the backend) builds the timeline inside Grafana, so there is no separate container to run and no separate Prometheus scrape config for the bridge to read alert history. It reuses your existing Grafana datasource.
 
@@ -11517,14 +11720,14 @@ What it isn't: a native contact-point type. Grafana hardcodes those in core, so 
 
 - Connect wizard: one click creates the PushWard webhook contact point (no manual URL or header copying) and a scoped service-account token.
 - Embedded timeline bridge: the Go backend queries your Grafana datasource for the alert's metric history and pushes a live timeline Live Activity. No `pushward-grafana` container required. It reads the rule's query with the Connect wizard's service account, so this works without the `externalServiceAccounts` toggle. On a paid PushWard plan the timeline gets a new point every poll interval while the alert fires; a rule on a different datasource repeats its last alert value instead. The free plan's 250 Live Activity updates a month would not last a day of that, so there the timeline updates only when Grafana sends the alert.
-- Widget engine: declare `value`, `progress`, `status`, `gauge`, `stat_list`, `trend` or `countdown` widgets in the config; the backend polls each on its own interval (`on_change` or `always` mode, multi-series fan-out) and publishes them to your iOS widgets.
+- Widget engine: declare `value`, `progress`, `status`, `gauge`, `stat_list`, `trend` or `countdown` widgets in the config; the backend polls each on its own interval (`on_change` or `always` mode, multi-series fan-out) and publishes them to your PushWard widgets.
 - Management: see current Live Activities and a recent delivery log, send a test notification, or fire a test timeline.
 - Alert-rule links: "View in PushWard" on alert rules and instances.
 
 ## Requirements
 
 - Grafana 12.3 or newer (unified alerting plus app-plugin IAM service accounts).
-- A PushWard account and an `hlk_` integration key from the [PushWard iOS app](https://apps.apple.com/app/id6759689999). The `notifications` capability is needed for test notifications; the `widgets` capability is needed to publish widgets. Docs: <https://pushward.app/docs/integrations/grafana>.
+- A PushWard account and an `hlk_` integration key from the [PushWard app](https://apps.apple.com/app/id6759689999). The `notifications` capability is needed for test notifications; the `widgets` capability is needed to publish widgets. Docs: <https://pushward.app/docs/integrations/grafana>.
 - A Prometheus or VictoriaMetrics datasource in Grafana, for the timeline history and widget queries.
 
 ## Install
@@ -11588,7 +11791,7 @@ A saved key that does not parse is never a reason to send the alert in the clear
 
 ## Widgets
 
-Each entry in the `widgets` array is one query published as an iOS Home or Lock Screen widget. A slug, a query and a template is the whole minimum; everything below is optional.
+Each entry in the `widgets` array is one query published as a PushWard Home or Lock Screen widget. A slug, a query and a template is the whole minimum; everything below is optional.
 
 `trend` draws a sparkline. The plugin keeps the last 48 readings of a widget in memory and sends them alongside the current value, so the chart comes from the poll history rather than a range query. At a 60s interval it fills in 48 minutes. The widget shows up on the second poll, not the first, because two samples is the least the server accepts for a line. Bounds behave differently here than on the other templates: `content.min_value` and `content.max_value` are optional chart limits, and without them the chart auto-scales. Trend needs `query` rather than `query_all` - there is one sample buffer per widget, so a fan-out has nowhere to keep per-series history.
 
@@ -11596,7 +11799,7 @@ A repeated reading is only recorded once a minute, or once per poll interval if 
 
 `countdown` is the only template with no query. Set `content.end_date` to an RFC 3339 timestamp, optionally `content.start_date` and `content.expired_text`, and the phone counts down on its own with no further pushes. Nothing polls it, so `stale_after` is rejected on a countdown.
 
-`stale_after` is how many seconds after the last update iOS starts dimming a widget as out of date (60 to 604800, blank for never). Setting it also arms a heartbeat: the last published content is re-sent every `max(30s, stale_after/2)`, which the server records as a touch rather than a push, so a metric that sits flat for hours does not make the widget look dead and does not cost you a notification either. The window has to be at least three times the poll interval. The heartbeat fires on a poll tick, so the longest gap between two refreshes is half the window plus one interval; at three the gap stays comfortably inside the window, whereas at two it would land right on the edge and dim the widget once a cycle.
+`stale_after` is how many seconds after the last update the app starts dimming a widget as out of date (60 to 604800, blank for never). Setting it also arms a heartbeat: the last published content is re-sent every `max(30s, stale_after/2)`, which the server records as a touch rather than a push, so a metric that sits flat for hours does not make the widget look dead and does not cost you a notification either. The window has to be at least three times the poll interval. The heartbeat fires on a poll tick, so the longest gap between two refreshes is half the window plus one interval; at three the gap stays comfortably inside the window, whereas at two it would land right on the edge and dim the widget once a cycle.
 
 Any template can render its subtitle as a live timer via `content.subtitle_timer` (`{"date": "<RFC 3339>", "style": "timer"` or `"relative"}`), and a `stat_list` row takes the same object as a per-row `timer`. The static `subtitle` and row `value` stay behind them as the fallback. No form fields for these yet, so set them in the JSON view.
 
@@ -11662,7 +11865,7 @@ Apache-2.0.
 
 A self-contained Unraid plugin that connects your server to [PushWard](https://pushward.app). It does three things.
 
-**Notifications.** Every Unraid notification is forwarded to your iPhone.
+**Notifications.** Every Unraid notification is forwarded to your phone.
 
 **Live Activities.** Long-running jobs (parity check/rebuild, appdata backup, mover, VM backup, UPS on battery) show real-time progress on the Lock Screen and Dynamic Island, with a dashboard page to view and end them.
 
@@ -11762,7 +11965,7 @@ A few notes on the newer sources. Mover lists the files as they move, read from 
 
 ### Home Screen widgets
 
-Off by default, because they need an extra permission on your key (see above) and they occupy space in your iPhone's widget picker whether or not you place them. Switch them on under Settings and the monitor publishes three:
+Off by default, because they need an extra permission on your key (see above) and they occupy space in your phone's widget picker whether or not you place them. Switch them on under Settings and the monitor publishes three:
 
 | Widget | Template | Shows |
 |---|---|---|
@@ -11770,7 +11973,7 @@ Off by default, because they need an extra permission on your key (see above) an
 | `<server>-storage` | battery | A ring per mounted disk and pool, plus the UPS, showing free space rather than used. A disk with a SMART fault or a read error goes red whatever its level. Eight rings is the server's limit, so a box with more devices than that shows the unhealthy ones first, then whichever have least room left |
 | `<server>-status` | stat_list | Array state, used and free, the last parity result with how long ago it ran, mover, and how many disks are healthy |
 
-Everything comes from the status files Unraid already keeps up to date, so a refresh never spins a disk up to read it. Widgets refresh on their own interval (default 300s) rather than the activity poll, and re-send unchanged content twice an hour so iOS does not grey them out as stale; the server counts that as a touch, not a push, so it costs nothing against your quota. Switching them back off removes them from your account.
+Everything comes from the status files Unraid already keeps up to date, so a refresh never spins a disk up to read it. Widgets refresh on their own interval (default 300s) rather than the activity poll, and re-send unchanged content twice an hour so the app does not grey them out as stale; the server counts that as a touch, not a push, so it costs nothing against your quota. Switching them back off removes them from your account.
 
 ## Uninstall
 

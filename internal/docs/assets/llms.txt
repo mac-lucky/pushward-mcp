@@ -11,6 +11,7 @@ A fully-expanded Markdown bundle of every docs page lives at [/llms-full.txt](ht
 - [Getting Started](https://pushward.app/docs/getting-started): Start sending push notifications to your iPhone in under 5 minutes.
 - [iOS Live Activities API](https://pushward.app/live-activities): Send iOS Live Activities to the Lock Screen and Dynamic Island over a simple HTTP API
 - [iOS Widgets API](https://pushward.app/widgets): Update iOS Home Screen, Lock Screen, and StandBy widgets over a simple HTTP API
+- [PushWard for Android](https://pushward.app/android): The Android app: Live Updates, notifications you can answer and home screen widgets from the same API as the iPhone app
 - [Use cases](https://pushward.app/use-cases): One day of real pushes: which service sends what, through which integration, to which surface
 - [Pricing](https://pushward.app/pricing): Free, PushWard Plan, Family, Lifetime and PushWard Team prices, and where each is sold
 - [PushWard Team](https://pushward.app/teams): Organizations for teams: members, groups, routing rules, limited keys, audit log, trial and seat pricing
@@ -21,7 +22,7 @@ A fully-expanded Markdown bundle of every docs page lives at [/llms-full.txt](ht
 
 - [Live Activities](https://pushward.app/docs/live-activities): A Live Activity is an iOS feature that shows live, glanceable information right on the Lock Screen, in the Dynamic Island, and in StandBy - without the recipient ever opening an app. PushWard turns a single HTTP request into one.
 - [Generic Template](https://pushward.app/docs/live-activities/generic): A flexible progress-based template suitable for builds, downloads, deployments, and any long-running task.
-- [Countdown Template](https://pushward.app/docs/live-activities/countdown): A timer with server-managed lifecycle: send one start push and the server fires the warning and completion updates itself.
+- [Timer Template](https://pushward.app/docs/live-activities/timer): A clock that counts down to an end or up from a start, ticking on the device between pushes. Counting down, the server sends the warning and completion updates itself.
 - [Steps Template](https://pushward.app/docs/live-activities/steps): A step-based template designed for CI/CD pipelines and multi-stage workflows. Visualizes parallel jobs with a matrix indicator.
 - [Alert Template](https://pushward.app/docs/live-activities/alert): A severity-based template for monitoring alerts. Displays firing alerts with deep-link buttons to dashboards and alert rules.
 - [Gauge Template](https://pushward.app/docs/live-activities/gauge): Monitor a numeric value within a range: the current reading with unit, min/max endpoints, and a progress bar the server fills in for you.
@@ -110,3 +111,4 @@ A fully-expanded Markdown bundle of every docs page lives at [/llms-full.txt](ht
 - [Privacy Policy](https://pushward.app/privacy): Privacy policy
 - [Terms of Service](https://pushward.app/terms): Terms of service
 - [Refund Policy](https://pushward.app/refunds): Refund policy
+- [Delete Your Account](https://pushward.app/delete-account): How to delete a PushWard account, with or without the app

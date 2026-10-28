@@ -48,7 +48,7 @@ func TestHandleGetPushwardDocs_MissingKind(t *testing.T) {
 func TestHandleGetPushwardDocs_FullWithSection(t *testing.T) {
 	result, err := handleGetPushwardDocs(newReq(map[string]any{
 		"kind":    "full",
-		"section": "Countdown Template",
+		"section": "Timer Template",
 	}))
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -57,8 +57,8 @@ func TestHandleGetPushwardDocs_FullWithSection(t *testing.T) {
 	if result.IsError {
 		t.Fatalf("unexpected error result: %s", text)
 	}
-	if !strings.Contains(text, "Countdown") {
-		t.Errorf("expected Countdown content, got: %.120s", text)
+	if !strings.Contains(text, "# Timer Template") {
+		t.Errorf("expected Timer content, got: %.120s", text)
 	}
 	// Slicing must shrink the result well below the full bundle.
 	full, _ := handleGetPushwardDocs(newReq(map[string]any{"kind": "full"}))
@@ -70,7 +70,7 @@ func TestHandleGetPushwardDocs_FullWithSection(t *testing.T) {
 func TestHandleGetPushwardDocs_SectionIgnoredForOpenAPI(t *testing.T) {
 	withSection, _ := handleGetPushwardDocs(newReq(map[string]any{
 		"kind":    "api_openapi",
-		"section": "Countdown Template",
+		"section": "Timer Template",
 	}))
 	whole, _ := handleGetPushwardDocs(newReq(map[string]any{"kind": "api_openapi"}))
 	if resultText(t, withSection) != resultText(t, whole) {
