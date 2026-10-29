@@ -494,6 +494,64 @@ func TestConsentFormRoundTripsOAuthParams(t *testing.T) {
 	}
 }
 
+// TestConsentCSPAllowsRedirectOrigin: browsers apply the consent page's
+// form-action to the 302 that follows the POST, so the policy must name the
+// redirect_uri origin or Safari refuses the redirect back to the client (the
+// ChatGPT connector stalled on Authorize). A loopback redirect keeps the port
+// the client asked for, since registration ignores it.
+func TestConsentCSPAllowsRedirectOrigin(t *testing.T) {
+	srv, _ := newTestProvider(t)
+	sum := sha256.Sum256([]byte("verifier-" + strings.Repeat("c", 40)))
+	challenge := base64.RawURLEncoding.EncodeToString(sum[:])
+	for _, tc := range []struct{ registered, requested, want string }{
+		{"https://client.test/cb", "https://client.test/cb", "form-action 'self' https://client.test;"},
+		{"http://127.0.0.1/cb", "http://127.0.0.1:53682/cb", "form-action 'self' http://127.0.0.1:53682;"},
+	} {
+		body, _ := json.Marshal(map[string]any{"redirect_uris": []string{tc.registered}})
+		res, _ := http.Post(srv.URL+"/oauth/register", "application/json", strings.NewReader(string(body)))
+		var reg map[string]any
+		_ = json.NewDecoder(res.Body).Decode(&reg)
+		res.Body.Close()
+		q := url.Values{
+			"response_type": {"code"}, "client_id": {reg["client_id"].(string)}, "redirect_uri": {tc.requested},
+			"state": {"st"}, "scope": {"mcp"}, "code_challenge": {challenge},
+			"code_challenge_method": {"S256"}, "resource": {"https://mcp.test"},
+		}
+		res, err := http.Get(srv.URL + "/oauth/authorize?" + q.Encode())
+		if err != nil {
+			t.Fatal(err)
+		}
+		res.Body.Close()
+		if res.StatusCode != http.StatusOK {
+			t.Fatalf("%s: authorize GET status = %d", tc.requested, res.StatusCode)
+		}
+		csp := res.Header.Get("Content-Security-Policy")
+		if !strings.Contains(csp, tc.want) || !strings.Contains(csp, "frame-ancestors 'none'") {
+			t.Fatalf("%s: CSP = %q, want it to contain %q and frame-ancestors 'none'", tc.requested, csp, tc.want)
+		}
+	}
+}
+
+func TestFormActionSource(t *testing.T) {
+	for _, tc := range []struct{ in, want string }{
+		{"https://chatgpt.com/connector_platform_oauth_redirect", "https://chatgpt.com"},
+		{"https://client.test:8443/cb?x=1", "https://client.test:8443"},
+		{"http://127.0.0.1:53682/cb", "http://127.0.0.1:53682"},
+		{"http://[::1]:8080/cb", "http://[::1]:8080"},
+		{"https://a.test;script-src*/cb", ""},
+		{"https://a.test,b.test/cb", ""},
+		{"https://*.test/cb", ""},
+		{"https://a.test'/cb", ""},
+		{"https://a .test/cb", ""},
+		{"cursor://anysphere.cursor-mcp/oauth/callback", ""},
+		{"://bad", ""},
+	} {
+		if got := formActionSource(tc.in); got != tc.want {
+			t.Errorf("formActionSource(%q) = %q, want %q", tc.in, got, tc.want)
+		}
+	}
+}
+
 // TestAuthorize_StaleRenderStillValid reproduces the exact production bug: a
 // second authorize render (another tab, a reload, or the OAuth client prefetching
 // /oauth/authorize while also opening it) must NOT invalidate an earlier render's

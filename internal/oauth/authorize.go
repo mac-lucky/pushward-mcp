@@ -126,11 +126,35 @@ func (p *Provider) authorizeGet(w http.ResponseWriter, r *http.Request) {
 	p.renderConsent(w, pr, c, "", 0)
 }
 
+// formActionSource returns the CSP source for the origin of an already
+// validated redirect_uri, or "" when it cannot be expressed safely. Browsers
+// apply form-action to the 302 that follows the consent POST, so without it
+// Safari refuses the redirect back to the client. The URI is client-supplied
+// and url.Parse accepts ';', ',', '*' and quotes in a host, any of which would
+// inject or change CSP directives, hence the strict host charset. Origin only:
+// CSP ignores the path after a redirect.
+func formActionSource(redirectURI string) string {
+	u, err := url.Parse(redirectURI)
+	if err != nil || (u.Scheme != "https" && u.Scheme != "http") || u.Host == "" {
+		return ""
+	}
+	for _, ch := range u.Host {
+		switch {
+		case ch >= 'a' && ch <= 'z', ch >= 'A' && ch <= 'Z', ch >= '0' && ch <= '9':
+		case ch == '.', ch == '-', ch == ':', ch == '[', ch == ']':
+		default:
+			return ""
+		}
+	}
+	return u.Scheme + "://" + u.Host
+}
+
 // renderConsent renders the consent screen with a fresh stateless CSRF token
 // embedded in the form (see csrfTokenizer for why this carries no cookie). A
 // non-zero status writes that status first (the error re-render uses 401). The
 // page handles a credential, so it forbids framing (clickjacking), restricts
-// where the form may post, and is never cached.
+// where the form may post and redirect (itself and the validated redirect_uri
+// origin), and is never cached.
 func (p *Provider) renderConsent(w http.ResponseWriter, pr authzParams, c *Client, errMsg string, status int) {
 	csrf := p.csrf.issue(pr.ClientID)
 	host := pr.RedirectURI
@@ -143,7 +167,11 @@ func (p *Provider) renderConsent(w http.ResponseWriter, pr authzParams, c *Clien
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("X-Frame-Options", "DENY")
-	w.Header().Set("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; frame-ancestors 'none'")
+	formAction := "'self'"
+	if src := formActionSource(pr.RedirectURI); src != "" {
+		formAction += " " + src
+	}
+	w.Header().Set("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'; form-action "+formAction+"; frame-ancestors 'none'")
 	// Never let an edge cache (Cloudflare) keep a consent page; each must carry a
 	// freshly issued, unexpired CSRF token.
 	w.Header().Set("Cache-Control", "no-store")
