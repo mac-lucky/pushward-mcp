@@ -10,7 +10,9 @@ import (
 	"net/http/httptest"
 	"os"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/mac-lucky/pushward-mcp/internal/e2e"
 )
@@ -1139,5 +1141,80 @@ func TestAPIClient_TagsNeedAcknowledge(t *testing.T) {
 	}
 	if len(bodies) != 1 || !strings.Contains(bodies[0], `"acknowledge":{"repeat_seconds":60}`) || !strings.Contains(bodies[0], `"tags":["nas-1"]`) {
 		t.Errorf("acknowledged send body = %v", bodies)
+	}
+}
+
+// Every long-poll slot held by a parked wait must neither block a short call
+// nor make another wait queue: the short call has its own transport, and the
+// extra wait reads without ?wait= at once.
+func TestLongPollSaturationLeavesShortCallsFree(t *testing.T) {
+	release := make(chan struct{})
+	var parked sync.WaitGroup
+	parked.Add(longPollSlots)
+	var mu sync.Mutex
+	var unheld []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Query().Get("wait") != "" {
+			parked.Done()
+			<-release
+		} else {
+			mu.Lock()
+			unheld = append(unheld, r.URL.RequestURI())
+			mu.Unlock()
+		}
+		_, _ = w.Write([]byte(`{"status":"pending"}`))
+	}))
+	defer srv.Close()
+	api := NewAPIClient(srv.URL, "tok")
+
+	var waits sync.WaitGroup
+	for i := range longPollSlots {
+		waits.Add(1)
+		go func() {
+			defer waits.Done()
+			if _, _, err := api.GetNotificationAnswer(context.Background(), int64(i+1), MaxWaitSeconds); err != nil {
+				t.Errorf("parked wait %d: %v", i+1, err)
+			}
+		}()
+	}
+	parked.Wait()
+	defer func() {
+		close(release)
+		waits.Wait()
+	}()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if _, _, err := api.GetActivity(ctx, "build"); err != nil {
+		t.Fatalf("short call behind %d parked waits: %v", longPollSlots, err)
+	}
+	if _, _, err := api.GetNotificationReceipt(ctx, 9000, MaxWaitSeconds); err != nil {
+		t.Fatalf("wait past the slots: %v", err)
+	}
+	if _, err := api.ListNotificationAnswers(ctx, "57", MaxWaitSeconds, 0); err != nil {
+		t.Fatalf("feed past the slots: %v", err)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	want := []string{"/activities/build", "/notifications/receipts/9000", "/notifications/answers?after=57"}
+	if strings.Join(unheld, "\n") != strings.Join(want, "\n") {
+		t.Errorf("requests without a hold =\n%s\nwant\n%s", strings.Join(unheld, "\n"), strings.Join(want, "\n"))
+	}
+}
+
+// The hold asked of the server never exceeds MaxWaitSeconds, so the 30 s
+// client timeout keeps its margin.
+func TestDoWaitCapsTheHold(t *testing.T) {
+	var got string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		got = r.URL.RequestURI()
+		_, _ = w.Write([]byte(`{}`))
+	}))
+	defer srv.Close()
+	if _, err := NewAPIClient(srv.URL, "tok").ListNotificationAnswers(context.Background(), "57", 25, 0); err != nil {
+		t.Fatal(err)
+	}
+	if got != "/notifications/answers?after=57&wait=20" {
+		t.Errorf("request = %s, want the hold capped at 20", got)
 	}
 }

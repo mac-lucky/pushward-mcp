@@ -464,7 +464,8 @@ func handleTestHealth(ctx context.Context, api *client.APIClient, relay *client.
 // mirrored in the tool's timeout_seconds description. Each poll is a server
 // long-poll (?wait=), so it normally returns only when the answer lands or its
 // hold runs out; the spacing applies when one comes back pending early (a
-// server that predates ?wait=, or a 429 over the concurrent-wait cap). Every
+// server that predates ?wait=, a 429 over the concurrent-wait cap, or a read
+// without ?wait= because this process holds all its long-polls). Every
 // poll spends the caller's API rate budget, so a tighter interval buys
 // nothing. A variable only so tests can shrink it; nothing writes it at runtime.
 var answerPollInterval = 2 * time.Second
@@ -475,7 +476,7 @@ const (
 
 	// answerLongPollMax is the server-side hold asked for per poll. The server
 	// allows 25s; 20 leaves margin under the 30s client and gateway timeouts.
-	answerLongPollMax = 20
+	answerLongPollMax = client.MaxWaitSeconds
 
 	// answerKeepaliveInterval spaces the logging-notification keepalives sent
 	// for clients that asked for no progress. Cloudflare cuts a byteless origin

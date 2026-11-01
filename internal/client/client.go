@@ -10,6 +10,8 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"net/url"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -51,8 +53,11 @@ func logWithheld(ctx context.Context, level slog.Level, msg, method, path string
 // Base is the shared HTTP client for both API and relay requests.
 type Base struct {
 	httpClient *http.Client
-	baseURL    string
-	token      string
+	// longPollClient carries the ?wait= reads (doWait), on a transport of
+	// its own so parked waits never hold the connections short calls need.
+	longPollClient *http.Client
+	baseURL        string
+	token          string
 	// useContextToken makes DoJSON prefer a per-request token carried in the
 	// context (set by the HTTP transport from the inbound Authorization header)
 	// over the struct's token. The struct token remains a fallback for stdio
@@ -64,11 +69,26 @@ type Base struct {
 // NewBase creates a new Base HTTP client.
 func NewBase(baseURL, token string) *Base {
 	return &Base{
-		httpClient: &http.Client{Timeout: 30 * time.Second, Transport: newTransport()},
-		baseURL:    baseURL,
-		token:      token,
+		httpClient:     &http.Client{Timeout: clientTimeout, Transport: newTransport()},
+		longPollClient: &http.Client{Timeout: clientTimeout, Transport: newLongPollTransport()},
+		baseURL:        baseURL,
+		token:          token,
 	}
 }
+
+const (
+	// clientTimeout bounds every upstream call, long-polls included.
+	clientTimeout = 30 * time.Second
+
+	// MaxWaitSeconds is the longest ?wait= hold doWait asks for. The server
+	// allows 25 s; 20 leaves margin under clientTimeout and the gateway's.
+	MaxWaitSeconds = 20
+
+	// longPollSlots is how many long-polls one process holds at once, across
+	// every tenant of the hosted server, and the connection cap of their
+	// transport. Past it a wait is read without ?wait=.
+	longPollSlots = 200
+)
 
 // newTransport returns the process-wide shared *http.Transport. A single transport
 // (and thus a single connection pool) is reused by every Base - the long-lived API
@@ -95,6 +115,31 @@ var (
 	sharedTransportOnce sync.Once
 )
 
+// newLongPollTransport returns the process-wide transport of the long-polls.
+// Each parked wait holds its HTTP/1.1 connection for up to MaxWaitSeconds, so
+// on the shared transport a few hundred of them, from any tenants, would use
+// up MaxConnsPerHost and queue every short call behind them. Here they queue
+// only among themselves, and longPollSem keeps them from queueing at all.
+func newLongPollTransport() *http.Transport {
+	longPollTransportOnce.Do(func() {
+		t := http.DefaultTransport.(*http.Transport).Clone()
+		t.MaxIdleConns = longPollSlots
+		t.MaxIdleConnsPerHost = longPollSlots
+		t.MaxConnsPerHost = longPollSlots
+		t.IdleConnTimeout = 90 * time.Second
+		longPollTransport = t
+	})
+	return longPollTransport
+}
+
+var (
+	longPollTransport     *http.Transport
+	longPollTransportOnce sync.Once
+
+	// longPollSem holds one token per long-poll in flight in this process.
+	longPollSem = make(chan struct{}, longPollSlots)
+)
+
 // ParseBearer extracts the token from an "Authorization: Bearer <token>" header
 // value, matching the scheme case-insensitively. It returns "" when the value is
 // absent or malformed. Shared by the HTTP transport and the OAuth resource-server
@@ -110,6 +155,33 @@ func ParseBearer(header string) string {
 // DoJSON sends an HTTP request and returns the raw JSON response body.
 // For non-2xx responses, it returns an error containing the status code and body snippet.
 func (b *Base) DoJSON(ctx context.Context, method, path string, body any) (json.RawMessage, int, error) {
+	return b.do(ctx, b.httpClient, method, path, body)
+}
+
+// doWait GETs path with query q, asking the server to hold the request up to
+// wait seconds (capped at MaxWaitSeconds) while there is nothing new. The
+// hold goes out on the long-poll client when a slot is free. With every slot
+// taken it reads the current state at once instead, as a server that predates
+// ?wait= would answer: the wait tools space their next poll, and a short call
+// never waits for a slot.
+func (b *Base) doWait(ctx context.Context, path string, q url.Values, wait int) (json.RawMessage, int, error) {
+	wait = min(wait, MaxWaitSeconds)
+	if wait <= 0 {
+		return b.DoJSON(ctx, http.MethodGet, withQuery(path, q), nil)
+	}
+	select {
+	case longPollSem <- struct{}{}:
+	default:
+		logger.LogAttrs(ctx, slog.LevelInfo, "long-poll slots full, reading without wait",
+			slog.String("path", path), slog.String("user", UserIDFromContext(ctx)))
+		return b.DoJSON(ctx, http.MethodGet, withQuery(path, q), nil)
+	}
+	defer func() { <-longPollSem }()
+	q.Set("wait", strconv.Itoa(wait))
+	return b.do(ctx, b.longPollClient, http.MethodGet, withQuery(path, q), nil)
+}
+
+func (b *Base) do(ctx context.Context, hc *http.Client, method, path string, body any) (json.RawMessage, int, error) {
 	var bodyReader io.Reader
 	if body != nil {
 		data, err := json.Marshal(body)
@@ -140,7 +212,7 @@ func (b *Base) DoJSON(ctx context.Context, method, path string, body any) (json.
 		req.Header.Set("Authorization", "Bearer "+token)
 	}
 
-	resp, err := b.httpClient.Do(req)
+	resp, err := hc.Do(req)
 	if err != nil {
 		if remoteMode {
 			logWithheld(ctx, slog.LevelWarn, "upstream request failed", method, path, slog.String("err", err.Error()))

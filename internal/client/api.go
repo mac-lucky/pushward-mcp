@@ -436,26 +436,27 @@ func (c *APIClient) ListScheduledNotifications(ctx context.Context, status, curs
 
 // GetNotificationAnswer reads the server-recorded answer to a notification
 // sent with url-less actions. wait > 0 long-polls: the server holds the
-// request up to that many seconds (max 25) until the answer lands. The status
-// code is returned so callers can tell a transient failure from a hard miss.
+// request up to that many seconds (see doWait) until the answer lands. The
+// status code is returned so callers can tell a transient failure from a hard
+// miss.
 func (c *APIClient) GetNotificationAnswer(ctx context.Context, id int64, wait int) (json.RawMessage, int, error) {
-	return c.DoJSON(ctx, http.MethodGet, withQuery("/notifications/answers/"+strconv.FormatInt(id, 10), waitQuery(wait)), nil)
+	return c.doWait(ctx, "/notifications/answers/"+strconv.FormatInt(id, 10), url.Values{}, wait)
 }
 
 // ListNotificationAnswers reads the answer stream: the answers recorded after
 // the cursor after, oldest first, and the cursor to pass next. An empty after
 // returns no answers, only the current cursor. wait > 0 long-polls while
-// nothing has arrived after the cursor (max 25, ignored without after), and
-// limit > 0 caps the page (max 100).
+// nothing has arrived after the cursor (see doWait; the server ignores it
+// without after), and limit > 0 caps the page (max 100).
 func (c *APIClient) ListNotificationAnswers(ctx context.Context, after string, wait, limit int) (json.RawMessage, error) {
-	q := waitQuery(wait)
+	q := url.Values{}
 	if after != "" {
 		q.Set("after", after)
 	}
 	if limit > 0 {
 		q.Set("limit", strconv.Itoa(limit))
 	}
-	raw, _, err := c.DoJSON(ctx, http.MethodGet, withQuery("/notifications/answers", q), nil)
+	raw, _, err := c.doWait(ctx, "/notifications/answers", q, wait)
 	return raw, err
 }
 
@@ -469,10 +470,10 @@ func (c *APIClient) RetractNotifications(ctx context.Context, collapseID string)
 
 // GetNotificationReceipt reads the receipt of a notification sent with
 // acknowledge. wait > 0 long-polls: the server holds the request up to that
-// many seconds (max 25) while the receipt is still active. The status code is
-// returned so callers can tell a transient failure from a hard miss.
+// many seconds (see doWait) while the receipt is still active. The status
+// code is returned so callers can tell a transient failure from a hard miss.
 func (c *APIClient) GetNotificationReceipt(ctx context.Context, id int64, wait int) (json.RawMessage, int, error) {
-	return c.DoJSON(ctx, http.MethodGet, withQuery(receiptPath(id), waitQuery(wait)), nil)
+	return c.doWait(ctx, receiptPath(id), url.Values{}, wait)
 }
 
 // CancelNotificationReceipt stops an acknowledged notification from
@@ -497,19 +498,13 @@ func receiptPath(id int64) string {
 }
 
 // WaitActivity reads an activity like GetActivity, holding the request up to
-// wait seconds (max 25) while it is an approval still waiting for its answer.
-// Servers that predate ?wait= answer at once.
+// wait seconds (see doWait) while it is an approval still waiting for its
+// answer. Servers that predate ?wait= answer at once.
 func (c *APIClient) WaitActivity(ctx context.Context, slug string, wait int) (json.RawMessage, int, error) {
-	return c.getActivity(ctx, slug, waitQuery(wait))
-}
-
-// waitQuery is the ?wait= long-poll hold; empty for wait <= 0.
-func waitQuery(wait int) url.Values {
-	q := url.Values{}
-	if wait > 0 {
-		q.Set("wait", strconv.Itoa(wait))
+	if err := ValidateSlug(slug); err != nil {
+		return nil, 0, err
 	}
-	return q
+	return c.doWait(ctx, "/activities/"+slug, url.Values{}, wait)
 }
 
 // GetScheduledNotification returns one scheduled notification, including its
