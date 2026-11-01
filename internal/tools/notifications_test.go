@@ -94,6 +94,64 @@ func TestListNotificationAnswers_BadAfter(t *testing.T) {
 	}
 }
 
+// The hosted server withholds upstream detail, so what is left of an error
+// (the code, and the retry hint of a 429) has to be enough to act on.
+func TestNotificationTools_RemoteModeErrors(t *testing.T) {
+	client.SetRemoteMode(true)
+	t.Cleanup(func() { client.SetRemoteMode(false) })
+	type call func(*client.APIClient) (*mcp.CallToolResult, error)
+	list := func(api *client.APIClient) (*mcp.CallToolResult, error) {
+		return handleListNotificationAnswers(context.Background(), newReq(map[string]any{"after": "57", "wait_seconds": float64(20)}), api)
+	}
+	retract := func(api *client.APIClient) (*mcp.CallToolResult, error) {
+		return handleRetractNotifications(context.Background(), newReq(map[string]any{"collapse_id": "garage-door"}), api)
+	}
+	for _, tc := range []struct {
+		name   string
+		call   call
+		status int
+		body   string
+		want   string
+	}{
+		{"feed 429", list, http.StatusTooManyRequests,
+			`{"status":429,"code":"answer_wait.limit_exceeded","detail":"two waits per key","retry_after_ms":2000}`,
+			"returned 429: [answer_wait.limit_exceeded] (retry_after_ms=2000)"},
+		{"feed 403", list, http.StatusForbidden,
+			`{"status":403,"code":"integration_key.permission_denied","detail":"key k-17 lacks notifications:send"}`,
+			"returned 403: [integration_key.permission_denied]"},
+		{"feed 400", list, http.StatusBadRequest,
+			`{"status":400,"code":"cursor.invalid","detail":"malformed cursor"}`,
+			"returned 400: [cursor.invalid]"},
+		{"retract 429", retract, http.StatusTooManyRequests,
+			`{"status":429,"code":"rate_limit.exceeded","detail":"retract bucket of user u-1 empty","retry_after_ms":6000}`,
+			"returned 429: [rate_limit.exceeded] (retry_after_ms=6000)"},
+		{"retract 403", retract, http.StatusForbidden,
+			`{"status":403,"code":"integration_key.permission_denied","detail":"key k-17 lacks notifications:send"}`,
+			"returned 403: [integration_key.permission_denied]"},
+		// Retract has no 400; a bad body is a 422 from validation.
+		{"retract 422", retract, http.StatusUnprocessableEntity,
+			`{"status":422,"title":"Unprocessable Entity","detail":"validation failed","errors":[{"location":"body.collapse_id"}]}`,
+			"returned 422: upstream error (detail withheld)"},
+	} {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/problem+json")
+			w.WriteHeader(tc.status)
+			io.WriteString(w, tc.body)
+		}))
+		result, err := tc.call(client.NewAPIClient(srv.URL, "tok"))
+		srv.Close()
+		text := resultText(t, result)
+		if err != nil || !result.IsError || !strings.HasSuffix(text, tc.want) {
+			t.Errorf("%s: got %v / %q, want a tool error ending %q", tc.name, err, text, tc.want)
+		}
+		for _, leak := range []string{"k-17", "u-1", "two waits", "malformed", "validation failed", "collapse_id"} {
+			if strings.Contains(text, leak) {
+				t.Errorf("%s: upstream detail %q reached the caller: %q", tc.name, leak, text)
+			}
+		}
+	}
+}
+
 func TestRetractNotifications_NeedsCollapseID(t *testing.T) {
 	api := client.NewAPIClient("http://127.0.0.1:1", "tok")
 	for name, args := range map[string]map[string]any{
