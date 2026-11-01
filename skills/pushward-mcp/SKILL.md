@@ -73,8 +73,9 @@ retract_notifications {"collapse_id": "garage-door"}
 
 `retract_notifications` takes what was sent under a `collapse_id` back off the devices once it
 is no longer true, and stops its repeats if it was sent with `acknowledge`. It is best effort
-(a force-quit app keeps it on screen until it runs again) and limited to 10 a minute, so call
-it when the state changes, not on every check. `snooze` adds one snooze action per duration in
+(a force-quit app keeps it on screen until it runs again) and limited to 10 a minute, at most 5
+at once, so call it when the state changes, not on every check. Its `devices` count is devices
+sent to, not notifications removed. `snooze` adds one snooze action per duration in
 minutes, 1 to 3 of them; the device brings the notification back by itself, and a snooze is
 not an answer, so there is nothing to wait for. It cannot be combined with `acknowledge`.
 
@@ -95,11 +96,12 @@ call it again to wait longer, and treat a final `answered: false` as "no decisio
 no. `get_notification_answer` reads the current state without blocking.
 
 Waiting on several questions at once, or reacting to answers as they come, is one loop over
-`list_notification_answers`. Its first call without `after` returns only the current `cursor`
-(start from the create response's answer_cursor instead when you already sent the question);
-then call it with that `cursor` as `after` and `wait_seconds`, handle the items (each has
-`notification_id`, `action_id`, `text` and the notification's `collapse_id`), and pass the new
-`cursor` next time:
+`list_notification_answers` that keeps one cursor. Get it once: a first call without `after`
+returns only the current `cursor`, or, if you sent a question before reading, take the
+answer_cursor of that first answerable `create_notification`. Keep it from then on: the
+answer_cursor of later sends adds nothing, and cursors are opaque, never compared. Pass the
+cursor as `after` with `wait_seconds`, handle the items (each has `notification_id`,
+`action_id`, `text` and the notification's `collapse_id`), and pass the new `cursor` next time:
 
 ```
 list_notification_answers {"after": "57", "wait_seconds": 20}
