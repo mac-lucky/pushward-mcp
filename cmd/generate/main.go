@@ -366,6 +366,12 @@ var skipOperations = map[string]bool{
 	"getNotificationReceipt":          true,
 	"cancelNotificationReceipt":       true,
 	"cancelNotificationReceiptsByTag": true,
+	// The answer feed and retract, hand-written in notifications.go: the feed
+	// takes ?after=, ?wait= and ?limit=, and a generated retract would be
+	// annotated as non-destructive although it removes notifications from
+	// the devices.
+	"listNotificationAnswers": true,
+	"retractNotifications":    true,
 	// Integration key management, hand-written in integration_keys.go: the
 	// generator would drop the activity_slugs string array, cannot send the
 	// bodyless roll POST, and would mark roll as non-destructive.
