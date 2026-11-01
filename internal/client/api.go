@@ -437,6 +437,31 @@ func (c *APIClient) GetNotificationAnswer(ctx context.Context, id int64, wait in
 	return c.DoJSON(ctx, http.MethodGet, withQuery("/notifications/answers/"+strconv.FormatInt(id, 10), waitQuery(wait)), nil)
 }
 
+// ListNotificationAnswers reads the answer stream: the answers recorded after
+// the cursor after, oldest first, and the cursor to pass next. An empty after
+// returns no answers, only the current cursor. wait > 0 long-polls while
+// nothing has arrived after the cursor (max 25, ignored without after), and
+// limit > 0 caps the page (max 100).
+func (c *APIClient) ListNotificationAnswers(ctx context.Context, after string, wait, limit int) (json.RawMessage, error) {
+	q := waitQuery(wait)
+	if after != "" {
+		q.Set("after", after)
+	}
+	if limit > 0 {
+		q.Set("limit", strconv.Itoa(limit))
+	}
+	raw, _, err := c.DoJSON(ctx, http.MethodGet, withQuery("/notifications/answers", q), nil)
+	return raw, err
+}
+
+// RetractNotifications takes back the notifications sent with collapseID:
+// the devices remove them and acknowledged ones stop repeating. The response
+// is {"devices": n}, the devices the retraction was sent to.
+func (c *APIClient) RetractNotifications(ctx context.Context, collapseID string) (json.RawMessage, error) {
+	raw, _, err := c.DoJSON(ctx, http.MethodPost, "/notifications/retract", map[string]string{"collapse_id": collapseID})
+	return raw, err
+}
+
 // GetNotificationReceipt reads the receipt of a notification sent with
 // acknowledge. wait > 0 long-polls: the server holds the request up to that
 // many seconds (max 25) while the receipt is still active. The status code is
