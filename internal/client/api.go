@@ -341,6 +341,10 @@ type CreateNotificationInput struct {
 	// once the alert is acknowledged or expires.
 	Tags        []string `json:"tags,omitempty"`
 	CallbackURL string   `json:"callback_url,omitempty"`
+	// Snooze offers one snooze action per duration in minutes (1 to 3 of
+	// them). The device re-shows the notification itself; the server records
+	// nothing. Not with Acknowledge, and stays plaintext like Actions.
+	Snooze []int `json:"snooze,omitempty"`
 }
 
 // CreateNotification creates an in-app notification with optional APNs push.
@@ -384,6 +388,7 @@ type CreateScheduledNotificationInput struct {
 	Acknowledge       json.RawMessage   `json:"acknowledge,omitempty"`
 	Tags              []string          `json:"tags,omitempty"`
 	CallbackURL       string            `json:"callback_url,omitempty"`
+	Snooze            []int             `json:"snooze,omitempty"`
 }
 
 // Recurrence repeats a scheduled notification on a cron schedule evaluated in

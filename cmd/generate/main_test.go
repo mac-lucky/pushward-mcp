@@ -1013,9 +1013,10 @@ func TestBuildAPITools_TargetParams(t *testing.T) {
 	}
 }
 
-// The acknowledged-alert and encryption fields of a notification send reach
-// the client struct once the spec carries them: acknowledge as an opaque
-// object, tags as a string array, callback_url and encrypted as strings.
+// The acknowledged-alert, encryption and snooze fields of a notification send
+// reach the client struct once the spec carries them: acknowledge as an
+// opaque object, tags as a string array, snooze as an integer array,
+// callback_url and encrypted as strings.
 func TestBuildAPITools_NotificationAckParams(t *testing.T) {
 	spec := &openAPISpec{Paths: map[string]pathItem{"/notifications": {"post": operation{
 		OperationID: "createNotification",
@@ -1027,7 +1028,8 @@ func TestBuildAPITools_NotificationAckParams(t *testing.T) {
 				"tags":         {Type: []any{"array", "null"}, Items: &schemaObj{Type: "string"}},
 				"callback_url": {Type: "string"},
 				"encrypted":    {Type: "string"},
-				"step_rows":    {Type: "array", Items: &schemaObj{Type: "integer"}},
+				"snooze":       {Type: []any{"array", "null"}, Items: &schemaObj{Type: "integer"}},
+				"weights":      {Type: "array", Items: &schemaObj{Type: "number"}},
 			},
 		}}}},
 	}}}}
@@ -1055,14 +1057,19 @@ func TestBuildAPITools_NotificationAckParams(t *testing.T) {
 	if p := params["tags"]; p.MCPType != "Array" || p.GoType != "[]string" || p.ItemsType != "string" {
 		t.Errorf("tags = %+v, want a string array", p)
 	}
-	if _, ok := params["step_rows"]; ok {
-		t.Error("an integer array became a param; only string arrays have a client type")
+	if p := params["snooze"]; p.MCPType != "Array" || p.GoType != "[]int" || p.ItemsType != "integer" {
+		t.Errorf("snooze = %+v, want an integer array", p)
+	}
+	if _, ok := params["weights"]; ok {
+		t.Error("a number array became a param; only string and integer arrays have a client type")
 	}
 	out := string(renderTemplate(apiToolsTemplate, tools))
 	for _, want := range []string{
 		"input.Acknowledge = json.RawMessage(buf)",
 		`mcp.Items(map[string]any{"type": "string"})`,
 		"input.Tags = parsed",
+		`mcp.Items(map[string]any{"type": "integer"})`,
+		"input.Snooze = parsed",
 		"input.CallbackURL = v",
 		"input.Encrypted = v",
 	} {

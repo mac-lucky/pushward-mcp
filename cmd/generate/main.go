@@ -113,8 +113,8 @@ type paramDef struct {
 	Desc      string
 	Required  bool
 	Enum      []string
-	GoType    string // Go type used in client struct for Object/Array params (e.g. "*client.MediaAttachment", "[]client.NotificationAction", "[]string")
-	ItemsType string // JSON Schema type of an Array param's items ("object" or "string")
+	GoType    string // Go type used in client struct for Object/Array params (e.g. "*client.MediaAttachment", "[]client.NotificationAction", "[]string", "[]int")
+	ItemsType string // JSON Schema type of an Array param's items ("object", "string" or "integer")
 	Opaque    bool   // forward as json.RawMessage instead of typed unmarshal - for fields whose schema drifts faster than the MCP rebuilds
 	// Nullable forwards an explicit null (a merge-patch clear) instead of
 	// dropping it. Only opaque params can carry it: a typed pointer cannot.
@@ -601,17 +601,20 @@ func schemaToParams(spec *openAPISpec, schema schemaObj, bodyRequired bool) []pa
 		}
 
 		// A string array is a []string on the client struct (tags on a
-		// notification). Arrays of other primitives have no use yet and stay
-		// skipped below.
-		if schemaType(prop) == "array" && prop.Items != nil && schemaType(resolveRef(spec, *prop.Items)) == "string" {
-			p.MCPType = "Array"
-			p.GoType = "[]string"
-			p.ItemsType = "string"
-			if p.Desc == "" {
-				p.Desc = name
+		// notification), an integer array a []int (snooze minutes). Arrays of
+		// other primitives have no use yet and stay skipped below.
+		if schemaType(prop) == "array" && prop.Items != nil {
+			itemType := schemaType(resolveRef(spec, *prop.Items))
+			if goType, ok := primitiveArrayTypes[itemType]; ok {
+				p.MCPType = "Array"
+				p.GoType = goType
+				p.ItemsType = itemType
+				if p.Desc == "" {
+					p.Desc = name
+				}
+				params = append(params, p)
+				continue
 			}
-			params = append(params, p)
-			continue
 		}
 
 		// Skip remaining object-typed fields (free-form maps with additionalProperties).
@@ -658,6 +661,13 @@ func schemaToParams(spec *openAPISpec, schema schemaObj, bodyRequired bool) []pa
 		params = append(params, p)
 	}
 	return params
+}
+
+// primitiveArrayTypes maps the item type of a primitive array body param to
+// its field type on the client struct.
+var primitiveArrayTypes = map[string]string{
+	"string":  "[]string",
+	"integer": "[]int",
 }
 
 // widgetContentSchema is the OpenAPI schema name whose `content` field carries

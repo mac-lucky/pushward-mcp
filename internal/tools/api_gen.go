@@ -102,6 +102,10 @@ func registerAPITools(s *mcpserver.MCPServer, api *client.APIClient) {
 			mcp.WithBoolean("push",
 				mcp.Description("Send as an APNs push to the user's devices. Defaults to true; set false to store in the inbox only."),
 			),
+			mcp.WithArray("snooze",
+				mcp.Description("Offer snooze actions: 1 to 3 different durations in minutes (1-1440 each). The apps show one snooze action per duration; tapping one hides the notification and shows it again on that device after that many minutes. Snoozing happens on the device: the server records nothing, and a snooze tap is not an answer. Not with acknowledge, and actions plus snooze count at most 10. Stays plaintext beside encrypted, like actions. App versions without snooze support show the notification without the snooze actions."),
+				mcp.Items(map[string]any{"type": "integer"}),
+			),
 			mcp.WithString("source",
 				mcp.Description("Source identifier"),
 			),
@@ -190,6 +194,10 @@ func registerAPITools(s *mcpserver.MCPServer, api *client.APIClient) {
 			),
 			mcp.WithString("send_at",
 				mcp.Description("When to send the notification (RFC 3339). Must be in the future and at most 365 days ahead. Required unless recurrence is set; with recurrence, the first send is the first cron match at or after send_at (default: now)."),
+			),
+			mcp.WithArray("snooze",
+				mcp.Description("Offer snooze actions: 1 to 3 different durations in minutes (1-1440 each). The apps show one snooze action per duration; tapping one hides the notification and shows it again on that device after that many minutes. Snoozing happens on the device: the server records nothing, and a snooze tap is not an answer. Not with acknowledge, and actions plus snooze count at most 10. Stays plaintext beside encrypted, like actions. App versions without snooze support show the notification without the snooze actions."),
+				mcp.Items(map[string]any{"type": "integer"}),
 			),
 			mcp.WithString("source",
 				mcp.Description("Source identifier"),
@@ -615,6 +623,17 @@ func handleCreateNotification(ctx context.Context, req mcp.CallToolRequest, api 
 	if v, err := req.RequireBool("push"); err == nil {
 		input.Push = &v
 	}
+	if v, ok := req.GetArguments()["snooze"]; ok && v != nil {
+		buf, err := json.Marshal(v)
+		if err != nil {
+			return mcp.NewToolResultError("encoding snooze: " + err.Error()), nil
+		}
+		var parsed []int
+		if err := json.Unmarshal(buf, &parsed); err != nil {
+			return mcp.NewToolResultError("parsing snooze: " + err.Error()), nil
+		}
+		input.Snooze = parsed
+	}
 	if v := req.GetString("source", ""); v != "" {
 		input.Source = v
 	}
@@ -743,6 +762,17 @@ func handleCreateScheduledNotification(ctx context.Context, req mcp.CallToolRequ
 	}
 	if v := req.GetString("send_at", ""); v != "" {
 		input.SendAt = v
+	}
+	if v, ok := req.GetArguments()["snooze"]; ok && v != nil {
+		buf, err := json.Marshal(v)
+		if err != nil {
+			return mcp.NewToolResultError("encoding snooze: " + err.Error()), nil
+		}
+		var parsed []int
+		if err := json.Unmarshal(buf, &parsed); err != nil {
+			return mcp.NewToolResultError("parsing snooze: " + err.Error()), nil
+		}
+		input.Snooze = parsed
 	}
 	if v := req.GetString("source", ""); v != "" {
 		input.Source = v

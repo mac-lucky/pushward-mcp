@@ -90,3 +90,45 @@ func TestHandleCreateNotification_MissingRequiredIsError(t *testing.T) {
 		t.Errorf("expected IsError=true when a required string is missing, got: %s", resultText(t, result))
 	}
 }
+
+// Snooze minutes reach the body as integers, on both send tools; a
+// fractional minute is refused here instead of being rounded into another
+// duration.
+func TestHandleCreateNotification_Snooze(t *testing.T) {
+	var bodies []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		bodies = append(bodies, string(body))
+		w.WriteHeader(http.StatusCreated)
+		w.Write([]byte(`{"id":"1"}`))
+	}))
+	defer srv.Close()
+	api := client.NewAPIClient(srv.URL, "tok")
+	ctx := context.Background()
+
+	args := map[string]any{"title": "Garage open", "body": "Since 21:40", "snooze": []any{float64(15), float64(60)}}
+	if result, err := handleCreateNotification(ctx, newReq(args), api); err != nil || result.IsError {
+		t.Fatalf("create_notification: %v %s", err, resultText(t, result))
+	}
+	args["send_at"] = "2030-01-01T09:00:00Z"
+	if result, err := handleCreateScheduledNotification(ctx, newReq(args), api); err != nil || result.IsError {
+		t.Fatalf("create_scheduled_notification: %v %s", err, resultText(t, result))
+	}
+	for i, b := range bodies {
+		var got struct {
+			Snooze json.RawMessage `json:"snooze"`
+		}
+		if err := json.Unmarshal([]byte(b), &got); err != nil || string(got.Snooze) != "[15,60]" {
+			t.Errorf("request %d: snooze %s, want [15,60] (%v)", i, got.Snooze, err)
+		}
+	}
+
+	bad := map[string]any{"title": "T", "body": "B", "snooze": []any{7.5}}
+	result, err := handleCreateNotification(ctx, newReq(bad), api)
+	if err != nil || !result.IsError {
+		t.Errorf("a fractional minute: want a tool error, got %v / %s", err, resultText(t, result))
+	}
+	if len(bodies) != 2 {
+		t.Errorf("%d requests, want 2: the fractional one must not be sent", len(bodies))
+	}
+}
