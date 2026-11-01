@@ -36,6 +36,10 @@ func TestNotificationTools_Requests(t *testing.T) {
 	}{
 		{handleListNotificationAnswers, map[string]any{}, `"cursor":"57"`},
 		{handleListNotificationAnswers, map[string]any{"after": "57", "wait_seconds": float64(25), "limit": float64(10)}, `"cursor":"57"`},
+		// An unquoted cursor is still that cursor, not a fresh start.
+		{handleListNotificationAnswers, map[string]any{"after": float64(57)}, `"cursor":"57"`},
+		{handleListNotificationAnswers, map[string]any{"after": "57", "limit": float64(500)}, `"cursor":"57"`},
+		{handleListNotificationAnswers, map[string]any{"after": "57", "limit": float64(-3)}, `"cursor":"57"`},
 		{handleRetractNotifications, map[string]any{"collapse_id": "garage-door"}, `{"devices":3}`},
 	} {
 		result, err := call.handler(context.Background(), newReq(call.args), api)
@@ -47,6 +51,9 @@ func TestNotificationTools_Requests(t *testing.T) {
 		"GET /notifications/answers ",
 		// The hold is capped below the server's 25 s, as for the single answer.
 		"GET /notifications/answers?after=57&limit=10&wait=20 ",
+		"GET /notifications/answers?after=57 ",
+		"GET /notifications/answers?after=57&limit=100 ",
+		"GET /notifications/answers?after=57&limit=1 ",
 		`POST /notifications/retract {"collapse_id":"garage-door"}`,
 	}
 	if strings.Join(got, "\n") != strings.Join(want, "\n") {
@@ -67,6 +74,23 @@ func TestListNotificationAnswers_WaitLimit(t *testing.T) {
 	result, err := handleListNotificationAnswers(context.Background(), newReq(args), client.NewAPIClient(srv.URL, "tok"))
 	if err != nil || !result.IsError || !strings.Contains(resultText(t, result), "answer_wait.limit_exceeded") {
 		t.Errorf("want a tool error naming the code, got %v / %s", err, resultText(t, result))
+	}
+}
+
+// A cursor that is neither a string nor a whole number cannot be sent as it
+// was meant, so the call fails before reaching the server.
+func TestListNotificationAnswers_BadAfter(t *testing.T) {
+	api := client.NewAPIClient("http://127.0.0.1:1", "tok")
+	for name, after := range map[string]any{
+		"fraction": float64(57.5),
+		"too big":  float64(1 << 60),
+		"bool":     true,
+		"object":   map[string]any{"cursor": "57"},
+	} {
+		result, err := handleListNotificationAnswers(context.Background(), newReq(map[string]any{"after": after}), api)
+		if err != nil || !result.IsError || !strings.Contains(resultText(t, result), "after must be the cursor string") {
+			t.Errorf("%s: want a tool error about after, got %v / %s", name, err, resultText(t, result))
+		}
 	}
 }
 

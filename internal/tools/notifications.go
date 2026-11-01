@@ -2,6 +2,9 @@ package tools
 
 import (
 	"context"
+	"fmt"
+	"math"
+	"strconv"
 
 	"github.com/mark3labs/mcp-go/mcp"
 	mcpserver "github.com/mark3labs/mcp-go/server"
@@ -48,9 +51,19 @@ func registerNotificationTools(s *mcpserver.MCPServer, api *client.APIClient) {
 	)
 }
 
+// answerPageMax is the server's largest answer page.
+const answerPageMax = 100
+
 func handleListNotificationAnswers(ctx context.Context, req mcp.CallToolRequest, api *client.APIClient) (*mcp.CallToolResult, error) {
-	raw, err := api.ListNotificationAnswers(ctx, req.GetString("after", ""),
-		min(req.GetInt("wait_seconds", 0), answerLongPollMax), req.GetInt("limit", 0))
+	after, err := cursorArg(req, "after")
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
+	limit := 0 // the server's default page
+	if _, ok := req.GetArguments()["limit"]; ok {
+		limit = max(1, min(req.GetInt("limit", answerPageMax), answerPageMax))
+	}
+	raw, err := api.ListNotificationAnswers(ctx, after, min(req.GetInt("wait_seconds", 0), answerLongPollMax), limit)
 	if err != nil {
 		return mcp.NewToolResultError(err.Error()), nil
 	}
@@ -67,4 +80,23 @@ func handleRetractNotifications(ctx context.Context, req mcp.CallToolRequest, ap
 		return mcp.NewToolResultError(err.Error()), nil
 	}
 	return mcp.NewToolResultText(string(raw)), nil
+}
+
+// cursorArg reads an opaque cursor argument. The cursors look like numbers,
+// so a model may send one unquoted; GetString would turn that into "" and the
+// call would start over from now, skipping every answer since. A whole
+// number is sent as its decimal string, anything else but a string is an
+// error.
+func cursorArg(req mcp.CallToolRequest, name string) (string, error) {
+	switch v := req.GetArguments()[name].(type) {
+	case nil:
+		return "", nil
+	case string:
+		return v, nil
+	case float64:
+		if v == math.Trunc(v) && math.Abs(v) <= 1<<53 {
+			return strconv.FormatInt(int64(v), 10), nil
+		}
+	}
+	return "", fmt.Errorf("%s must be the cursor string of the previous response, passed as it is", name)
 }
