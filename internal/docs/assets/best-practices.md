@@ -67,6 +67,27 @@ General rules for any code that talks to the PushWard REST API
   `GET /notifications/answers/{id}?wait=20`, which holds the request until the
   tap lands. The first answer wins. Foreground actions without a `url` still
   just open the app.
+- **Many questions: follow the answer stream.** One reader on
+  `GET /notifications/answers` (`list_notification_answers`) beats a wait per
+  notification. Start from the cursor of a first call without `after`, or from
+  the `answer_cursor` of the `POST /notifications` response (every answer to
+  that send comes after it), then loop on `?after=<cursor>&wait=20`. Items come
+  oldest first with the `collapse_id` and `thread_id` the notification was sent
+  with, which is how you route them. Store the cursor after each page so a
+  restart resumes without gaps or replays; a full page means call again at
+  once. Two waits per key at a time (`429 answer_wait.limit_exceeded` past
+  that), and answers are kept 30 days.
+- **Take back what is no longer true.** Send state alerts with a
+  `collapse_id` and, once the state clears, `POST /notifications/retract` with
+  `{"collapse_id": "..."}` (`retract_notifications`): the devices remove those
+  notifications and acknowledged ones stop repeating (`cancel_reason:
+  retracted`). Best effort, since a force-quit app keeps it on screen until it
+  runs again, and Apple devices need PushWard 1.20 or later. 10 a minute per
+  account, so retract on the change, not on every check.
+- **Snooze.** `"snooze": [15, 60]` adds one snooze action per duration in
+  minutes (1 to 3, up to 1440 each). The device brings the notification back
+  itself; the server records nothing, and a snooze is not an answer. Not with
+  `acknowledge`, and actions plus snooze count at most 10.
 - **Alerts that must not be missed: `acknowledge`.** Add
   `"acknowledge": {"repeat_seconds": 300, "expire_seconds": 7200}` to
   `POST /notifications` (each field optional: 30-3600 s between repeats,

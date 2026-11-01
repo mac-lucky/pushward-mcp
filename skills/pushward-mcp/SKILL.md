@@ -45,6 +45,7 @@ below use that prefix.
 | to be told right away that you are blocked | `create_notification` with `level: "time-sensitive"` |
 | to approve, pick an option, or type a reply | `create_notification` with url-less `actions`, then `wait_for_answer`; or an approval Live Activity |
 | an alert that keeps coming back until they react | `create_notification` with `acknowledge`, then `wait_for_ack` |
+| to drop a notification that no longer applies | `retract_notifications` with the `collapse_id` it was sent with |
 | to watch a long task move | `create_activity`, then `update_activity` a few times, then `end_activity` |
 | a number to glance at later | `create_widget` once, then `update_widget` |
 | a reminder later or on a repeat | `create_scheduled_notification` |
@@ -65,6 +66,18 @@ Titles carry the news, bodies the one detail that matters. `level` is `passive`,
 answer" and do not use `critical` unless asked. `collapse_id` replaces an earlier notification
 with the same id instead of stacking a new one; `url` opens a page on tap.
 
+```
+create_notification {"title": "Garage door open", "body": "Open since 21:40", "collapse_id": "garage-door", "snooze": [15, 60]}
+retract_notifications {"collapse_id": "garage-door"}
+```
+
+`retract_notifications` takes what was sent under a `collapse_id` back off the devices once it
+is no longer true, and stops its repeats if it was sent with `acknowledge`. It is best effort
+(a force-quit app keeps it on screen until it runs again) and limited to 10 a minute, so call
+it when the state changes, not on every check. `snooze` adds one snooze action per duration in
+minutes, 1 to 3 of them; the device brings the notification back by itself, and a snooze is
+not an answer, so there is nothing to wait for. It cannot be combined with `acknowledge`.
+
 ## Asking and waiting
 
 ```
@@ -80,6 +93,17 @@ nothing will be recorded, so do not wait. The tap comes back as `answer.action_i
 `answer.text` for a `text_input` action. `wait_for_answer` waits at most 600 seconds per call:
 call it again to wait longer, and treat a final `answered: false` as "no decision", not as a
 no. `get_notification_answer` reads the current state without blocking.
+
+Waiting on several questions at once, or reacting to answers as they come, is one loop over
+`list_notification_answers`. Its first call without `after` returns only the current `cursor`
+(start from the create response's answer_cursor instead when you already sent the question);
+then call it with that `cursor` as `after` and `wait_seconds`, handle the items (each has
+`notification_id`, `action_id`, `text` and the notification's `collapse_id`), and pass the new
+`cursor` next time:
+
+```
+list_notification_answers {"after": "57", "wait_seconds": 20}
+```
 
 For a question that should sit on the Lock Screen until answered, use an approval card. Give
 every question a new slug (add a timestamp): an approval that is started again with the same

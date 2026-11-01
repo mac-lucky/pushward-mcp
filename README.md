@@ -22,8 +22,8 @@ agent's context.
 | Area | Tools |
 |---|---|
 | Live Activities | `create_activity`, `update_activity`, `end_activity`, `get_activity`, `list_activities`, `delete_activity`, `bulk_end_activities` |
-| Notifications | `create_notification`, `create_scheduled_notification` (one-off `send_at` up to 365 days ahead, or a cron `recurrence`), `list_scheduled_notifications`, `get_scheduled_notification`, `cancel_scheduled_notification` (`purge` deletes instead of leaving a 24-hour canceled record) |
-| Answers | `get_notification_answer` (can hold the request until the answer arrives), `wait_for_answer` (longer waits, for a notification or an approval Live Activity) |
+| Notifications | `create_notification`, `create_scheduled_notification` (one-off `send_at` up to 365 days ahead, or a cron `recurrence`), `list_scheduled_notifications`, `get_scheduled_notification`, `cancel_scheduled_notification` (`purge` deletes instead of leaving a 24-hour canceled record), `retract_notifications` (removes what was sent under a `collapse_id` from the devices) |
+| Answers | `get_notification_answer` (can hold the request until the answer arrives), `wait_for_answer` (longer waits, for a notification or an approval Live Activity), `list_notification_answers` (every answer after a cursor, for one loop that handles many questions) |
 | Acknowledged alerts | `get_notification_receipt`, `wait_for_ack`, `cancel_notification_receipt`, `cancel_notification_receipts_by_tag`, for notifications sent with `acknowledge`, which repeat until someone taps an action or they expire |
 | Widgets | `create_widget`, `update_widget`, `get_widget`, `list_widgets`, `delete_widget` |
 | Account and health | `get_me`, `get_health`, `get_ready` |
