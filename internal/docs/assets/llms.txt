@@ -1,6 +1,6 @@
 # PushWard
 
-> PushWard is a push notification platform that delivers iOS Live Activities and standard push notifications via a simple REST API. Developers authenticate with an integration key, register activities from external services, and watch them update in real time on the Dynamic Island and Lock Screen.
+> PushWard is a push notification platform that delivers Live Activities on iPhone, Live Updates on Android, widgets and standard push notifications via a simple REST API. Developers authenticate with an integration key, register activities from external services, and watch them update in real time on the Dynamic Island and Lock Screen on iPhone and in the notification shade and status bar on Android.
 
 The API is hosted at `https://api.pushward.app`. An OpenAPI specification is served at `https://api.pushward.app/openapi.yaml` and can be explored interactively at `https://pushward.app/api`.
 
@@ -8,7 +8,7 @@ A fully-expanded Markdown bundle of every docs page lives at [/llms-full.txt](ht
 
 ## Getting Started
 
-- [Getting Started](https://pushward.app/docs/getting-started): Start sending push notifications to your iPhone in under 5 minutes.
+- [Getting Started](https://pushward.app/docs/getting-started): Start sending push notifications to your iPhone or Android phone in under 5 minutes.
 - [iOS Live Activities API](https://pushward.app/live-activities): Send iOS Live Activities to the Lock Screen and Dynamic Island over a simple HTTP API
 - [iOS Widgets API](https://pushward.app/widgets): Update iOS Home Screen, Lock Screen, and StandBy widgets over a simple HTTP API
 - [PushWard for Android](https://pushward.app/android): The Android app: Live Updates, notifications you can answer and home screen widgets from the same API as the iPhone app
@@ -16,11 +16,12 @@ A fully-expanded Markdown bundle of every docs page lives at [/llms-full.txt](ht
 - [Pricing](https://pushward.app/pricing): Free, PushWard Plan, Family, Lifetime and PushWard Team prices, and where each is sold
 - [PushWard Team](https://pushward.app/teams): Organizations for teams: members, groups, routing rules, limited keys, audit log, trial and seat pricing
 - [API Reference](https://pushward.app/api): Interactive OpenAPI explorer for every endpoint
-- [Playground](https://pushward.app/playground): Interactive iPhone simulator for previewing PushWard widgets
+- [Playground](https://pushward.app/playground): Interactive iPhone and Android phone simulator for previewing PushWard Live Activities, notifications and widgets
 
 ## Live Activities
 
-- [Live Activities](https://pushward.app/docs/live-activities): A Live Activity is an iOS feature that shows live, glanceable information right on the Lock Screen, in the Dynamic Island, and in StandBy - without the recipient ever opening an app. PushWard turns a single HTTP request into one.
+- [Live Activities](https://pushward.app/docs/live-activities): A Live Activity is an iOS feature that shows live, glanceable information right on the Lock Screen, in the Dynamic Island, and in StandBy, without the recipient ever opening an app. On Android the same activity arrives as a Live Update. PushWard turns a single HTTP request into one.
+- [iOS vs Android](https://pushward.app/docs/live-activities/ios-vs-android): The same request shows a Live Activity on iPhone and a Live Update on Android. Here is where each one appears and how every template looks and behaves on both.
 - [Generic Template](https://pushward.app/docs/live-activities/generic): A flexible progress-based template suitable for builds, downloads, deployments, and any long-running task.
 - [Timer Template](https://pushward.app/docs/live-activities/timer): A clock that counts down to an end or up from a start, ticking on the device between pushes. Counting down, the server sends the warning and completion updates itself.
 - [Steps Template](https://pushward.app/docs/live-activities/steps): A step-based template designed for CI/CD pipelines and multi-stage workflows. Visualizes parallel jobs with a matrix indicator.
@@ -34,26 +35,27 @@ A fully-expanded Markdown bundle of every docs page lives at [/llms-full.txt](ht
 
 ## Notifications
 
-- [Notifications](https://pushward.app/docs/notifications): Send a JSON recipe - title, body, and any extras - and PushWard delivers a real iOS push.
+- [Notifications](https://pushward.app/docs/notifications): Send a JSON recipe (title, body and any extras) and PushWard delivers a real push notification to iPhone and Android.
 - [Basics](https://pushward.app/docs/notifications/basics): Title, body, subtitle, and interruption level - the minimum payload for a push notification.
-- [Rich Media](https://pushward.app/docs/notifications/rich-media): Attach an image, video, or audio file. iOS downloads and renders the attachment inline when the user expands the notification.
+- [Rich Media](https://pushward.app/docs/notifications/rich-media): Attach an image, video, or audio file. iOS downloads and renders the attachment inline when the user expands the notification; Android shows images.
 - [Actions](https://pushward.app/docs/notifications/actions): Add up to 10 buttons that appear when the user long-presses (or pulls down) the notification. Each button can foreground the app, require authentication, or be styled as destructive.
 - [Notification Answers](https://pushward.app/docs/notifications/answers): Ask a question in a notification and read the answer from the API. PushWard records which button the user tapped, or the reply they typed, so you do not need a webhook of your own.
-- [Communication Style](https://pushward.app/docs/notifications/communication): Set icon_url to render the notification with iOS Communication Notification styling - a round avatar on the side, like an iMessage. Combine with thread_id for grouping in Notification Center.
+- [Communication Style](https://pushward.app/docs/notifications/communication): Set icon_url to render the notification with iOS Communication Notification styling, a round avatar on the side like an iMessage, or as a conversation with that icon on Android. Combine with thread_id for grouping in Notification Center.
 - [Activity Link](https://pushward.app/docs/notifications/activity-link): Tie a notification to an existing Live Activity by setting activity_slug. Tapping the notification deep-links into that activity in the PushWard iOS app.
 - [Scheduled Notifications](https://pushward.app/docs/notifications/scheduled): Queue a notification for later with send_at, or repeat it on a cron schedule. PushWard holds it and sends it when it is due, so nothing on your side has to stay running until then.
 - [Acknowledged Alerts](https://pushward.app/docs/notifications/acknowledge): Send an alert that repeats until someone acknowledges it on one of their devices. Then read who did and when, or let PushWard call your endpoint.
+- [Retract Notifications](https://pushward.app/docs/notifications/retract): Take back a notification that no longer applies. Every device it reached removes it from view, and the PushWard app marks it read.
 - [End-to-End Encryption](https://pushward.app/docs/notifications/encryption): Seal a notification's title, subtitle, body and link on your own machine with a key only your devices hold. PushWard stores and delivers text it cannot read.
-- [Notifications API](https://pushward.app/docs/notifications/api): Send a notification to a user's inbox, with optional APNs push delivery to their devices.
+- [Notifications API](https://pushward.app/docs/notifications/api): Send a notification to a user's inbox, with optional push delivery to their devices.
 
 ## Siri & Shortcuts
 
-- [Siri & Shortcuts](https://pushward.app/docs/shortcuts): PushWard ships App Intents, so you can drive it from Siri, the Shortcuts app, and personal automations right on your device - no integration key or API call required.
+- [Siri & Shortcuts](https://pushward.app/docs/shortcuts): PushWard ships App Intents, so you can drive it from Siri, the Shortcuts app and personal automations right on your device, and on Android from Quick Settings tiles and launcher shortcuts. No integration key or API call required.
 
 ## Widgets
 
-- [Widgets](https://pushward.app/docs/widgets): Push-driven iOS Home Screen, Lock Screen, and StandBy widgets. Declare a widget once, update its content with a PATCH, and the user's WidgetKit instances refresh automatically.
-- [Widgets API](https://pushward.app/docs/widgets/api): Register, update, list, and delete widgets via REST. Widgets are push-driven - each PATCH triggers a thin APNs payload that reloads the iOS extension's timeline.
+- [Widgets](https://pushward.app/docs/widgets): Push-driven widgets for the iOS Home Screen, Lock Screen and StandBy and the Android home screen. Declare a widget once, update its content with a PATCH, and every placed copy refreshes on its own.
+- [Widgets API](https://pushward.app/docs/widgets/api): Register, update, list, and delete widgets via REST. Widgets are push-driven: each PATCH sends a small push that refreshes the widget on the user's iPhone or Android devices.
 - [Value widget](https://pushward.app/docs/widgets/templates/value): One big number with an optional unit, label, and trend arrow. Best for sensor readings, counters, and anything that fits on a single line.
 - [Progress widget](https://pushward.app/docs/widgets/templates/progress): How far along something is, drawn as a bar. Best for rollouts, backups, quotas, and any task with a known finish line.
 - [Status widget](https://pushward.app/docs/widgets/templates/status): A single state - healthy, degraded, down - carried by an icon and a severity color instead of a number.
@@ -71,11 +73,11 @@ A fully-expanded Markdown bundle of every docs page lives at [/llms-full.txt](ht
 
 ## Sharing
 
-- [Sharing](https://pushward.app/docs/sharing): Share a Live Activity with other PushWard users through time-limited codes. Recipients see the same Dynamic Island and Lock Screen surfaces, updated in real time - and joining as a viewer is free.
+- [Sharing](https://pushward.app/docs/sharing): Share a Live Activity with other PushWard users through time-limited codes. Recipients follow it on their own iPhone or Android phone, updated in real time, and joining as a viewer is free.
 
 ## Teams
 
-- [Teams](https://pushward.app/docs/teams): Send to a whole team from one organization account. Members join with their own Apple ID, and groups, device tags and routing rules decide who gets which Live Activity and notification.
+- [Teams](https://pushward.app/docs/teams): Send to a whole team from one organization account. Members join with their own PushWard account on iPhone or Android, and groups, device tags and routing rules decide who gets which Live Activity and notification.
 
 ## Integrations
 
@@ -85,6 +87,7 @@ A fully-expanded Markdown bundle of every docs page lives at [/llms-full.txt](ht
 - [Grafana](https://pushward.app/docs/integrations/grafana): Turn Grafana alerts into a timeline Live Activity on your iPhone Lock Screen. See metric history at a glance with real-time updates while alerts are firing.
 - [Home Assistant](https://pushward.app/docs/integrations/home-assistant): A native HACS integration that bridges Home Assistant entity state changes to PushWard Live Activities on your iPhone.
 - [GitHub Actions](https://pushward.app/docs/integrations/github-actions): Send notifications, show a job as a Live Activity and wait for an answer from inside a workflow with the PushWard action, or track every run with the polling bridge.
+- [Coding agents](https://pushward.app/docs/integrations/coding-agents): Answer Claude Code and Codex permission prompts and questions from your phone while you are away from the terminal. The answer goes back to the session.
 - [SABnzbd](https://pushward.app/docs/integrations/sabnzbd): Track SABnzbd download progress as a Live Activity on your iPhone Lock Screen. See file names, speed, ETA, and post-processing phases in real-time.
 - [Bambu Lab](https://pushward.app/docs/integrations/bambulab): Track Bambu Lab 3D print progress as a Live Activity on your iPhone Lock Screen - layer counts, nozzle temperature, and ETA via local MQTT.
 - [Unraid](https://pushward.app/docs/integrations/unraid): A native Unraid plugin that forwards every Unraid notification to your iPhone and shows parity checks, backups, mover, and UPS events as Live Activities on your Lock Screen.
@@ -92,7 +95,7 @@ A fully-expanded Markdown bundle of every docs page lives at [/llms-full.txt](ht
 
 ## API Reference
 
-- [REST API Reference for iOS Live Activities](https://pushward.app/docs/api): The PushWard API is a REST API for managing iOS Live Activities via Apple Push Notification service (APNs).
+- [REST API Reference for iOS Live Activities](https://pushward.app/docs/api): The PushWard API is a REST API for Live Activities, notifications, widgets and email. PushWard delivers through Apple Push Notification service (APNs) to Apple devices and Firebase Cloud Messaging (FCM) to Android.
 - [Authentication](https://pushward.app/docs/api/authentication): Bearer authentication with integration keys (hlk_): signing in with Apple ID creates a default key, and you can add scoped keys per service.
 - [Activities](https://pushward.app/docs/api/activities): Create, update, and end the activities behind every Live Activity with plain REST calls: POST to start, PATCH to update, DELETE to end.
 - [MCP Server](https://pushward.app/docs/api/mcp): Drive PushWard from Claude and other AI agents over the Model Context Protocol. The hosted MCP server lets an agent create Live Activities, send notifications, and manage widgets through your integration key.
