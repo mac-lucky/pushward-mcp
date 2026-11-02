@@ -218,6 +218,14 @@ Screen.
   resolves itself; two options render as labeled buttons, three or four as icon
   tiles (icons required there). Older iOS builds render the card as `generic`
   with the first two options as working buttons.
+- **Several questions on one card.** Send `step` and `step_count` (both or
+  neither, at most 10 steps) and PATCH `step` + 1 with the next question and
+  its options once the answer lands. An answer before the last step leaves the
+  card ongoing; the server ends it with that answer if no next step comes
+  within 10 minutes or `end_date` passes first, and the last step's answer ends
+  it as above. A changed step clears the stored answer even when the options
+  are the same. Keep the activity name generic for the whole walk, since iOS
+  cannot rename a running card.
 
 ## relay-provider
 

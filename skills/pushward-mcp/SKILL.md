@@ -123,6 +123,21 @@ The answer is `answer.option`. If you set a deadline with `end_date` and `on_exp
 after the tap. If you give up waiting, end the card yourself so a stale question does not sit
 on the Lock Screen.
 
+A few questions in a row can share one card: send `step` and `step_count` with the first one,
+and after each answer patch in the next question with the step after it. An answer before the
+last step keeps the card up, for 10 minutes at most if no next step arrives; the last answer
+ends it as above. Moving to another step clears the old answer, so wait again after every
+patch. The card's `name` stays the same throughout, so keep it general.
+
+```
+update_activity {"slug": "agent-release-ask-1791150000", "state": "ongoing",
+  "content_json": "{\"template\":\"approval\",\"state\":\"Run the migrations first?\",\"source\":\"Agent\",\"step\":1,\"step_count\":2,\"options\":[{\"id\":\"migrate\",\"title\":\"Migrate\"},{\"id\":\"skip\",\"title\":\"Skip\"}]}"}
+wait_for_answer {"slug": "agent-release-ask-1791150000", "timeout_seconds": 600}
+update_activity {"slug": "agent-release-ask-1791150000",
+  "content_json": "{\"state\":\"Ship 2.4 to production?\",\"step\":2,\"options\":[{\"id\":\"ship\",\"title\":\"Ship\"},{\"id\":\"hold\",\"title\":\"Hold\"}]}"}
+wait_for_answer {"slug": "agent-release-ask-1791150000", "timeout_seconds": 600}
+```
+
 ## Alerts that repeat until acknowledged
 
 Sending `create_notification` with an `acknowledge` object (for example
