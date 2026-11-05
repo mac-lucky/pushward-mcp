@@ -124,7 +124,8 @@ after the tap. If you give up waiting, end the card yourself so a stale question
 on the Lock Screen.
 
 Set `"authentication_required": true` on a risky option (Deploy, Run) and the phone asks for
-an unlock before it fires, on app versions that support it; older ones stay one-tap.
+an unlock before it fires, on app versions that support it; older Android ones fire it with one tap.
+A locked iPhone asks for Face ID or the passcode before any button on the card anyway.
 
 A few questions in a row can share one card: send `step` and `step_count` with the first one,
 and after each answer patch in the next question with the step after it. An answer before the
