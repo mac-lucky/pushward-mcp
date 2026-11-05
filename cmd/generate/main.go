@@ -340,10 +340,11 @@ func parseSpecJSON(data []byte, name string) *openAPISpec {
 
 // ---------- API tool building ----------
 
-// skipOperations lists operationIDs that are handled as composite tools
-// in composite.go instead of being generated, plus deprecated endpoints
-// that survived in the live OpenAPI spec but are gone from the public
-// surface post-merge-patch cleanup.
+// skipOperations lists operationIDs that get no generated tool: operations
+// re-implemented by hand (composites in composite.go and the hand-written
+// tools named below), deprecated endpoints still in the live spec, and
+// operations that are not agent tasks. Every /orgs operation is skipped by
+// path in skipOperation, so none of them needs an entry here.
 var skipOperations = map[string]bool{
 	"listActivities":     true, // enhanced with state/source filtering and summary mode
 	"getActivity":        true, // superseded by a composite that adds include_log_backlog (?include=log_backlog)
