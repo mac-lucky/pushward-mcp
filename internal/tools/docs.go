@@ -33,7 +33,7 @@ func registerDocsTools(s *mcpserver.MCPServer) {
 				mcp.Enum("index", "full", "api_openapi", "relay_openapi"),
 				mcp.Description("Which document to return. \"index\" = short llms.txt map of all docs (start here); "+
 					"\"full\" = complete llms-full.txt guide bundle (large - narrow it with section); "+
-					"\"api_openapi\" = api.pushward.app OpenAPI spec (YAML); "+
+					"\"api_openapi\" = api.pushward.app OpenAPI spec (YAML; org administration and personal settings are documented at pushward.app, not here); "+
 					"\"relay_openapi\" = relay.pushward.app OpenAPI spec (JSON)."),
 			),
 			mcp.WithString("section",

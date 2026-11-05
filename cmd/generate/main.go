@@ -152,7 +152,8 @@ const (
 // Published reference docs embedded into the binary and served by the
 // get_pushward_docs tool. Fetched at generate time (see refreshAsset). The API
 // spec is fetched as YAML here - distinct from apiSpecURL's JSON used for tool
-// generation - so the embedded copy matches what api.pushward.app serves.
+// generation - so the embedded copy matches what api.pushward.app serves, less
+// what trimDocsSpec drops.
 const (
 	llmsIndexURL     = "https://pushward.app/llms.txt"
 	llmsFullURL      = "https://pushward.app/llms-full.txt"
@@ -215,6 +216,9 @@ func main() {
 	} {
 		foldSpecASCII(p)
 	}
+	// After the fold, so the encoder quotes the folded text. The root
+	// openapi.yaml stays the server's spec: it is the generator's input.
+	trimDocsSpecFile(filepath.Join(assetsDir, "api-openapi.yaml"))
 
 	fmt.Printf("Generated %d API tools and %d relay tools\n", len(apiTools), len(relayTools))
 }
@@ -343,8 +347,9 @@ func parseSpecJSON(data []byte, name string) *openAPISpec {
 // skipOperations lists operationIDs that get no generated tool: operations
 // re-implemented by hand (composites in composite.go and the hand-written
 // tools named below), deprecated endpoints still in the live spec, and
-// operations that are not agent tasks. Every /orgs operation is skipped by
-// path in skipOperation, so none of them needs an entry here.
+// operations that are not agent tasks. Org administration and personal
+// settings are skipped through notForAgents, so none of them needs an entry
+// here.
 var skipOperations = map[string]bool{
 	"listActivities":     true, // enhanced with state/source filtering and summary mode
 	"getActivity":        true, // superseded by a composite that adds include_log_backlog (?include=log_backlog)
@@ -381,8 +386,12 @@ var skipOperations = map[string]bool{
 	"revokeIntegrationKey": true,
 	"updateIntegrationKey": true,
 	"rollIntegrationKey":   true,
-	// Personal device, follow, sharing and account settings: not agent tasks,
-	// managed with the CLI.
+}
+
+// personalSettingsOps are the device, follow, sharing and account settings
+// operations. They are not agent tasks and are managed with the CLI, so they
+// get no tool and are left out of the embedded API spec (trimDocsSpec).
+var personalSettingsOps = map[string]bool{
 	"listDevices":             true,
 	"getDevice":               true,
 	"updateDevice":            true,
@@ -406,11 +415,21 @@ var skipOperations = map[string]bool{
 	"resendEmailVerification": true,
 }
 
-// skipOperation reports whether an operation gets no generated tool. Org
-// administration (/orgs and below) is managed with the CLI and Terraform, not
-// through MCP.
+// isOrgPath reports whether path is org administration (/orgs and below),
+// managed with the CLI and Terraform, not through MCP.
+func isOrgPath(path string) bool {
+	return path == "/orgs" || strings.HasPrefix(path, "/orgs/")
+}
+
+// notForAgents reports whether an operation is org administration or a
+// personal setting: no tool, and not in the embedded API spec.
+func notForAgents(path, operationID string) bool {
+	return isOrgPath(path) || personalSettingsOps[operationID]
+}
+
+// skipOperation reports whether an operation gets no generated tool.
 func skipOperation(path string, op operation) bool {
-	return op.OperationID == "" || skipOperations[op.OperationID] || path == "/orgs" || strings.HasPrefix(path, "/orgs/")
+	return op.OperationID == "" || skipOperations[op.OperationID] || notForAgents(path, op.OperationID)
 }
 
 // ignoredQueryParams lists query parameters a generated tool deliberately

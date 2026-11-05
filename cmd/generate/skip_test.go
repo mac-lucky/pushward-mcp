@@ -1,30 +1,15 @@
 package main
 
-import (
-	"strings"
-	"testing"
-)
-
-// personalSettingsOps must stay without a generated tool: devices, follows,
-// sharing and account settings are managed with the CLI.
-var personalSettingsOps = []string{
-	"listDevices", "getDevice", "updateDevice", "deleteDevice",
-	"listSubscriptions", "getDeviceSubscription", "subscribeDevice", "unsubscribeDevice",
-	"listPermissions", "listActivityPermissions", "grantActivityPermission",
-	"grantPatternPermission", "updatePermission", "deletePermission",
-	"updateMe", "getOnboarding", "updateOnboarding",
-	"listEmailRecipients", "addEmailRecipient", "deleteEmailRecipient", "resendEmailVerification",
-}
+import "testing"
 
 func TestBuildAPITools_NoOrgOrPersonalSettingsTools(t *testing.T) {
-	isOrg := func(path string) bool { return path == "/orgs" || strings.HasPrefix(path, "/orgs/") }
 	spec := apiSpec(t)
 	inSpec := map[string]bool{}
 	orgOps := 0
 	for path, item := range spec.Paths {
 		for _, op := range item {
 			inSpec[op.OperationID] = true
-			if isOrg(path) {
+			if isOrgPath(path) {
 				orgOps++
 			}
 		}
@@ -34,15 +19,15 @@ func TestBuildAPITools_NoOrgOrPersonalSettingsTools(t *testing.T) {
 		t.Fatal("openapi.yaml has no /orgs operations")
 	}
 	personal := map[string]bool{}
-	for _, id := range personalSettingsOps {
+	for id := range personalSettingsOps {
 		if !inSpec[id] {
-			t.Errorf("%s is not in openapi.yaml: drop it here and from skipOperations", id)
+			t.Errorf("%s is not in openapi.yaml: drop it from personalSettingsOps", id)
 		}
 		personal[toSnakeCase(id)] = true
 	}
 
 	for _, tool := range buildAPITools(spec) {
-		if isOrg(tool.Path) {
+		if isOrgPath(tool.Path) {
 			t.Errorf("%s is generated from %s", tool.Name, tool.Path)
 		}
 		if personal[tool.Name] {
