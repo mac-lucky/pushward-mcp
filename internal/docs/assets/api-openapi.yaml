@@ -5014,14 +5014,14 @@ info:
 
     ## Organization administration
 
-    The Organizations endpoints take an org admin key (`hlo_`), which an owner or admin of the organization creates in the PushWard console. An org admin key administers one organization and sends nothing; an integration key sends and administers nothing, so a leaked integration key cannot change the organization.
+    The Organizations endpoints take an org admin key (`hlo_`), which an owner or admin of the organization creates in the PushWard console. An org admin key administers one organization and sends nothing; an integration key sends and administers no organization, so a leaked integration key cannot change the organization.
 
     | Level | Acts as | Can |
     |---|---|---|
     | `read` | a viewer | read the organization, its members, audit log, device fleet, groups, tags and routes |
     | `manage` | an admin | also rename it, invite, change and remove members and viewers, manage its integration keys, groups, tags and routes |
 
-    Both levels read the plan, seats and invoices and neither can change them. Neither can touch owners, admins or billing members, grant those roles, or delete the organization. Each endpoint says which level it needs; below it the answer is `403 org.permission_denied`. A key gets `404 org.not_found` for any organization but its own and `403 org_admin_key.not_allowed` on every endpoint outside this group. An expired key gets `401 org_admin_key.expired`. An organization that is not active still answers reads; most writes get `403 org.billing_inactive`.
+    Both levels read the plan, seats and invoices and neither can change them. Neither can touch owners, admins or billing members, grant those roles, or delete the organization. Each endpoint says which level it needs; below it the answer is `403 org.permission_denied`. A key gets `404 org.not_found` for any organization but its own and `403 org_admin_key.not_allowed` on every endpoint outside this group (`403 billing.console_only` on the billing ones). An expired key gets `401 org_admin_key.expired`. A key is revoked when the person who created it leaves or is removed from the organization, moves to the billing, member or viewer role, or deletes their account. An organization that is not active still answers reads; most writes get `403 org.billing_inactive`.
 
     ## Errors
 
