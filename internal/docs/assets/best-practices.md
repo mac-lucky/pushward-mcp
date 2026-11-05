@@ -267,16 +267,17 @@ Sending transactional email through `POST /emails`.
 - **Recipients must be verified.** Email only delivers to an address that is
   registered **and** double-opt-in verified on the account, and not
   unsubscribed. On a personal account the owner adds recipients in the
-  PushWard app; a personal `hlk_` integration key cannot, so a bridge (or this
-  MCP) can send to an existing verified recipient but cannot add one.
+  PushWard app. A personal `hlk_` integration key can add one only with the
+  `account` level, which every key starts without and only the app grants, so
+  a bridge (or this MCP) normally sends to an existing verified recipient.
 - **Organizations register their own recipients.** An organization has no
   app, so an organization key with the `emails` permission that is not limited
   to some groups and tags manages its recipients through the API:
   `POST /emails/recipients` with `{"address": "...", "label": "..."}` mails a
   single-use confirmation link, and `GET /emails/recipients`,
   `POST /emails/recipients/{id}/resend` and `DELETE /emails/recipients/{id}`
-  list, re-send and remove them. These operations are not in the public
-  OpenAPI spec and this MCP has no tool for them. Organization email goes only
+  list, re-send and remove them. They are in the full public OpenAPI spec
+  (not in the copy this MCP embeds), and this MCP has no tool for them. Organization email goes only
   to those recipients, never to the members' personal ones.
 - **Provide a body.** `subject` and `to` are required; send `html_body`,
   `text_body`, or both.
