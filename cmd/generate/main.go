@@ -380,6 +380,36 @@ var skipOperations = map[string]bool{
 	"revokeIntegrationKey": true,
 	"updateIntegrationKey": true,
 	"rollIntegrationKey":   true,
+	// Personal device, follow, sharing and account settings: not agent tasks,
+	// managed with the CLI.
+	"listDevices":             true,
+	"getDevice":               true,
+	"updateDevice":            true,
+	"deleteDevice":            true,
+	"listSubscriptions":       true,
+	"getDeviceSubscription":   true,
+	"subscribeDevice":         true,
+	"unsubscribeDevice":       true,
+	"listPermissions":         true,
+	"listActivityPermissions": true,
+	"grantActivityPermission": true,
+	"grantPatternPermission":  true,
+	"updatePermission":        true,
+	"deletePermission":        true,
+	"updateMe":                true,
+	"getOnboarding":           true,
+	"updateOnboarding":        true,
+	"listEmailRecipients":     true,
+	"addEmailRecipient":       true,
+	"deleteEmailRecipient":    true,
+	"resendEmailVerification": true,
+}
+
+// skipOperation reports whether an operation gets no generated tool. Org
+// administration (/orgs and below) is managed with the CLI and Terraform, not
+// through MCP.
+func skipOperation(path string, op operation) bool {
+	return op.OperationID == "" || skipOperations[op.OperationID] || path == "/orgs" || strings.HasPrefix(path, "/orgs/")
 }
 
 // ignoredQueryParams lists query parameters a generated tool deliberately
@@ -393,9 +423,9 @@ var ignoredQueryParams = map[string]map[string]bool{
 // of a generated operation that ignoredQueryParams does not account for.
 func unhandledQueryParams(spec *openAPISpec) []string {
 	var out []string
-	for _, item := range spec.Paths {
+	for path, item := range spec.Paths {
 		for _, op := range item {
-			if op.OperationID == "" || skipOperations[op.OperationID] {
+			if skipOperation(path, op) {
 				continue
 			}
 			for _, p := range op.Parameters {
@@ -414,10 +444,7 @@ func buildAPITools(spec *openAPISpec) []toolDef {
 
 	for path, item := range spec.Paths {
 		for method, op := range item {
-			if op.OperationID == "" {
-				continue
-			}
-			if skipOperations[op.OperationID] {
+			if skipOperation(path, op) {
 				continue
 			}
 			t := toolDef{
