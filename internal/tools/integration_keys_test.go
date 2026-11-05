@@ -250,6 +250,22 @@ func TestRevokeAndRollIntegrationKey(t *testing.T) {
 	}
 }
 
+// The tools take no devices, sharing or account levels, but a key that has
+// them comes back with them untouched.
+func TestIntegrationKeyTools_PassNewPermissionLevelsThrough(t *testing.T) {
+	key := `{"id":"` + testKeyID + `","name":"ci","permissions":{"activities":"update","notifications":"none","widgets":"none","emails":"none","devices":"read","sharing":"manage","account":"read"}}`
+	ctx := context.Background()
+
+	api, _ := keyServer(t, http.StatusOK, `{"items":[`+key+`]}`)
+	if r, _ := handleListIntegrationKeys(ctx, newReq(nil), api); r.IsError || resultText(t, r) != `{"items":[`+key+`]}` {
+		t.Errorf("list: %s", resultText(t, r))
+	}
+	api, _ = keyServer(t, http.StatusOK, key)
+	if r, _ := handleUpdateIntegrationKey(ctx, newReq(map[string]any{"key_id": testKeyID, "name": "ci"}), api); r.IsError || resultText(t, r) != key {
+		t.Errorf("update: %s", resultText(t, r))
+	}
+}
+
 func TestIntegrationKeyTools_BadKeyIDNeverSent(t *testing.T) {
 	for _, id := range []string{"", "../widgets", "not-a-uuid", testKeyID + "/roll"} {
 		api, calls := keyServer(t, http.StatusOK, `{}`)
