@@ -95,14 +95,15 @@ func TestTrimDocsSpec_CommittedSpec(t *testing.T) {
 	}
 	inComponents, gotComponents := asMap(in["components"]), asMap(got["components"])
 	for k, v := range inComponents {
-		if k != "schemas" && !reflect.DeepEqual(v, gotComponents[k]) {
+		if !refOnly[k] && !reflect.DeepEqual(v, gotComponents[k]) {
 			t.Errorf("components.%s changed", k)
 		}
 	}
-	inSchemas, gotSchemas := asMap(inComponents["schemas"]), asMap(gotComponents["schemas"])
-	for name, s := range gotSchemas {
-		if !reflect.DeepEqual(s, inSchemas[name]) {
-			t.Errorf("schema %s changed", name)
+	for section := range refOnly {
+		for name, e := range asMap(gotComponents[section]) {
+			if !reflect.DeepEqual(e, asMap(inComponents[section])[name]) {
+				t.Errorf("components.%s.%s changed", section, name)
+			}
 		}
 	}
 
@@ -119,7 +120,8 @@ func TestTrimDocsSpec_CommittedSpec(t *testing.T) {
 		}
 	}
 
-	// Every schema left is reached from outside components.schemas.
+	// Every schema, response, parameter and request body left is reached from
+	// the rest of the spec.
 	reached := map[string]bool{}
 	queue := []any{}
 	for k, v := range got {
@@ -128,7 +130,7 @@ func TestTrimDocsSpec_CommittedSpec(t *testing.T) {
 		}
 	}
 	for k, v := range gotComponents {
-		if k != "schemas" {
+		if !refOnly[k] {
 			queue = append(queue, v)
 		}
 	}
@@ -137,21 +139,23 @@ func TestTrimDocsSpec_CommittedSpec(t *testing.T) {
 		specRefs(queue, next)
 		queue = queue[:0]
 		for ref := range next {
-			name, ok := strings.CutPrefix(ref, "#/components/schemas/")
-			name, _, _ = strings.Cut(name, "/")
-			if ok && !reached[name] {
-				reached[name] = true
-				queue = append(queue, gotSchemas[name])
+			section, rest, _ := strings.Cut(strings.TrimPrefix(ref, "#/components/"), "/")
+			name, _, _ := strings.Cut(rest, "/")
+			if key := section + "/" + name; refOnly[section] && !reached[key] {
+				reached[key] = true
+				queue = append(queue, asMap(gotComponents[section])[name])
 			}
 		}
 	}
-	for name := range gotSchemas {
-		if !reached[name] {
-			t.Errorf("schema %s is left with nothing reaching it", name)
+	for section := range refOnly {
+		for name := range asMap(gotComponents[section]) {
+			if !reached[section+"/"+name] {
+				t.Errorf("components.%s.%s is left with nothing reaching it", section, name)
+			}
 		}
 	}
 
-	// A regeneration over the committed asset must be a no-op.
+	// Trimming twice changes nothing.
 	again, err := trimDocsSpec(out)
 	if err != nil {
 		t.Fatal(err)
@@ -161,17 +165,47 @@ func TestTrimDocsSpec_CommittedSpec(t *testing.T) {
 	}
 }
 
+// The asset get_pushward_docs serves is the trimmed spec, so a spec copied
+// into it by hand fails here until the generator has run.
+func TestTrimDocsSpec_CommittedAsset(t *testing.T) {
+	data, err := os.ReadFile(filepath.Join(repoRoot(t), "internal", "docs", "assets", "api-openapi.yaml"))
+	if err != nil {
+		t.Skipf("api-openapi.yaml not found: %v", err)
+	}
+	out, err := trimDocsSpec(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(out, data) {
+		t.Errorf("internal/docs/assets/api-openapi.yaml is not trimmed (%d -> %d bytes): run PUSHWARD_USE_LOCAL_SPEC=1 go run ./cmd/generate", len(data), len(out))
+	}
+	for path, item := range asMap(decodeSpec(t, data)["paths"]) {
+		if isOrgPath(path) {
+			t.Errorf("%s is in the docs asset", path)
+		}
+		for _, op := range asMap(item) {
+			if id, _ := asMap(op)["operationId"].(string); slices.Contains(wantPersonalSettings, id) {
+				t.Errorf("%s is in the docs asset", id)
+			}
+		}
+	}
+}
+
 const syntheticSpec = `openapi: 3.1.0
 paths:
   /orgs/{id}:
     get:
       operationId: getOrg
+      parameters:
+        - $ref: "#/components/parameters/OrgID"
       responses:
         "200":
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/Org"
+        "409":
+          $ref: "#/components/responses/OrgConflict"
   /widgets:
     get:
       operationId: listWidgets
@@ -181,6 +215,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Page"
+        "404":
+          $ref: "#/components/responses/NotFound"
   /me:
     get:
       operationId: getMe
@@ -236,13 +272,35 @@ components:
           $ref: "#/components/schemas/DeviceNested"
     DeviceNested:
       type: object
+    Problem:
+      type: object
+    OrgConflictBody:
+      type: object
+  responses:
+    NotFound:
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Problem"
+    OrgConflict:
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/OrgConflictBody"
+  parameters:
+    OrgID:
+      name: id
+      in: path
+      schema:
+        $ref: "#/components/schemas/OrgOnly"
   securitySchemes:
     bearer:
       type: http
 `
 
 // A schema an org operation shares with a kept one stays, and so does what a
-// discriminator mapping names; what only the dropped operations reached goes.
+// discriminator mapping names; what only the dropped operations reached goes,
+// through a shared response or parameter too, and so does a section left empty.
 func TestTrimDocsSpec_Synthetic(t *testing.T) {
 	out, err := trimDocsSpec([]byte(syntheticSpec))
 	if err != nil {
@@ -269,8 +327,9 @@ func TestTrimDocsSpec_Synthetic(t *testing.T) {
 		{"top-level keys", keys(root), []string{"openapi", "paths", "components"}},
 		{"paths", keys(paths), []string{"/widgets", "/me"}},
 		{"/me operations", keys(mapValue(paths, "/me")), []string{"get"}},
-		{"schemas", keys(mapValue(mapValue(root, "components"), "schemas")), []string{"Shared", "Variant", "Page", "Me"}},
-		{"components", keys(mapValue(root, "components")), []string{"schemas", "securitySchemes"}},
+		{"schemas", keys(mapValue(mapValue(root, "components"), "schemas")), []string{"Shared", "Variant", "Page", "Me", "Problem"}},
+		{"responses", keys(mapValue(mapValue(root, "components"), "responses")), []string{"NotFound"}},
+		{"components", keys(mapValue(root, "components")), []string{"schemas", "responses", "securitySchemes"}},
 	} {
 		if !slices.Equal(tc.got, tc.want) {
 			t.Errorf("%s = %v, want %v", tc.name, tc.got, tc.want)

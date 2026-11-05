@@ -2,6 +2,18 @@ package main
 
 import "testing"
 
+// wantPersonalSettings must stay without a generated tool and out of the docs
+// asset: devices, follows, sharing and account settings are managed with the
+// CLI. Kept apart from personalSettingsOps so dropping an id there fails here.
+var wantPersonalSettings = []string{
+	"listDevices", "getDevice", "updateDevice", "deleteDevice",
+	"listSubscriptions", "getDeviceSubscription", "subscribeDevice", "unsubscribeDevice",
+	"listPermissions", "listActivityPermissions", "grantActivityPermission",
+	"grantPatternPermission", "updatePermission", "deletePermission",
+	"updateMe", "getOnboarding", "updateOnboarding",
+	"listEmailRecipients", "addEmailRecipient", "deleteEmailRecipient", "resendEmailVerification",
+}
+
 func TestBuildAPITools_NoOrgOrPersonalSettingsTools(t *testing.T) {
 	spec := apiSpec(t)
 	inSpec := map[string]bool{}
@@ -19,9 +31,9 @@ func TestBuildAPITools_NoOrgOrPersonalSettingsTools(t *testing.T) {
 		t.Fatal("openapi.yaml has no /orgs operations")
 	}
 	personal := map[string]bool{}
-	for id := range personalSettingsOps {
+	for _, id := range wantPersonalSettings {
 		if !inSpec[id] {
-			t.Errorf("%s is not in openapi.yaml: drop it from personalSettingsOps", id)
+			t.Errorf("%s is not in openapi.yaml: drop it here and from personalSettingsOps", id)
 		}
 		personal[toSnakeCase(id)] = true
 	}

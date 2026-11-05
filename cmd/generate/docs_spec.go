@@ -43,7 +43,8 @@ func trimDocsSpecFile(path string) {
 
 // trimDocsSpec returns the OpenAPI YAML without the operations notForAgents
 // matches, without the paths left with no operation, and without the
-// component schemas nothing else reaches any more. The rest keeps its order.
+// component schemas, responses, parameters and request bodies nothing else
+// reaches any more. The rest keeps its order.
 func trimDocsSpec(data []byte) ([]byte, error) {
 	var doc yaml.Node
 	if err := yaml.Unmarshal(data, &doc); err != nil {
@@ -71,7 +72,7 @@ func trimDocsSpec(data []byte) ([]byte, error) {
 			return after > 0 || after == before
 		})
 	}
-	pruneSchemas(root)
+	pruneComponents(root)
 
 	var buf bytes.Buffer
 	enc := yaml.NewEncoder(&buf)
@@ -85,27 +86,38 @@ func trimDocsSpec(data []byte) ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
-// pruneSchemas drops the component schemas that no reference reaches, starting
-// from everything outside components.schemas.
-func pruneSchemas(root *yaml.Node) {
+// refOnly are the components sections whose entries only a $ref reaches. An
+// entry nothing reaches is dropped; the other sections (securitySchemes is named
+// by key, not by $ref) stay whole and count as roots.
+var refOnly = map[string]bool{"schemas": true, "responses": true, "parameters": true, "requestBodies": true}
+
+// pruneComponents drops the refOnly component entries that no reference
+// reaches from the rest of the spec, and a section that loses all of them.
+func pruneComponents(root *yaml.Node) {
 	components := mapValue(root, "components")
-	schemas := mapValue(components, "schemas")
-	if schemas == nil {
+	if components == nil {
 		return
 	}
-	byName := map[string]*yaml.Node{}
-	for i := 0; i+1 < len(schemas.Content); i += 2 {
-		byName[schemas.Content[i].Value] = schemas.Content[i+1]
+	byRef := map[string]*yaml.Node{} // "schemas/Name" -> its node
+	for i := 0; i+1 < len(components.Content); i += 2 {
+		if section := components.Content[i].Value; refOnly[section] {
+			entries := components.Content[i+1]
+			for j := 0; j+1 < len(entries.Content); j += 2 {
+				byRef[section+"/"+entries.Content[j].Value] = entries.Content[j+1]
+			}
+		}
 	}
 	reached := map[string]bool{}
 	var walk func(n *yaml.Node)
 	walk = func(n *yaml.Node) {
 		if n.Kind == yaml.ScalarNode {
-			// $ref values and discriminator mappings both name a schema this way.
-			if name, ok := strings.CutPrefix(n.Value, "#/components/schemas/"); ok {
-				name, _, _ = strings.Cut(name, "/")
-				if s := byName[name]; s != nil && !reached[name] {
-					reached[name] = true
+			// $ref values and discriminator mappings both name an entry this way.
+			if ref, ok := strings.CutPrefix(n.Value, "#/components/"); ok {
+				section, rest, _ := strings.Cut(ref, "/")
+				name, _, _ := strings.Cut(rest, "/")
+				key := section + "/" + name
+				if s := byRef[key]; s != nil && !reached[key] {
+					reached[key] = true
 					walk(s)
 				}
 			}
@@ -121,11 +133,18 @@ func pruneSchemas(root *yaml.Node) {
 		}
 	}
 	for i := 0; i+1 < len(components.Content); i += 2 {
-		if components.Content[i].Value != "schemas" {
+		if !refOnly[components.Content[i].Value] {
 			walk(components.Content[i+1])
 		}
 	}
-	schemas.Content = keepPairs(schemas.Content, func(name string, _ *yaml.Node) bool { return reached[name] })
+	components.Content = keepPairs(components.Content, func(section string, entries *yaml.Node) bool {
+		if !refOnly[section] {
+			return true
+		}
+		before := len(entries.Content)
+		entries.Content = keepPairs(entries.Content, func(name string, _ *yaml.Node) bool { return reached[section+"/"+name] })
+		return len(entries.Content) > 0 || before == 0
+	})
 }
 
 // mapValue returns the value under key in a mapping node, or nil.
