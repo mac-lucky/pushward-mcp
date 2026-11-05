@@ -217,7 +217,10 @@ Screen.
   records no `answer`. Set `end_date` with `on_expire` so an ignored question
   resolves itself; two options render as labeled buttons, three or four as icon
   tiles (icons required there). Older iOS builds render the card as `generic`
-  with the first two options as working buttons.
+  with the first two options as working buttons. Set
+  `authentication_required: true` on an option that does something risky, so
+  the phone asks for an unlock before it fires; app builds older than the field
+  fire it with one tap.
 - **Several questions on one card.** Send `step` and `step_count` (both or
   neither, at most 10 steps) and PATCH `step` + 1 with the next question and
   its options once the answer lands. An answer before the last step leaves the
