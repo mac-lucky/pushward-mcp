@@ -577,6 +577,31 @@ func TestActivityContentFieldParity(t *testing.T) {
 	}
 }
 
+// The general sweep stops at top-level content fields, so an option field the
+// server adds (authentication_required) would reach the spec without reaching
+// agents. Every property of an approval option has to be named in the approval
+// clause.
+func TestActivityApprovalOptionFieldParity(t *testing.T) {
+	spec := apiSpec(t)
+	ref, ok := activityContentMapping(t, spec)["approval"]
+	if !ok {
+		t.Fatal("the spec mapping carries no approval template")
+	}
+	options, ok := spec.Components.Schemas[refTypeName(ref)].Properties["options"]
+	if !ok || options.Items == nil {
+		t.Fatalf("%s carries no options array", ref)
+	}
+	props := resolveRef(spec, *options.Items).Properties
+	if _, ok := props["authentication_required"]; !ok {
+		t.Fatal("approval options carry no authentication_required - the committed openapi.yaml is behind the server")
+	}
+	for name := range props {
+		if !mentionsField(activityApprovalClause, name) {
+			t.Errorf("approval option field %q is in the spec but absent from the approval clause", name)
+		}
+	}
+}
+
 // The general sweep passes a timer field named anywhere in the description, and
 // paused already appears in the media clause, so deleting it from the timer
 // clause would go unnoticed there. Every writable property only the timer

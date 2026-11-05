@@ -6,7 +6,10 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
+
+	mcpserver "github.com/mark3labs/mcp-go/server"
 
 	"github.com/mac-lucky/pushward-mcp/internal/client"
 )
@@ -130,5 +133,50 @@ func TestHandleCreateNotification_Snooze(t *testing.T) {
 	}
 	if len(bodies) != 2 {
 		t.Errorf("%d requests, want 2: the fractional one must not be sent", len(bodies))
+	}
+}
+
+// An approval option can ask for a device unlock before it fires. content_json
+// is forwarded as raw JSON, so the key has to be advertised in the tool
+// description and arrive in the PATCH body untouched.
+func TestHandleUpdateActivity_ApprovalAuthenticationRequired(t *testing.T) {
+	s := mcpserver.NewMCPServer("pushward-test", "0.0.0")
+	RegisterAll(s, client.NewAPIClient("http://127.0.0.1:1", "tok"), nil)
+	st := s.GetTool("update_activity")
+	if st == nil {
+		t.Fatal("update_activity not registered")
+	}
+	prop, _ := st.Tool.InputSchema.Properties["content_json"].(map[string]any)
+	if desc, _ := prop["description"].(string); !strings.Contains(desc, "authentication_required") {
+		t.Errorf("content_json description does not offer authentication_required on approval options: %s", desc)
+	}
+
+	var got struct {
+		Content struct {
+			Options []map[string]json.RawMessage `json:"options"`
+		} `json:"content"`
+	}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		if err := json.Unmarshal(body, &got); err != nil {
+			t.Errorf("unmarshal request body: %v", err)
+		}
+		w.Write([]byte(`{"slug":"deploy"}`))
+	}))
+	defer srv.Close()
+
+	content := `{"template":"approval","state":"Deploy 2.4?","options":[{"id":"deploy","title":"Deploy","authentication_required":true},{"id":"hold","title":"Hold"}]}`
+	result, err := handleUpdateActivity(context.Background(), newReq(map[string]any{"slug": "deploy", "content_json": content}), client.NewAPIClient(srv.URL, "tok"))
+	if err != nil || result.IsError {
+		t.Fatalf("update_activity: %v %s", err, resultText(t, result))
+	}
+	if len(got.Content.Options) != 2 {
+		t.Fatalf("sent %d options, want 2", len(got.Content.Options))
+	}
+	if v := string(got.Content.Options[0]["authentication_required"]); v != "true" {
+		t.Errorf("first option authentication_required = %q, want true", v)
+	}
+	if _, ok := got.Content.Options[1]["authentication_required"]; ok {
+		t.Error("second option gained an authentication_required it was not sent with")
 	}
 }
