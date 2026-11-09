@@ -77,6 +77,7 @@ type schemaObj struct {
 	Examples             []any                `json:"examples" yaml:"examples"`
 	AdditionalProperties any                  `json:"additionalProperties" yaml:"additionalProperties"`
 	Discriminator        *discriminator       `json:"discriminator" yaml:"discriminator"`
+	OneOf                []schemaObj          `json:"oneOf" yaml:"oneOf"`
 }
 
 // discriminator carries the template -> content-schema mapping the activity
@@ -579,7 +580,7 @@ func schemaToParams(spec *openAPISpec, schema schemaObj, bodyRequired bool) []pa
 		if raw.Items != nil {
 			itemsRef = raw.Items.Ref
 		}
-		prop := resolveRef(spec, raw)
+		prop := stringBranch(resolveRef(spec, raw))
 
 		// Skip the `content` field - it's always emitted via the content_json
 		// string path (see buildAPITools). This applies whether the schema is a
@@ -949,6 +950,19 @@ func dropNullClearClause(desc string) string {
 // their trailing ".0"; fractional values keep their digits.
 func formatBound(v float64) string {
 	return strconv.FormatFloat(v, 'f', -1, 64)
+}
+
+// stringBranch turns a string-or-integer oneOf (notification level) into a
+// string enum. Its string branch lists every value the API takes, numbers
+// included, and the tools read these params with GetString, so a tool that
+// advertised anything looser would lose a bare number without an error.
+func stringBranch(s schemaObj) schemaObj {
+	for _, b := range s.OneOf {
+		if s.Type == nil && b.Type == "string" && len(b.Enum) > 0 {
+			s.Type, s.Enum = b.Type, b.Enum
+		}
+	}
+	return s
 }
 
 func schemaType(s schemaObj) string {

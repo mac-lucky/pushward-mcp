@@ -132,6 +132,19 @@ func TestSchemaType(t *testing.T) {
 	}
 }
 
+func TestStringBranch(t *testing.T) {
+	enum := []string{"passive", "0"}
+	got := stringBranch(schemaObj{OneOf: []schemaObj{{Type: "string", Enum: enum}, {Type: "integer"}}})
+	if schemaType(got) != "string" || !slices.Equal(got.Enum, enum) {
+		t.Errorf("union: type %q enum %v, want string %v", schemaType(got), got.Enum, enum)
+	}
+	// The nullable wrapper around a $ref has no string values to take.
+	got = stringBranch(schemaObj{OneOf: []schemaObj{{Ref: "#/components/schemas/X"}, {Type: "null"}}})
+	if got.Type != nil || got.Enum != nil {
+		t.Errorf("nullable ref: type %v enum %v, want both unset", got.Type, got.Enum)
+	}
+}
+
 func TestIsFlat(t *testing.T) {
 	spec := &openAPISpec{} // empty spec, no components needed for these tests
 
