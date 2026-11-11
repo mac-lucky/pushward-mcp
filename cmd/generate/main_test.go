@@ -573,9 +573,10 @@ func TestActivityContentFieldParity(t *testing.T) {
 	// timer's pause fields are the deliberate exceptions, documented as things to
 	// fetch rather than send (answer is the whole outcome API of the approval
 	// template, and paused is write-only, so paused_at is the only way to read a
-	// pause back).
-	documented := []string{"answer", "log_backlog", "paused_at", "paused_seconds"}
-	want := []string{"answer", "answer_round", "log_backlog", "paused_at", "paused_seconds", "snoozed_until", "warning_pushed"}
+	// pause back). tick_url is named only to say it is server-owned, so an agent
+	// that reads it back from get_activity does not echo it in a PATCH.
+	documented := []string{"answer", "log_backlog", "paused_at", "paused_seconds", "tick_url"}
+	want := []string{"answer", "answer_round", "log_backlog", "paused_at", "paused_seconds", "snoozed_until", "tick_url", "warning_pushed"}
 	got := sortedClone(serverOwned)
 	if !slices.Equal(got, want) {
 		t.Errorf("the spec marks %v read-only, the exemption list is %v", got, want)
@@ -611,6 +612,29 @@ func TestActivityApprovalOptionFieldParity(t *testing.T) {
 	for name := range props {
 		if !mentionsField(activityApprovalClause, name) {
 			t.Errorf("approval option field %q is in the spec but absent from the approval clause", name)
+		}
+	}
+}
+
+// The checklist item is inline in the spec, so the general sweep never sees its
+// fields, and checked is the one that carries the keep-the-tick rule.
+func TestActivityChecklistItemFieldParity(t *testing.T) {
+	spec := apiSpec(t)
+	ref, ok := activityContentMapping(t, spec)["checklist"]
+	if !ok {
+		t.Fatal("the spec mapping carries no checklist template")
+	}
+	items, ok := spec.Components.Schemas[refTypeName(ref)].Properties["items"]
+	if !ok || items.Items == nil {
+		t.Fatalf("%s carries no items array", ref)
+	}
+	props := resolveRef(spec, *items.Items).Properties
+	if _, ok := props["checked"]; !ok {
+		t.Fatal("checklist items carry no checked - the committed openapi.yaml is behind the server")
+	}
+	for name := range props {
+		if !mentionsField(activityChecklistClause, name) {
+			t.Errorf("checklist item field %q is in the spec but absent from the checklist clause", name)
 		}
 	}
 }
@@ -949,7 +973,7 @@ func TestContentJSONDesc(t *testing.T) {
 		}
 	}
 	// The 1.6 additions rode the spec for a release before this string caught up.
-	for _, added := range []string{"trend", "countdown", "battery", "schedule", "flow"} {
+	for _, added := range []string{"trend", "countdown", "battery", "schedule", "flow", "heatmap"} {
 		if !strings.Contains(wPost, added) {
 			t.Errorf("widget desc missing template %q: %s", added, wPost)
 		}
@@ -972,12 +996,13 @@ func TestContentJSONDesc(t *testing.T) {
 	if !strings.Contains(aPatch, "countdown") || !strings.Contains(aPatch, "Merge Patch") {
 		t.Errorf("activity PATCH desc wrong: %s", aPatch)
 	}
-	// The board/log/media/approval templates must be advertised in the enum and
-	// documented; approval also has to point at the tool that reads the answer.
-	if !strings.Contains(aPatch, "timeline|board|log|media|approval)") {
-		t.Errorf("activity desc missing board/log/media/approval in template enum: %s", aPatch)
+	// The board/log/media/approval/checklist templates must be advertised in the
+	// enum and documented; approval and checklist also have to point at the tool
+	// that reads the outcome.
+	if !strings.Contains(aPatch, "timeline|board|log|media|approval|checklist)") {
+		t.Errorf("activity desc missing board/log/media/approval/checklist in template enum: %s", aPatch)
 	}
-	for _, doc := range []string{"board (tiles", "log (lines", "media (", "approval (a question card", "wait_for_answer"} {
+	for _, doc := range []string{"board (tiles", "log (lines", "media (", "approval (a question card", "checklist (a short list", "wait_for_answer"} {
 		if !strings.Contains(aPatch, doc) {
 			t.Errorf("activity desc missing %q: %s", doc, aPatch)
 		}
