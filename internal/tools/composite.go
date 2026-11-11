@@ -43,6 +43,7 @@ const (
 	tmplLog       = "log"
 	tmplMedia     = "media"
 	tmplApproval  = "approval"
+	tmplChecklist = "checklist"
 
 	defaultTemplate = tmplGeneric
 )
@@ -188,11 +189,12 @@ func registerCompositeTools(s *mcpserver.MCPServer, api *client.APIClient, relay
 	// generated single-shot activity tools.
 	s.AddTool(
 		mcp.NewTool("wait_for_answer",
-			mcp.WithDescription("Wait for a human answer, given exactly one of slug or notification_id. slug: an approval Live Activity, until content.answer appears (a server-recorded option was tapped, or on_expire fired at the deadline); rides out preempted stretches (only ended is final) and returns {state, answered, answer {option, at, by}}. notification_id: a notification sent with url-less actions, until one is tapped; returns {state, answered, answer {notification_id, status, action_id, text, answered_at}}, where text is the typed reply of a text_input action. A timeout, or an activity that ended unanswered, comes back as answered=false with a reason, not an error. Actions and options carrying their own url never record an answer - only url-less (server-recorded) ones and deadline expiry resolve. To react to the answers of many notifications, follow list_notification_answers rather than one wait per notification."),
+			mcp.WithDescription("Wait for a human answer, given exactly one of slug or notification_id. slug: an approval Live Activity, until content.answer appears (a server-recorded option was tapped, or on_expire fired at the deadline); rides out preempted stretches (only ended is final) and returns {state, answered, answer {option, at, by}}. slug can also name a checklist Live Activity: then it waits until an item is ticked or unticked, or the activity ends, and returns {state, changed, checked, total, items [{id, label, checked}]}; ticks can land between two calls, so pass the ids you last saw checked as seen_checked and it returns at once when the list has moved on from them. notification_id: a notification sent with url-less actions, until one is tapped; returns {state, answered, answer {notification_id, status, action_id, text, answered_at}}, where text is the typed reply of a text_input action. A timeout, or an activity that ended unanswered, comes back as answered=false (changed=false on a checklist) with a reason, not an error. Actions and options carrying their own url never record an answer - only url-less (server-recorded) ones and deadline expiry resolve. To react to the answers of many notifications, follow list_notification_answers rather than one wait per notification."),
 			mcp.WithReadOnlyHintAnnotation(true),
 			mcp.WithOpenWorldHintAnnotation(true),
-			mcp.WithString("slug", mcp.Description("Slug of the approval activity to watch")),
+			mcp.WithString("slug", mcp.Description("Slug of the approval or checklist activity to watch")),
 			mcp.WithNumber("notification_id", mcp.Description("Id of the notification to watch")),
+			mcp.WithArray("seen_checked", mcp.WithStringItems(), mcp.Description("Checklist only: ids of the items you last saw checked ([] for none), compared as a set. Returns at once when the checked items differ, so a tick between two calls is not missed.")),
 			mcp.WithNumber("timeout_seconds",
 				mcp.Description("Seconds to wait before giving up (default 120) (min: 1, max: 600)"),
 				mcp.Min(1), mcp.Max(answerWaitMax),
@@ -501,8 +503,43 @@ type waitOutcome struct {
 	Reason   string          `json:"reason,omitempty"`
 }
 
-// waitResult wraps a waitOutcome as a successful tool result.
-func waitResult(o waitOutcome) *mcp.CallToolResult {
+// checklistItem is one checklist row as wait_for_answer reports it.
+type checklistItem struct {
+	ID      string `json:"id"`
+	Label   string `json:"label"`
+	Checked bool   `json:"checked"`
+}
+
+// checklistOutcome is wait_for_answer's result on a checklist. Changed is
+// false when the wait ran out, or the activity ended, with the items as the
+// first read (or seen_checked) had them.
+type checklistOutcome struct {
+	State   string          `json:"state"`
+	Changed bool            `json:"changed"`
+	Checked int             `json:"checked"`
+	Total   int             `json:"total"`
+	Items   []checklistItem `json:"items"`
+	Reason  string          `json:"reason,omitempty"`
+}
+
+func newChecklistOutcome(state string, changed bool, items []checklistItem) checklistOutcome {
+	return checklistOutcome{State: state, Changed: changed, Checked: len(checkedIDs(items)), Total: len(items), Items: items}
+}
+
+// checkedIDs returns the ids of the checked items, sorted.
+func checkedIDs(items []checklistItem) []string {
+	var ids []string
+	for _, it := range items {
+		if it.Checked {
+			ids = append(ids, it.ID)
+		}
+	}
+	slices.Sort(ids)
+	return ids
+}
+
+// waitResult wraps a waitOutcome or checklistOutcome as a successful tool result.
+func waitResult(o any) *mcp.CallToolResult {
 	data, err := json.Marshal(o)
 	if err != nil {
 		return mcp.NewToolResultError(fmt.Sprintf("encoding wait outcome: %v", err))
@@ -620,10 +657,10 @@ func judgeApprovalAnswer(slug string) waitJudge {
 		// can never record an answer - fail now, like a non-approval
 		// template, instead of polling out the timeout.
 		if out.Content.Template == "" {
-			return "", mcp.NewToolResultError(fmt.Sprintf("activity %s has no content yet - it needs approval content before an answer can arrive", slug))
+			return "", mcp.NewToolResultError(fmt.Sprintf("activity %s has no content yet - it needs approval or checklist content before there is anything to wait for", slug))
 		}
 		if out.Content.Template != tmplApproval {
-			return "", mcp.NewToolResultError(fmt.Sprintf("activity %s is template %q, not approval", slug, out.Content.Template))
+			return "", mcp.NewToolResultError(fmt.Sprintf("activity %s is template %q, not approval or checklist", slug, out.Content.Template))
 		}
 		if answer := string(out.Content.Answer); answer != "" && answer != "null" {
 			return out.State, waitResult(waitOutcome{State: out.State, Answered: true, Answer: out.Content.Answer})
@@ -641,23 +678,122 @@ func judgeApprovalAnswer(slug string) waitJudge {
 	}
 }
 
+// judgeActivityAnswer ends the wait on an approval's answer
+// (judgeApprovalAnswer) or on a checklist that moved: its first read is the
+// baseline, and the wait ends once the items differ from it, once the
+// activity ends, or at once when seen (the checked ids the caller last saw,
+// nil when not given) differs from the first read's. timedOut reports the
+// last checklist read, or the approval's no-answer result.
+func judgeActivityAnswer(slug string, seen []string) (judge waitJudge, timedOut func(state string, timeout float64) *mcp.CallToolResult) {
+	approval := judgeApprovalAnswer(slug)
+	var base []checklistItem
+	haveBase := false
+	judge = func(raw json.RawMessage) (string, *mcp.CallToolResult) {
+		var head struct {
+			Content struct {
+				Template string `json:"template"`
+			} `json:"content"`
+		}
+		// Anything but a checklist, including a body that does not decode,
+		// takes the approval path unchanged.
+		if json.Unmarshal(raw, &head) != nil || head.Content.Template != tmplChecklist {
+			if seen != nil && head.Content.Template == tmplApproval {
+				return "", mcp.NewToolResultError("seen_checked only applies to a checklist")
+			}
+			return approval(raw)
+		}
+		var out struct {
+			State   string `json:"state"`
+			Content struct {
+				Items []checklistItem `json:"items"`
+			} `json:"content"`
+		}
+		if err := json.Unmarshal(raw, &out); err != nil {
+			return "", mcp.NewToolResultError(fmt.Sprintf("decode activity %s: %v", slug, err))
+		}
+		items := out.Content.Items
+		var changed bool
+		if !haveBase {
+			haveBase, base = true, items
+			changed = seen != nil && !slices.Equal(checkedIDs(items), seen)
+		} else {
+			changed = !slices.Equal(items, base)
+		}
+		// A fully checked list is still open: the server ends it a few
+		// seconds later, and that end is what the next poll returns on.
+		if !changed && out.State != stateEnded {
+			return out.State, nil
+		}
+		o := newChecklistOutcome(out.State, changed, items)
+		if !changed {
+			o.Reason = "the checklist ended with its items unchanged"
+		}
+		return out.State, waitResult(o)
+	}
+	timedOut = func(state string, timeout float64) *mcp.CallToolResult {
+		if !haveBase {
+			return noAnswerResult(state, timeout)
+		}
+		o := newChecklistOutcome(state, false, base)
+		o.Reason = fmt.Sprintf("no change within %.0fs", timeout)
+		return waitResult(o)
+	}
+	return judge, timedOut
+}
+
+// noAnswerResult is the timeout result of an approval or notification wait.
+func noAnswerResult(state string, timeout float64) *mcp.CallToolResult {
+	return waitResult(waitOutcome{State: state, Answered: false,
+		Reason: fmt.Sprintf("no answer within %.0fs", timeout)})
+}
+
+// seenCheckedArg reads seen_checked: nil when omitted, otherwise the ids
+// trimmed, without blanks and duplicates, sorted, so they compare as a set.
+func seenCheckedArg(req mcp.CallToolRequest) ([]string, error) {
+	if _, ok := req.GetArguments()["seen_checked"]; !ok {
+		return nil, nil
+	}
+	ids, err := req.RequireStringSlice("seen_checked")
+	if err != nil {
+		return nil, fmt.Errorf("seen_checked must be an array of item ids ([] when none were checked): %w", err)
+	}
+	seen := make([]string, 0, len(ids))
+	for _, id := range ids {
+		if id = strings.TrimSpace(id); id != "" {
+			seen = append(seen, id)
+		}
+	}
+	slices.Sort(seen)
+	return slices.Compact(seen), nil
+}
+
 // handleWaitForAnswer long-polls until the server records the answer: the
 // tapped option in an approval activity's content.answer (slug), or the
 // tapped action of a notification (notification_id). Url-less options and
 // actions carry a server-signed answer URL, so for a producer with no webhook
-// endpoint of its own this loop is the whole outcome API.
+// endpoint of its own this loop is the whole outcome API. On a checklist
+// (slug) it waits for the next tick instead.
 func handleWaitForAnswer(ctx context.Context, req mcp.CallToolRequest, api *client.APIClient) (*mcp.CallToolResult, error) {
 	slug := req.GetString("slug", "")
 	_, hasNotification := req.GetArguments()["notification_id"]
 	if (slug == "") == !hasNotification {
 		return mcp.NewToolResultError("pass exactly one of slug or notification_id"), nil
 	}
+	seen, err := seenCheckedArg(req)
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
 	var (
-		target string
-		fetch  func(wait int) (json.RawMessage, int, error)
-		judge  waitJudge
+		target     string
+		fetch      func(wait int) (json.RawMessage, int, error)
+		judge      waitJudge
+		timedOut   = noAnswerResult
+		plainFirst bool
 	)
 	if hasNotification {
+		if seen != nil {
+			return mcp.NewToolResultError("seen_checked only applies to a checklist"), nil
+		}
 		id, err := notificationIDArg(req)
 		if err != nil {
 			return mcp.NewToolResultError(err.Error()), nil
@@ -674,19 +810,21 @@ func handleWaitForAnswer(ctx context.Context, req mcp.CallToolRequest, api *clie
 		}
 		target = "activity " + slug
 		fetch = func(wait int) (json.RawMessage, int, error) { return api.WaitActivity(ctx, slug, wait) }
-		judge = judgeApprovalAnswer(slug)
+		judge, timedOut = judgeActivityAnswer(slug, seen)
+		// A long-poll on an open checklist returns only after a tick, which
+		// would then become the baseline the wait compares against.
+		plainFirst = true
 	}
-	return runWait(ctx, req, "wait_for_answer", "an answer", target, fetch, judge, func(state string, timeout float64) *mcp.CallToolResult {
-		return waitResult(waitOutcome{State: state, Answered: false,
-			Reason: fmt.Sprintf("no answer within %.0fs", timeout)})
-	}), nil
+	return runWait(ctx, req, "wait_for_answer", "an answer", target, plainFirst, fetch, judge, timedOut), nil
 }
 
 // runWait is the poll loop behind the wait tools: fetch long-polls the
 // target until judge ends the wait, timeout_seconds passes (timedOut builds
 // that result from the last state seen), or the context is canceled.
-// waitingFor names what it waits for in progress and cancel messages.
-func runWait(ctx context.Context, req mcp.CallToolRequest, tool, waitingFor, target string,
+// waitingFor names what it waits for in progress and cancel messages. With
+// plainFirst the reads are plain GETs until one succeeds, and the first
+// long-poll follows that one without the poll spacing.
+func runWait(ctx context.Context, req mcp.CallToolRequest, tool, waitingFor, target string, plainFirst bool,
 	fetch func(wait int) (json.RawMessage, int, error), judge waitJudge,
 	timedOut func(state string, timeout float64) *mcp.CallToolResult,
 ) *mcp.CallToolResult {
@@ -703,7 +841,11 @@ func runWait(ctx context.Context, req mcp.CallToolRequest, tool, waitingFor, tar
 	lastState := ""
 	for {
 		pollStart := time.Now()
-		raw, status, err := fetch(longPollSeconds(deadline))
+		hold := longPollSeconds(deadline)
+		if plainFirst {
+			hold = 0
+		}
+		raw, status, err := fetch(hold)
 		switch {
 		case err != nil && ctx.Err() != nil:
 			return mcp.NewToolResultError("cancelled while waiting for " + waitingFor)
@@ -725,6 +867,10 @@ func runWait(ctx context.Context, req mcp.CallToolRequest, tool, waitingFor, tar
 			return timedOut(lastState, timeout)
 		}
 		report(elapsed.Seconds())
+		if plainFirst && err == nil {
+			plainFirst = false
+			continue
+		}
 		// A long-poll that held its full hold goes straight into the next one;
 		// only an early pending reply waits out the rest of the poll interval.
 		select {

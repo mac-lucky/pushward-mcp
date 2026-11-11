@@ -146,7 +146,7 @@ General rules for any code that talks to the PushWard REST API
 Writing Live Activity content that renders well on the Dynamic Island and Lock
 Screen.
 
-- **Pick the right template.** Ten templates, each with a distinct layout:
+- **Pick the right template.** Eleven templates, each with a distinct layout:
   `generic` (progress for builds/downloads/deploys), `timer` (also accepted as
   `countdown`: counts down to a deadline with automatic warning/completion
   pushes, or up from a start time, and pauses either way), `steps` (CI/CD multi-stage
@@ -160,8 +160,10 @@ Screen.
   `media` (a remote player card: cover art, `media_title` over `subtitle`, a
   scrubber that ticks on device while playing, and transport buttons that fire
   your webhooks), `approval` (a question card with 2-4 answer buttons; the
-  server can record the tapped option itself and end the card). Always set
-  `content.template`.
+  server can record the tapped option itself and end the card), `checklist`
+  (a short list of 1-8 items a person ticks off from the card, such as a
+  packing or pre-flight list; not for a decision, which is what `approval` is
+  for). Always set `content.template`.
 - **Images are fetched by the device, not the server.** `content.image_url` is
   accepted on `generic`, `steps` and `media` only (anything else is a `422`), and the
   phone downloads it itself - a LAN or Tailscale host renders nothing at all.
@@ -230,6 +232,15 @@ Screen.
   it as above. A changed step clears the stored answer even when the options
   are the same. Keep the activity name generic for the whole walk, since iOS
   cannot rename a running card.
+- **Checklist specifics.** Give each item a stable `id` and keep labels short
+  (40 characters). The server records every tap in the item's `checked`,
+  pushes it to every device, and ends the activity a few seconds after the
+  last item is ticked. `items` is replaced wholesale, so send the full list,
+  but leave `checked` out on items you are not ticking yourself: a PATCH that
+  omits it keeps the user's tick. Do not send `progress` or `state`; the
+  server fills them from the count. Read ticks with `wait_for_answer` (pass
+  the ids you last saw checked as `seen_checked` so a tick between two calls
+  is not missed) or `get_activity`.
 
 ## relay-provider
 

@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"reflect"
+	"slices"
 	"strconv"
 	"strings"
 	"sync/atomic"
@@ -1936,8 +1937,142 @@ func TestHandleWaitForAnswer_NonApprovalTemplateIsError(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if !result.IsError || !strings.Contains(resultText(t, result), "not approval") {
-		t.Errorf("a non-approval template should fail immediately, got: %s", resultText(t, result))
+	if !result.IsError || !strings.Contains(resultText(t, result), "not approval or checklist") {
+		t.Errorf("a template that is neither approval nor checklist should fail immediately, got: %s", resultText(t, result))
+	}
+}
+
+// ---------- wait_for_answer on a checklist ----------
+
+// checklistJSON is a checklist activity with items a and b, ticked as given.
+func checklistJSON(state string, a, b bool) string {
+	return fmt.Sprintf(`{"state":%q,"content":{"template":"checklist","items":[{"id":"a","label":"Milk","checked":%t},{"id":"b","label":"Eggs","checked":%t}]}}`, state, a, b)
+}
+
+func waitForChecklistOutcome(t *testing.T, api *client.APIClient, args map[string]any) checklistOutcome {
+	t.Helper()
+	result, err := handleWaitForAnswer(context.Background(), newReq(args), api)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	text := resultText(t, result)
+	if result.IsError {
+		t.Fatalf("expected a regular result, got tool error: %s", text)
+	}
+	var out checklistOutcome
+	if err := json.Unmarshal([]byte(text), &out); err != nil {
+		t.Fatalf("result is not JSON (%v): %s", err, text)
+	}
+	return out
+}
+
+func TestHandleWaitForAnswer_ChecklistTick(t *testing.T) {
+	shortAnswerPoll(t)
+	var calls atomic.Int64
+	var firstWait, laterWait atomic.Value
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		n := calls.Add(1)
+		if n == 1 {
+			firstWait.Store(r.URL.Query().Get("wait"))
+		} else {
+			laterWait.Store(r.URL.Query().Get("wait"))
+		}
+		// The tick lands after the first read; it has to be measured against
+		// that read, not against the first long-poll's answer.
+		io.WriteString(w, checklistJSON("ongoing", false, n >= 3))
+	}))
+	defer srv.Close()
+	api := client.NewAPIClient(srv.URL, "tok")
+
+	out := waitForChecklistOutcome(t, api, map[string]any{"slug": "groceries"})
+	if !out.Changed || out.State != "ongoing" || out.Checked != 1 || out.Total != 2 || out.Reason != "" {
+		t.Errorf("unexpected outcome: %+v", out)
+	}
+	want := []checklistItem{{ID: "a", Label: "Milk"}, {ID: "b", Label: "Eggs", Checked: true}}
+	if !slices.Equal(out.Items, want) {
+		t.Errorf("items = %+v, want %+v", out.Items, want)
+	}
+	if got := calls.Load(); got != 3 {
+		t.Errorf("expected 3 reads, got %d", got)
+	}
+	if firstWait.Load() != "" || laterWait.Load() == "" {
+		t.Errorf("the first read must be plain and the rest long-polls, got wait=%q then wait=%q", firstWait.Load(), laterWait.Load())
+	}
+}
+
+func TestHandleWaitForAnswer_ChecklistEnded(t *testing.T) {
+	shortAnswerPoll(t)
+	var calls atomic.Int64
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		state := "ongoing"
+		if calls.Add(1) >= 2 {
+			state = "ended"
+		}
+		io.WriteString(w, checklistJSON(state, true, true))
+	}))
+	defer srv.Close()
+	api := client.NewAPIClient(srv.URL, "tok")
+
+	out := waitForChecklistOutcome(t, api, map[string]any{"slug": "groceries"})
+	if out.Changed || out.State != "ended" || out.Checked != 2 || out.Reason == "" {
+		t.Errorf("expected changed=false with state=ended and a reason, got: %+v", out)
+	}
+}
+
+func TestHandleWaitForAnswer_ChecklistTimeout(t *testing.T) {
+	shortAnswerPoll(t)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		io.WriteString(w, checklistJSON("ongoing", true, false))
+	}))
+	defer srv.Close()
+	api := client.NewAPIClient(srv.URL, "tok")
+
+	out := waitForChecklistOutcome(t, api, map[string]any{"slug": "groceries", "timeout_seconds": 0.05})
+	if out.Changed || out.State != "ongoing" || out.Checked != 1 || len(out.Items) != 2 || !strings.Contains(out.Reason, "no change within") {
+		t.Errorf("expected a changed=false timeout outcome with the items, got: %+v", out)
+	}
+}
+
+func TestHandleWaitForAnswer_ChecklistSeenChecked(t *testing.T) {
+	shortAnswerPoll(t)
+	var calls atomic.Int64
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls.Add(1)
+		io.WriteString(w, checklistJSON("ongoing", true, true))
+	}))
+	defer srv.Close()
+	api := client.NewAPIClient(srv.URL, "tok")
+
+	// b was ticked after the caller's last look: no waiting at all.
+	out := waitForChecklistOutcome(t, api, map[string]any{"slug": "groceries", "seen_checked": []any{"a"}})
+	if !out.Changed || out.Checked != 2 {
+		t.Errorf("expected an immediate changed=true, got: %+v", out)
+	}
+	if got := calls.Load(); got != 1 {
+		t.Errorf("a differing seen_checked should return on the first read, got %d reads", got)
+	}
+
+	// The same set in another order, with a blank and a duplicate, is no change.
+	calls.Store(0)
+	out = waitForChecklistOutcome(t, api, map[string]any{"slug": "groceries", "seen_checked": []any{" b", "a", "", "a"}, "timeout_seconds": 0.05})
+	if out.Changed || !strings.Contains(out.Reason, "no change within") {
+		t.Errorf("a matching seen_checked should wait out the timeout, got: %+v", out)
+	}
+	if calls.Load() < 2 {
+		t.Errorf("expected the wait to keep polling, got %d reads", calls.Load())
+	}
+}
+
+func TestHandleWaitForAnswer_SeenCheckedOnlyOnChecklist(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		io.WriteString(w, activityJSON("ongoing", "approval", ""))
+	}))
+	defer srv.Close()
+	api := client.NewAPIClient(srv.URL, "tok")
+
+	result, err := handleWaitForAnswer(context.Background(), newReq(map[string]any{"slug": "appr", "seen_checked": []any{}}), api)
+	if err != nil || !result.IsError || !strings.Contains(resultText(t, result), "only applies to a checklist") {
+		t.Errorf("seen_checked on an approval should be refused, got %v / %s", err, resultText(t, result))
 	}
 }
 
@@ -2087,6 +2222,10 @@ func TestHandleWaitForAnswer_TargetArguments(t *testing.T) {
 		"non-positive id": {"notification_id": float64(0)},
 		"id wrong type":   {"notification_id": "abc"},
 		"malformed slug":  {"slug": "Not A Slug!"},
+		"seen not array":  {"slug": "groceries", "seen_checked": "a,b"},
+		"seen null":       {"slug": "groceries", "seen_checked": nil},
+		"seen non-string": {"slug": "groceries", "seen_checked": []any{"a", 1.0}},
+		"seen on notif":   {"notification_id": float64(1), "seen_checked": []any{}},
 	} {
 		t.Run(name, func(t *testing.T) {
 			result, err := handleWaitForAnswer(context.Background(), newReq(args), api)

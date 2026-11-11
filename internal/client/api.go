@@ -499,7 +499,8 @@ func receiptPath(id int64) string {
 
 // WaitActivity reads an activity like GetActivity, holding the request up to
 // wait seconds (see doWait) while it is an approval still waiting for its
-// answer. Servers that predate ?wait= answer at once.
+// answer or an open checklist with no new tick. Servers that predate ?wait=
+// answer at once.
 func (c *APIClient) WaitActivity(ctx context.Context, slug string, wait int) (json.RawMessage, int, error) {
 	if err := ValidateSlug(slug); err != nil {
 		return nil, 0, err
