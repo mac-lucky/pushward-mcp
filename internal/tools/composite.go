@@ -189,7 +189,7 @@ func registerCompositeTools(s *mcpserver.MCPServer, api *client.APIClient, relay
 	// generated single-shot activity tools.
 	s.AddTool(
 		mcp.NewTool("wait_for_answer",
-			mcp.WithDescription("Wait for a human answer, given exactly one of slug or notification_id. slug: an approval Live Activity, until content.answer appears (a server-recorded option was tapped, or on_expire fired at the deadline); rides out preempted stretches (only ended is final) and returns {state, answered, answer {option, at, by}}. slug can also name a checklist Live Activity: then it waits until an item is ticked or unticked, or the activity ends, and returns {state, changed, checked, total, items [{id, label, checked}]}; ticks can land between two calls, so pass the ids you last saw checked as seen_checked and it returns at once when the list has moved on from them. notification_id: a notification sent with url-less actions, until one is tapped; returns {state, answered, answer {notification_id, status, action_id, text, answered_at}}, where text is the typed reply of a text_input action. A timeout, or an activity that ended unanswered, comes back as answered=false (changed=false on a checklist) with a reason, not an error. Actions and options carrying their own url never record an answer - only url-less (server-recorded) ones and deadline expiry resolve. To react to the answers of many notifications, follow list_notification_answers rather than one wait per notification."),
+			mcp.WithDescription("Wait for a human answer, given exactly one of slug or notification_id. slug: an approval Live Activity, until content.answer appears (a server-recorded option was tapped, or on_expire fired at the deadline); rides out preempted stretches (only ended is final) and returns {state, answered, answer {option, at, by}}. slug can also name a checklist Live Activity: then it waits until an item is ticked or unticked, or the activity ends, and returns {state, changed, checked, total, items [{id, label, checked}]}; ticks can land between two calls, so pass the ids you last saw checked as seen_checked and it returns at once when the list has moved on from them. A list sent with auto_end: false never returns ended by itself: once every item is checked, only an untick or your own end moves it. notification_id: a notification sent with url-less actions, until one is tapped; returns {state, answered, answer {notification_id, status, action_id, text, answered_at}}, where text is the typed reply of a text_input action. A timeout, or an activity that ended unanswered, comes back as answered=false (changed=false on a checklist) with a reason, not an error. Actions and options carrying their own url never record an answer - only url-less (server-recorded) ones and deadline expiry resolve. To react to the answers of many notifications, follow list_notification_answers rather than one wait per notification."),
 			mcp.WithReadOnlyHintAnnotation(true),
 			mcp.WithOpenWorldHintAnnotation(true),
 			mcp.WithString("slug", mcp.Description("Slug of the approval or checklist activity to watch")),
@@ -731,6 +731,8 @@ func judgeActivityAnswer(slug string, seen []string) (judge waitJudge, timedOut 
 		}
 		// A fully checked list is still open: the server ends it a few
 		// seconds later, and that end is what the next poll returns on.
+		// With auto_end false no end comes; the wait runs to an untick,
+		// the producer's end or timeout_seconds.
 		if !changed && out.State != stateEnded {
 			return out.State, nil
 		}

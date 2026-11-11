@@ -235,7 +235,10 @@ Screen.
 - **Checklist specifics.** Give each item a stable `id` and keep labels short
   (40 characters). The server records every tap in the item's `checked`,
   pushes it to every device, and ends the activity a few seconds after the
-  last item is ticked. `items` is replaced wholesale, so send the full list,
+  last item is ticked. Send `auto_end: false` when the list is a step in
+  something longer: a fully ticked card then stays up reading "All done"
+  until you end it (or flip `auto_end` back to `true`, which ends it after the
+  same delay). `items` is replaced wholesale, so send the full list,
   but leave `checked` out on items you are not ticking yourself: a PATCH that
   omits it keeps the user's tick, except one that restarts an ended checklist,
   which starts unticked. Do not send `progress` or `state`; the
