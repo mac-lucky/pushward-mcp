@@ -237,7 +237,8 @@ Screen.
   pushes it to every device, and ends the activity a few seconds after the
   last item is ticked. `items` is replaced wholesale, so send the full list,
   but leave `checked` out on items you are not ticking yourself: a PATCH that
-  omits it keeps the user's tick. Do not send `progress` or `state`; the
+  omits it keeps the user's tick, except one that restarts an ended checklist,
+  which starts unticked. Do not send `progress` or `state`; the
   server fills them from the count. Read ticks with `wait_for_answer` (pass
   the ids you last saw checked as `seen_checked` so a tick between two calls
   is not missed) or `get_activity`.
