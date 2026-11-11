@@ -2076,6 +2076,68 @@ func TestHandleWaitForAnswer_SeenCheckedOnlyOnChecklist(t *testing.T) {
 	}
 }
 
+// The template is unknown before the first read, so an approval wait starts
+// with the same plain GET a checklist needs, and long-polls right after it.
+func TestHandleWaitForAnswer_ApprovalPlainReadThenLongPoll(t *testing.T) {
+	var calls atomic.Int64
+	var firstWait, secondWait atomic.Value
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if calls.Add(1) == 1 {
+			firstWait.Store(r.URL.Query().Get("wait"))
+			io.WriteString(w, activityJSON("ongoing", "approval", ""))
+			return
+		}
+		secondWait.Store(r.URL.Query().Get("wait"))
+		io.WriteString(w, activityJSON("ongoing", "approval", `{"option":"yes","at":1,"by":"device"}`))
+	}))
+	defer srv.Close()
+	api := client.NewAPIClient(srv.URL, "tok")
+
+	out := waitForAnswerOutcome(t, context.Background(), api, map[string]any{"slug": "appr", "timeout_seconds": 30})
+	if !out.Answered {
+		t.Errorf("expected the answer from the long-poll, got: %+v", out)
+	}
+	if got := calls.Load(); got != 2 {
+		t.Errorf("expected 2 reads, got %d", got)
+	}
+	if firstWait.Load() != "" || secondWait.Load() != "20" {
+		t.Errorf("want a plain read then wait=20, got wait=%q then wait=%q", firstWait.Load(), secondWait.Load())
+	}
+}
+
+func TestHandleWaitForAnswer_TemplateSwitchIsError(t *testing.T) {
+	shortAnswerPoll(t)
+	cases := map[string]struct {
+		first, later string
+		args         map[string]any
+	}{
+		"checklist to approval": {checklistJSON("ongoing", true, false), activityJSON("ongoing", "approval", ""),
+			map[string]any{"slug": "deploy", "seen_checked": []any{"a"}, "timeout_seconds": 1}},
+		"approval to checklist": {activityJSON("ongoing", "approval", ""), checklistJSON("ongoing", false, false),
+			map[string]any{"slug": "deploy", "timeout_seconds": 1}},
+		"checklist to generic": {checklistJSON("ongoing", false, false), activityJSON("ongoing", "generic", ""),
+			map[string]any{"slug": "deploy", "timeout_seconds": 1}},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			var calls atomic.Int64
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if calls.Add(1) == 1 {
+					io.WriteString(w, tc.first)
+					return
+				}
+				io.WriteString(w, tc.later)
+			}))
+			defer srv.Close()
+
+			result, err := handleWaitForAnswer(context.Background(), newReq(tc.args), client.NewAPIClient(srv.URL, "tok"))
+			if err != nil || !result.IsError || !strings.Contains(resultText(t, result), "changed from template") {
+				t.Errorf("a template change mid-wait should be an error, got %v / %s", err, resultText(t, result))
+			}
+		})
+	}
+}
+
 func TestHandleWaitForAnswer_CancelledContext(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		io.WriteString(w, activityJSON("ongoing", "approval", ""))

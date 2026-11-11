@@ -682,21 +682,31 @@ func judgeApprovalAnswer(slug string) waitJudge {
 // (judgeApprovalAnswer) or on a checklist that moved: its first read is the
 // baseline, and the wait ends once the items differ from it, once the
 // activity ends, or at once when seen (the checked ids the caller last saw,
-// nil when not given) differs from the first read's. timedOut reports the
-// last checklist read, or the approval's no-answer result.
+// nil when not given) differs from the first read's. The first read's
+// template fixes the result shape: a slug restarted mid-wait as the other
+// kind is an error, not a switch. timedOut reports the last checklist read,
+// or the approval's no-answer result.
 func judgeActivityAnswer(slug string, seen []string) (judge waitJudge, timedOut func(state string, timeout float64) *mcp.CallToolResult) {
 	approval := judgeApprovalAnswer(slug)
 	var base []checklistItem
 	haveBase := false
+	first, haveFirst := "", false
 	judge = func(raw json.RawMessage) (string, *mcp.CallToolResult) {
 		var head struct {
 			Content struct {
 				Template string `json:"template"`
 			} `json:"content"`
 		}
+		decodeErr := json.Unmarshal(raw, &head)
+		if !haveFirst {
+			first, haveFirst = head.Content.Template, true
+		}
+		if decodeErr == nil && (head.Content.Template == tmplChecklist) != (first == tmplChecklist) {
+			return "", mcp.NewToolResultError(fmt.Sprintf("activity %s changed from template %q to %q while waiting", slug, first, head.Content.Template))
+		}
 		// Anything but a checklist, including a body that does not decode,
 		// takes the approval path unchanged.
-		if json.Unmarshal(raw, &head) != nil || head.Content.Template != tmplChecklist {
+		if decodeErr != nil || head.Content.Template != tmplChecklist {
 			if seen != nil && head.Content.Template == tmplApproval {
 				return "", mcp.NewToolResultError("seen_checked only applies to a checklist")
 			}
@@ -812,7 +822,9 @@ func handleWaitForAnswer(ctx context.Context, req mcp.CallToolRequest, api *clie
 		fetch = func(wait int) (json.RawMessage, int, error) { return api.WaitActivity(ctx, slug, wait) }
 		judge, timedOut = judgeActivityAnswer(slug, seen)
 		// A long-poll on an open checklist returns only after a tick, which
-		// would then become the baseline the wait compares against.
+		// would then become the baseline the wait compares against. The
+		// template is unknown before the first read, so an unanswered
+		// approval pays this one plain GET too.
 		plainFirst = true
 	}
 	return runWait(ctx, req, "wait_for_answer", "an answer", target, plainFirst, fetch, judge, timedOut), nil
