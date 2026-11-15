@@ -222,6 +222,15 @@ create_scheduled_notification {"title": "Standup", "body": "In 5 minutes", "recu
 send_email {"to": "ops@example.com", "subject": "Nightly report", "text_body": "..."}
 ```
 
+Leave `style` out of widget content unless the user asks for a particular look. Every template
+draws as `standard`, `bold` or `classic`. Without a style the user picks one per widget in the
+app (`standard` until they do); a style sent here overrides that pick. `style_by_size` sets the
+look for one size (`{"large": "bold"}`; keys small, medium, large and lock_screen), and
+`density` / `density_by_size` (`auto`, `compact`, `comfortable`) do the same for the row
+density of a stat_list widget. To hand the choice back, send
+`update_widget {"slug": "agent-coverage", "content_json": "{\"style\":null}"}`. `create_widget`
+replaces the whole content, so re-creating a widget without `style` clears it too.
+
 Scheduled notifications are held by the server, so nothing has to keep running. Repeats must be
 at least 15 minutes apart and an account can have 25 pending; keep the returned `id` for
 `cancel_scheduled_notification` (`purge: true` leaves no canceled record).

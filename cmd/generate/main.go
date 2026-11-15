@@ -771,7 +771,7 @@ const (
 // generated from the schema, so refreshing openapi.yaml alone leaves a new server
 // field undocumented - that is how device_sort reached agents invisible.
 var (
-	widgetTemplateEnumClause = "Fields: template (" + strings.Join(widgetTemplateNames, "|") + " - selects the visual style), "
+	widgetTemplateEnumClause = "Fields: template (" + strings.Join(widgetTemplateNames, "|") + " - selects the layout), "
 	widgetSharedFieldsClause = "value (number), label, unit, trend (up|down|flat arrow, annotates value and gauge), severity, min_value, max_value, icon, subtitle, subtitle_timer ({date [RFC 3339], style: timer|relative} - renders the subtitle slot as a self-updating timer, on any template), accent_color, background_color, text_color, tap_action ({url}), url_action, secondary_url_action. Template-specific: "
 
 	widgetProgressClause  = "progress (value 0.0-1.0, or start_date + end_date to advance the bar on device between pushes; send both when you have them, older builds render value), "
@@ -782,6 +782,10 @@ var (
 	widgetBatteryClause   = "battery (devices: 1-8 {name, level 0-100, charging, icon, color}; device_sort: up to 2 keys of {field: level|name, direction: asc|desc}, applied in order and reordering devices on write so the ones that matter land in the 2 a small widget shows), "
 	widgetScheduleClause  = "schedule (periods: 1-48 {start [RFC 3339], value, level: low|medium|high}, strictly increasing by start), "
 	widgetFlowClause      = "flow (flow: {inputs [up to 3], storage, output, exchange}, each a node of {rate, total, level, name, icon, color}; at least one node required)."
+	// The spec types style and density as plain strings and names their values
+	// only in prose, so there is no enum to hold this to. The hosted server
+	// withholds the 422 detail, so the allowed values have to be here.
+	widgetStyleClause = " style (standard|bold|classic, any template): the look the device draws. Leave it out unless the user asks for a look: without it the user's own pick in the app applies (standard when there is none), and a style sent here overrides that pick. style_by_size ({small|medium|large|lock_screen: look}) overrides style at those sizes, and density (auto|compact|comfortable) with density_by_size (same keys) sets the stat_list row density the same way. Any other value or size key, or density on another template, is a 422 widget.content_invalid. On update_widget null clears any of them (\"\" also clears style and density), a by-size object replaces the whole stored map, and a template change away from stat_list is refused while density or density_by_size is stored unless the same call clears them; create_widget replaces the whole content, so re-sending it without these fields clears them too."
 )
 
 // The activity clauses. The media fields are template-gated the same way the
@@ -828,7 +832,7 @@ func contentJSONDesc(isWidget bool, method string) string {
 		return lead + widgetTemplateEnumClause + widgetSharedFieldsClause +
 			widgetProgressClause + widgetGaugeClause + widgetStatListClause +
 			widgetTrendClause + widgetCountdownClause + widgetBatteryClause +
-			widgetScheduleClause + widgetFlowClause
+			widgetScheduleClause + widgetFlowClause + widgetStyleClause
 	}
 	lead := "Activity content as JSON object. "
 	if patch {

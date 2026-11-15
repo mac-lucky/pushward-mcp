@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/mark3labs/mcp-go/mcp"
 	mcpserver "github.com/mark3labs/mcp-go/server"
 
 	"github.com/mac-lucky/pushward-mcp/internal/client"
@@ -178,5 +179,74 @@ func TestHandleUpdateActivity_ApprovalAuthenticationRequired(t *testing.T) {
 	}
 	if _, ok := got.Content.Options[1]["authentication_required"]; ok {
 		t.Error("second option gained an authentication_required it was not sent with")
+	}
+}
+
+// The widget look and density fields ride content_json like every other content
+// field. Omitted they must stay omitted, since the server reads a missing key as
+// "the user's pick applies"; null, "" and by-size objects must reach it as sent.
+func TestHandleWidget_Style(t *testing.T) {
+	s := mcpserver.NewMCPServer("pushward-test", "0.0.0")
+	RegisterAll(s, client.NewAPIClient("http://127.0.0.1:1", "tok"), nil)
+	for _, name := range []string{"create_widget", "update_widget"} {
+		st := s.GetTool(name)
+		if st == nil {
+			t.Fatalf("%s not registered", name)
+		}
+		prop, _ := st.Tool.InputSchema.Properties["content_json"].(map[string]any)
+		desc, _ := prop["description"].(string)
+		for _, want := range []string{"style (standard|bold|classic, any template)", "style_by_size ({small|medium|large|lock_screen: look})", "density (auto|compact|comfortable)", "density_by_size", "422 widget.content_invalid", "template change away from stat_list is refused", "overrides that pick", "Leave it out unless the user asks"} {
+			if !strings.Contains(desc, want) {
+				t.Errorf("%s content_json description lacks %q", name, want)
+			}
+		}
+		tool, _ := json.Marshal(st.Tool)
+		for _, old := range []string{"refined", "rethink", "original"} {
+			if strings.Contains(strings.ToLower(string(tool)), old) {
+				t.Errorf("%s still names the retired look %q", name, old)
+			}
+		}
+	}
+
+	var sent json.RawMessage
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			Content json.RawMessage `json:"content"`
+		}
+		raw, _ := io.ReadAll(r.Body)
+		if err := json.Unmarshal(raw, &body); err != nil {
+			t.Errorf("unmarshal request body: %v", err)
+		}
+		sent = body.Content
+		w.Write([]byte(`{"slug":"queue"}`))
+	}))
+	defer srv.Close()
+	api := client.NewAPIClient(srv.URL, "tok")
+
+	cases := []struct {
+		name    string
+		handler func(context.Context, mcp.CallToolRequest, *client.APIClient) (*mcp.CallToolResult, error)
+		content string
+	}{
+		{"create without style", handleCreateWidget, `{"template":"value","value":42}`},
+		{"create with every look field", handleCreateWidget, `{"template":"stat_list","stat_rows":[{"label":"Queue","value":"3"}],"style":"classic","style_by_size":{"large":"bold","lock_screen":"classic"},"density":"comfortable","density_by_size":{"lock_screen":"compact","small":"compact"}}`},
+		{"update to bold", handleUpdateWidget, `{"style":"bold"}`},
+		{"update replaces the by-size maps", handleUpdateWidget, `{"style_by_size":{"medium":"standard"},"density_by_size":{"large":"auto"}}`},
+		{"update clears with null", handleUpdateWidget, `{"style":null,"style_by_size":null,"density":null,"density_by_size":null}`},
+		{"update clears with empty", handleUpdateWidget, `{"style":"","density":""}`},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			sent = nil
+			args := map[string]any{"slug": "queue", "name": "Queue", "content_json": c.content}
+			result, err := c.handler(context.Background(), newReq(args), api)
+			if err != nil || result.IsError {
+				t.Fatalf("%v %s", err, resultText(t, result))
+			}
+			// Byte-equal: the handler forwards content_json raw, so any rewrite is a regression.
+			if string(sent) != c.content {
+				t.Errorf("sent content %s, want %s", sent, c.content)
+			}
+		})
 	}
 }
