@@ -146,7 +146,8 @@ wait_for_answer {"slug": "agent-release-ask-1791150000", "timeout_seconds": 600}
 When the user has a few things to do by hand before you go on (sign the build, check the
 staging page), put them on a checklist card: 1 to 8 items, each with an `id` and a short
 `label`. Every tap is recorded on the server, and the card ends itself a few seconds after the
-last item is ticked.
+last item is ticked. It needs PushWard iOS 1.30.0; older builds show the count ("0 of 2") on a
+generic card with nothing to tap, so a wait there runs to its timeout.
 
 ```
 create_activity {"slug": "agent-release-checks", "name": "Release checks", "ended_ttl": 900}
@@ -245,7 +246,7 @@ send_email {"to": "ops@example.com", "subject": "Nightly report", "text_body": "
 
 For a count with a daily rhythm (builds per day, a streak), the `heatmap` template draws one
 square per day from `cells`: 7 to 154 values, oldest first, the last one today, `null` for a
-day with no data.
+day with no data. It needs PushWard iOS 1.30.0.
 
 ```
 create_widget {"slug": "agent-builds", "name": "Builds", "content_json": "{\"template\":\"heatmap\",\"label\":\"builds\",\"cells\":[3,0,5,null,2,8,4]}"}
