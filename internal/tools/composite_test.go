@@ -210,6 +210,37 @@ func TestBuildTestContent_Board(t *testing.T) {
 	}
 }
 
+// A fully ticked checklist ends itself, so only the ended frame may tick every
+// item, or the server would end the card under the ongoing check.
+func TestBuildTestContent_Checklist(t *testing.T) {
+	ticked := func(progress float64) []bool {
+		var c struct {
+			Items []struct {
+				ID      string `json:"id"`
+				Label   string `json:"label"`
+				Checked bool   `json:"checked"`
+			} `json:"items"`
+		}
+		if err := json.Unmarshal(buildTestContent("checklist", progress, "x", ""), &c); err != nil {
+			t.Fatalf("invalid JSON: %v", err)
+		}
+		var out []bool
+		for _, it := range c.Items {
+			if it.ID == "" || it.Label == "" {
+				t.Errorf("item %+v needs an id and a label", it)
+			}
+			out = append(out, it.Checked)
+		}
+		return out
+	}
+	if got := ticked(0.5); slices.Equal(got, []bool{true, true}) || len(got) != 2 {
+		t.Errorf("ongoing frame ticks %v, want two items with one unticked", got)
+	}
+	if got := ticked(1); !slices.Equal(got, []bool{true, true}) {
+		t.Errorf("ended frame ticks %v, want every item", got)
+	}
+}
+
 func TestBuildTestContent_Log(t *testing.T) {
 	raw := buildTestContent("log", 0.5, "Booting", "")
 	var m map[string]any
@@ -331,6 +362,7 @@ func TestBuildTestContent_AllLifecycleTemplatesValidJSON(t *testing.T) {
 		"log":       {"template", "lines"},
 		"media":     {"template", "media_title", "playback_state", "position_seconds", "controls"},
 		"approval":  {"template", "options", "source"},
+		"checklist": {"template", "items"},
 	}
 	// Parity: the assertions below must cover exactly the templates the tool
 	// advertises in lifecycleTemplates - adding one to the enum without a fixture

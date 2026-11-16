@@ -1100,6 +1100,15 @@ var testContentBuilders = map[string]testContentBuilder{
 		content["options"] = options
 		content["source"] = "pushward-mcp"
 	},
+	// checklist requires 1-8 items. The ongoing frame leaves one unticked:
+	// a fully ticked list ends itself a few seconds later, which would race
+	// the ongoing check. The server fills progress and state from the ticks.
+	tmplChecklist: func(content map[string]any, progress float64, _, _ string) {
+		content["items"] = []map[string]any{
+			{"id": "started", "label": "Lifecycle test started", "checked": true},
+			{"id": "ended", "label": "Lifecycle test ended", "checked": progress >= 1},
+		}
+	},
 }
 
 func buildTestContent(tmpl string, progress float64, state, tapURL string) json.RawMessage {
