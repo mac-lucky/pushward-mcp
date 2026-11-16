@@ -44,6 +44,7 @@ below use that prefix.
 | to know when something finished or failed | `create_notification` |
 | to be told right away that you are blocked | `create_notification` with `level: "time-sensitive"` |
 | to approve, pick an option, or type a reply | `create_notification` with url-less `actions`, then `wait_for_answer`; or an approval Live Activity |
+| to tick off a short list of things | a checklist Live Activity, then `wait_for_answer` for each tick |
 | an alert that keeps coming back until they react | `create_notification` with `acknowledge`, then `wait_for_ack` |
 | to drop a notification that no longer applies | `retract_notifications` with the `collapse_id` it was sent with |
 | to watch a long task move | `create_activity`, then `update_activity` a few times, then `end_activity` |
@@ -142,6 +143,26 @@ update_activity {"slug": "agent-release-ask-1791150000",
 wait_for_answer {"slug": "agent-release-ask-1791150000", "timeout_seconds": 600}
 ```
 
+When the user has a few things to do by hand before you go on (sign the build, check the
+staging page), put them on a checklist card: 1 to 8 items, each with an `id` and a short
+`label`. Every tap is recorded on the server, and the card ends itself a few seconds after the
+last item is ticked.
+
+```
+create_activity {"slug": "agent-release-checks", "name": "Release checks", "ended_ttl": 900}
+update_activity {"slug": "agent-release-checks", "state": "ongoing",
+  "content_json": "{\"template\":\"checklist\",\"items\":[{\"id\":\"sign\",\"label\":\"Sign the build\"},{\"id\":\"staging\",\"label\":\"Check staging\"}]}"}
+wait_for_answer {"slug": "agent-release-checks", "seen_checked": [], "timeout_seconds": 600}
+wait_for_answer {"slug": "agent-release-checks", "seen_checked": ["sign"], "timeout_seconds": 600}
+```
+
+Each wait returns on the next tick or untick, with every item and its `checked`. Call it again
+with the ids that were checked as `seen_checked`: a tick that landed in between then returns
+at once instead of being missed. Stop when `state` is `ended`. If you patch the list, leave
+`checked` out of the items you are not ticking yourself: one sent as `false` loses the user's
+tick. With
+`"auto_end": false` a fully ticked card stays up until you end it.
+
 ## Alerts that repeat until acknowledged
 
 Sending `create_notification` with an `acknowledge` object (for example
@@ -220,6 +241,14 @@ update_widget {"slug": "agent-coverage", "content_json": "{\"value\":0.84}"}
 create_scheduled_notification {"title": "Check the canary", "body": "Error rate after the 14:00 deploy", "send_at": "<RFC 3339 time, in the future>"}
 create_scheduled_notification {"title": "Standup", "body": "In 5 minutes", "recurrence": {"cron": "55 8 * * 1-5", "timezone": "Europe/Warsaw"}}
 send_email {"to": "ops@example.com", "subject": "Nightly report", "text_body": "..."}
+```
+
+For a count with a daily rhythm (builds per day, a streak), the `heatmap` template draws one
+square per day from `cells`: 7 to 154 values, oldest first, the last one today, `null` for a
+day with no data.
+
+```
+create_widget {"slug": "agent-builds", "name": "Builds", "content_json": "{\"template\":\"heatmap\",\"label\":\"builds\",\"cells\":[3,0,5,null,2,8,4]}"}
 ```
 
 Leave `style` out of widget content unless the user asks for a particular look. Every template
