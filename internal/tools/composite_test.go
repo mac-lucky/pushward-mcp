@@ -2023,14 +2023,14 @@ func TestHandleWaitForAnswer_ChecklistTick(t *testing.T) {
 		} else {
 			laterWait.Store(r.URL.Query().Get("wait"))
 		}
-		// The tick lands after the first read; it has to be measured against
-		// that read, not against the first long-poll's answer.
-		io.WriteString(w, checklistJSON("ongoing", false, n >= 3))
+		// The tick lands between the plain read and the first long-poll, so it
+		// shows only if the plain read is the baseline.
+		io.WriteString(w, checklistJSON("ongoing", false, n >= 2))
 	}))
 	defer srv.Close()
 	api := client.NewAPIClient(srv.URL, "tok")
 
-	out := waitForChecklistOutcome(t, api, map[string]any{"slug": "groceries"})
+	out := waitForChecklistOutcome(t, api, map[string]any{"slug": "groceries", "timeout_seconds": 2})
 	if !out.Changed || out.State != "ongoing" || out.Checked != 1 || out.Total != 2 || out.Reason != "" {
 		t.Errorf("unexpected outcome: %+v", out)
 	}
@@ -2038,8 +2038,8 @@ func TestHandleWaitForAnswer_ChecklistTick(t *testing.T) {
 	if !slices.Equal(out.Items, want) {
 		t.Errorf("items = %+v, want %+v", out.Items, want)
 	}
-	if got := calls.Load(); got != 3 {
-		t.Errorf("expected 3 reads, got %d", got)
+	if got := calls.Load(); got != 2 {
+		t.Errorf("expected 2 reads, got %d", got)
 	}
 	if firstWait.Load() != "" || laterWait.Load() == "" {
 		t.Errorf("the first read must be plain and the rest long-polls, got wait=%q then wait=%q", firstWait.Load(), laterWait.Load())
@@ -2100,7 +2100,7 @@ func TestHandleWaitForAnswer_ChecklistSeenChecked(t *testing.T) {
 
 	// The same set in another order, with a blank and a duplicate, is no change.
 	calls.Store(0)
-	out = waitForChecklistOutcome(t, api, map[string]any{"slug": "groceries", "seen_checked": []any{" b", "a", "", "a"}, "timeout_seconds": 0.05})
+	out = waitForChecklistOutcome(t, api, map[string]any{"slug": "groceries", "seen_checked": []any{" b", "a", "", "a"}, "timeout_seconds": 1})
 	if out.Changed || !strings.Contains(out.Reason, "no change within") {
 		t.Errorf("a matching seen_checked should wait out the timeout, got: %+v", out)
 	}
