@@ -1131,6 +1131,20 @@ func TestHandleEndActivity_HappyPath(t *testing.T) {
 	}
 }
 
+func TestBuildEndContent_ChecklistLeavesItemsOut(t *testing.T) {
+	var activity map[string]any
+	if err := json.Unmarshal([]byte(checklistJSON("ongoing", true, false)), &activity); err != nil {
+		t.Fatal(err)
+	}
+	var content map[string]any
+	if err := json.Unmarshal(buildEndContent(activity, "Done"), &content); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := content["items"]; ok || content["template"] != "checklist" {
+		t.Errorf("ending a checklist must not re-send items (a tick since the read would be undone), got %v", content)
+	}
+}
+
 func TestHandleEndActivity_AlreadyEnded(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte(`{"slug":"test-done","state":"ended","content":{"template":"generic","state":"Done"}}`))

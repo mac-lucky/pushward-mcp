@@ -1282,6 +1282,11 @@ func buildEndContent(activity map[string]any, reason string) json.RawMessage {
 	if _, ok := contentMap["template"]; !ok {
 		contentMap["template"] = defaultTemplate
 	}
+	// Re-sent items would set every checked from this read and undo a tick
+	// that lands before the PATCH; left out, the server keeps the stored ones.
+	if contentMap["template"] == tmplChecklist {
+		delete(contentMap, "items")
+	}
 	contentMap["state"] = reason
 	data, _ := json.Marshal(contentMap)
 	return data
