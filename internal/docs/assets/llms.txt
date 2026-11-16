@@ -13,6 +13,8 @@ A fully-expanded Markdown bundle of every docs page lives at [/llms-full.txt](ht
 - [iOS Widgets API](https://pushward.app/widgets): Update iOS Home Screen, Lock Screen, and StandBy widgets over a simple HTTP API
 - [PushWard for Android](https://pushward.app/android): The Android app: Live Updates, notifications you can answer and home screen widgets from the same API as the iPhone app
 - [Use cases](https://pushward.app/use-cases): One day of real pushes: which service sends what, through which integration, to which surface
+- [Claude Code and Codex on your phone](https://pushward.app/coding-agents): pushward agent: permission prompts and questions from Claude Code and Codex reach your phone while you are away from the terminal, and your answer goes back to the session
+- [Widget styles](https://pushward.app/widget-styles): The Standard, Bold and Classic looks of PushWard widgets, each next to the earlier design, plus the Checklist and Heatmap templates
 - [Pricing](https://pushward.app/pricing): Free, PushWard Plan, Family, Lifetime and PushWard Team prices, and where each is sold
 - [PushWard Team](https://pushward.app/teams): Organizations for teams: members, groups, routing rules, limited keys, audit log, trial and seat pricing
 - [API Reference](https://pushward.app/api): Interactive OpenAPI explorer for every endpoint
@@ -32,6 +34,7 @@ A fully-expanded Markdown bundle of every docs page lives at [/llms-full.txt](ht
 - [Log Template](https://pushward.app/docs/live-activities/log): A streaming feed of up to 20 newest-first lines, each with optional timestamp and severity. The server keeps a scroll-back backlog you can fetch in-app, while the Live Activity always shows the most recent lines.
 - [Media Template](https://pushward.app/docs/live-activities/media): A Now Playing-style media card: cover art, a live scrubber, and transport buttons that fire your webhooks - control any player from the Lock Screen.
 - [Approval Template](https://pushward.app/docs/live-activities/approval): A question card with 2-4 answer buttons that fire your webhook or record the answer server-side - built for agents, deploy gates, and home automations.
+- [Checklist Template](https://pushward.app/docs/live-activities/checklist): A short list of items to tick off from the Lock Screen, the Dynamic Island or the Android notification. The server records every tick, pushes it to every device and hands it to your integration.
 
 ## Notifications
 
@@ -66,6 +69,7 @@ A fully-expanded Markdown bundle of every docs page lives at [/llms-full.txt](ht
 - [Battery widget](https://pushward.app/docs/widgets/templates/battery): Charge levels for up to eight devices, drawn as rings. Best for smart-home batteries, sensors, and anything else you would rather not find flat.
 - [Schedule widget](https://pushward.app/docs/widgets/templates/schedule): A timeline of upcoming periods - tariff prices, delivery windows, shifts - with the period happening now highlighted.
 - [Flow widget](https://pushward.app/docs/widgets/templates/flow): Energy, water, or data moving between sources, storage, and consumers, with a live rate on every leg.
+- [Heatmap widget](https://pushward.app/docs/widgets/templates/heatmap): A calendar grid of daily values, one square per day, shaded from faint to full by value. Best for habits, workouts, energy use, or anything with a daily rhythm.
 
 ## Email
 
@@ -78,12 +82,16 @@ A fully-expanded Markdown bundle of every docs page lives at [/llms-full.txt](ht
 ## Teams
 
 - [Teams](https://pushward.app/docs/teams): Send to a whole team from one organization account. Members join with their own PushWard account on iPhone or Android, and groups, device tags and routing rules decide who gets which Live Activity and notification.
+- [Manage your org as code](https://pushward.app/docs/teams/as-code): Manage an organization's members, groups, device tags, routing rules and API keys from scripts, CI or Terraform, with an org admin key for the API, the CLI and the Terraform provider.
+- [Enterprise](https://pushward.app/docs/teams/enterprise): Sign members in to the console through your identity provider with OpenID Connect or SAML, provision them with SCIM from Okta or Microsoft Entra ID, verify your email domains and export the audit log.
 
 ## Integrations
 
 - [Integrations](https://pushward.app/docs/integrations): Connect PushWard to your existing tools and services. Each integration authenticates with your integration key.
 - [Relay](https://pushward.app/docs/integrations/relay): Point your services' webhooks at relay.pushward.app and get push notifications without Docker, self-hosting, or per-user configuration.
 - [Universal Webhook](https://pushward.app/docs/integrations/universal-webhook): Point any service's JSON webhook at the relay and get a notification on your iPhone. Services PushWard knows get a preset, with Live Activities for alerts.
+- [Apprise](https://pushward.app/docs/integrations/apprise): Send notifications to PushWard from any app built on Apprise, with one pushward:// URL.
+- [Prometheus Alertmanager](https://pushward.app/docs/integrations/alertmanager): Point an Alertmanager webhook receiver at the relay. A firing alert opens a Live Activity and sends one push, and the card turns green and ends when the alert resolves.
 - [Grafana](https://pushward.app/docs/integrations/grafana): Turn Grafana alerts into a timeline Live Activity on your iPhone Lock Screen. See metric history at a glance with real-time updates while alerts are firing.
 - [Home Assistant](https://pushward.app/docs/integrations/home-assistant): A native HACS integration that bridges Home Assistant entity state changes to PushWard Live Activities on your iPhone.
 - [GitHub Actions](https://pushward.app/docs/integrations/github-actions): Send notifications, show a job as a Live Activity and wait for an answer from inside a workflow with the PushWard action, or track every run with the polling bridge.
