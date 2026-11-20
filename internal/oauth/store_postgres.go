@@ -69,8 +69,11 @@ CREATE INDEX IF NOT EXISTS idx_oauth_clients_updated ON oauth_clients(updated_at
 	// 3: bind the stored key to the grant instead of the user. The pasted key
 	// waits on its auth code until exchange, the exchange writes it to
 	// oauth_grant_credentials, and every refresh token of the grant names it.
-	// oauth_user_credentials stays as is for tokens issued before this; the new
-	// columns are nullable or defaulted so pods still on the old code keep working.
+	// oauth_user_credentials stays as is for tokens issued before this. The new
+	// columns are nullable or defaulted, so an older release still runs on this
+	// schema and keeps serving grants without a credential id; it cannot find the
+	// codes and refresh tokens of key-bound grants (grantTokenHash), so it refuses
+	// them rather than rotating them into grants that read the per-user key.
 	`
 CREATE TABLE IF NOT EXISTS oauth_grant_credentials (
   credential_id TEXT PRIMARY KEY,

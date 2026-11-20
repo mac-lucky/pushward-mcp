@@ -45,7 +45,9 @@ func (p *Provider) grantAuthorizationCode(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	ac, err := p.store.ConsumeAuthCode(r.Context(), hashToken(code))
+	// Only codes that carry a pending key are stored under grantTokenHash. One a
+	// pod on an older release minted is refused, and its consent is redone.
+	ac, err := p.store.ConsumeAuthCode(r.Context(), grantTokenHash(code))
 	if errors.Is(err, ErrCodeAlreadyUsed) {
 		// Replay of a consumed code is treated as compromise of that grant: revoke
 		// the user's refresh-token family so any tokens minted from the first use
@@ -83,19 +85,15 @@ func (p *Provider) grantAuthorizationCode(w http.ResponseWriter, r *http.Request
 	}
 
 	// The consent's key becomes live only here, under an id of its own, so no
-	// other grant of this user sees it. A code without one was minted before
-	// per-grant credentials and keeps resolving the per-user row.
-	var credID string
-	if len(ac.EncryptedHLK) > 0 {
-		credID, err = randomToken(16)
-		if err != nil {
-			oauthError(w, http.StatusInternalServerError, "server_error", "could not generate credential id")
-			return
-		}
-		if err := p.store.SaveCredential(r.Context(), credID, ac.UserID, ac.EncryptedHLK); err != nil {
-			oauthError(w, http.StatusInternalServerError, "server_error", "could not persist credential")
-			return
-		}
+	// other grant of this user sees it.
+	credID, err := randomToken(16)
+	if err != nil {
+		oauthError(w, http.StatusInternalServerError, "server_error", "could not generate credential id")
+		return
+	}
+	if err := p.store.SaveCredential(r.Context(), credID, ac.UserID, ac.EncryptedHLK); err != nil {
+		oauthError(w, http.StatusInternalServerError, "server_error", "could not persist credential")
+		return
 	}
 	p.issueTokens(w, r, ac.UserID, ac.ClientID, ac.Scope, credID)
 }
@@ -106,7 +104,11 @@ func (p *Provider) grantRefreshToken(w http.ResponseWriter, r *http.Request) {
 		oauthError(w, http.StatusBadRequest, "invalid_request", "refresh_token is required")
 		return
 	}
-	rt, err := p.store.GetRefreshToken(r.Context(), hashToken(raw))
+	rt, err := p.store.GetRefreshToken(r.Context(), grantTokenHash(raw))
+	if errors.Is(err, ErrNotFound) {
+		// A grant from before per-grant credentials (see issueTokensWithPrev).
+		rt, err = p.store.GetRefreshToken(r.Context(), hashToken(raw))
+	}
 	if err != nil {
 		oauthError(w, http.StatusBadRequest, "invalid_grant", "invalid refresh token")
 		return
@@ -158,8 +160,14 @@ func (p *Provider) issueTokensWithPrev(w http.ResponseWriter, r *http.Request, u
 		oauthError(w, http.StatusInternalServerError, "server_error", "could not generate refresh token")
 		return
 	}
+	// A grant without a credential id keeps the hash older releases read, so a
+	// pod on one can still rotate it during a rollout or after a rollback.
+	tokenHash := hashToken(refresh)
+	if credID != "" {
+		tokenHash = grantTokenHash(refresh)
+	}
 	if err := p.store.SaveRefreshToken(r.Context(), &RefreshToken{
-		TokenHash:    hashToken(refresh),
+		TokenHash:    tokenHash,
 		UserID:       userID,
 		ClientID:     clientID,
 		Scope:        scope,

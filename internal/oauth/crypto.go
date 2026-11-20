@@ -175,3 +175,11 @@ func hashToken(token string) string {
 	sum := sha256.Sum256([]byte(token))
 	return base64.RawURLEncoding.EncodeToString(sum[:])
 }
+
+// grantTokenHash is the stored hash of the auth code and refresh tokens of a
+// grant with its own key. Releases before per-grant credentials look both up by
+// hashToken alone, so a pod still on one (a rolling update, a rollback) answers
+// invalid_grant and the client re-authorizes, instead of redeeming the grant
+// into one without a credential id that reads the per-user key from then on.
+// "." is outside the base64url alphabet: no hashToken value starts with "g.".
+func grantTokenHash(token string) string { return "g." + hashToken(token) }

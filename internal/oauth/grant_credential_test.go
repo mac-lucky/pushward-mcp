@@ -133,12 +133,56 @@ func TestGrantKey_LegacyTokenResolvesUserRow(t *testing.T) {
 	if got := mcpKey(t, srv, legacyAccess); got != "hlk_legacy" {
 		t.Fatalf("legacy token sees %q after a new consent, want hlk_legacy", got)
 	}
-	refreshed, _ := refreshGrant(t, srv, "rtok-legacy")
+	refreshed, legacyRefresh := refreshGrant(t, srv, "rtok-legacy")
 	if c, err := p.signer.Verify(refreshed, "https://mcp.test"); err != nil || c.CredentialID != "" {
 		t.Fatalf("refreshing a legacy grant must keep it on the per-user row: %+v %v", c, err)
 	}
 	if got := mcpKey(t, srv, refreshed); got != "hlk_legacy" {
 		t.Fatalf("refreshed legacy token sees %q, want hlk_legacy", got)
+	}
+	// An older release must still find the rotated token of a legacy grant.
+	if rt, err := m.GetRefreshToken(ctx, hashToken(legacyRefresh)); err != nil || rt.CredentialID != "" {
+		t.Fatalf("older release cannot rotate a legacy grant: %+v %v", rt, err)
+	}
+}
+
+// Releases before per-grant credentials look codes and refresh tokens up by
+// hashToken. A pod on one, during a rolling update or after a rollback, must
+// not find those of a key-bound grant: it would issue tokens without the
+// credential id, and the grant would read the per-user key from then on.
+func TestGrantKey_OlderReleaseCannotRedeemKeyBoundGrant(t *testing.T) {
+	srv, p := newTestProvider(t)
+	ctx := context.Background()
+	m := p.store.(*memoryStore)
+
+	clientID, verifier, redirect, code := obtainCode(t, srv, "hlk_k1")
+	if _, err := m.ConsumeAuthCode(ctx, hashToken(code)); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("older release redeemed a code with a pending key: %v", err)
+	}
+	access, refresh := exchangeForTokens(t, srv, code, clientID, verifier, redirect)
+	if got := mcpKey(t, srv, access); got != "hlk_k1" {
+		t.Fatalf("client sees %q, want hlk_k1", got)
+	}
+	for range 2 {
+		if _, err := m.GetRefreshToken(ctx, hashToken(refresh)); !errors.Is(err, ErrNotFound) {
+			t.Fatalf("older release can rotate a key-bound grant: %v", err)
+		}
+		_, refresh = refreshGrant(t, srv, refresh)
+	}
+
+	// A code under the older hash (minted by an older pod) is not redeemed here.
+	if err := m.SaveAuthCode(ctx, &AuthCode{
+		CodeHash: hashToken("old-pod-code"), ClientID: clientID, UserID: "user-123", Scope: "mcp",
+		RedirectURI: redirect, CodeChallenge: "x", Resource: "https://mcp.test", ExpiresAt: time.Now().Add(time.Minute),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	status, body := tokenPost(t, srv, url.Values{
+		"grant_type": {"authorization_code"}, "code": {"old-pod-code"}, "redirect_uri": {redirect},
+		"client_id": {clientID}, "code_verifier": {verifier},
+	})
+	if status != http.StatusBadRequest || body["error"] != "invalid_grant" {
+		t.Fatalf("code without a pending key: %d %v, want invalid_grant", status, body)
 	}
 }
 
@@ -155,7 +199,7 @@ func TestGrantKey_RefreshKeepsCredentialID(t *testing.T) {
 		if err != nil || c.CredentialID != first.CredentialID {
 			t.Fatalf("refresh changed the credential id: %q -> %+v %v", first.CredentialID, c, err)
 		}
-		rt, err := p.store.GetRefreshToken(context.Background(), hashToken(refresh))
+		rt, err := p.store.GetRefreshToken(context.Background(), grantTokenHash(refresh))
 		if err != nil || rt.CredentialID != first.CredentialID {
 			t.Fatalf("rotated refresh token lost the credential id: %+v %v", rt, err)
 		}

@@ -242,7 +242,7 @@ func (p *Provider) authorizePost(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	ac := &AuthCode{
-		CodeHash:      hashToken(code),
+		CodeHash:      grantTokenHash(code),
 		ClientID:      pr.ClientID,
 		UserID:        userID,
 		Scope:         pr.Scope,
