@@ -1,0 +1,41 @@
+name: Postgres
+
+# The oauth store tests skip without PUSHWARD_MCP_TEST_DB_DSN and the go-cicd
+# reusable starts no database, so the SQL a tag deploys (migrations, the code
+# exchange, Cleanup) runs here against the Postgres major production uses.
+on:
+  push:
+    branches: [main]
+    paths: ['internal/oauth/**', 'go.mod', 'go.sum', '.github/workflows/postgres.yml']
+  pull_request:
+    branches: [main]
+    paths: ['internal/oauth/**', 'go.mod', 'go.sum', '.github/workflows/postgres.yml']
+
+permissions:
+  contents: read
+
+jobs:
+  store:
+    name: Postgres store tests
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine@sha256:a77aa70e641402a21411b92b721c58d10f23b50ae5fdd2333efd22d166e1e5f7
+        env:
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 2s
+          --health-timeout 5s
+          --health-retries 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version-file: go.mod
+      - run: go test -race -count=1 -run Postgres -v ./internal/oauth
+        env:
+          PUSHWARD_MCP_TEST_DB_DSN: postgres://postgres@localhost:5432/postgres?sslmode=disable
