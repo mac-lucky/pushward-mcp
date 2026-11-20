@@ -82,7 +82,22 @@ func (p *Provider) grantAuthorizationCode(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	p.issueTokens(w, r, ac.UserID, ac.ClientID, ac.Scope)
+	// The consent's key becomes live only here, under an id of its own, so no
+	// other grant of this user sees it. A code without one was minted before
+	// per-grant credentials and keeps resolving the per-user row.
+	var credID string
+	if len(ac.EncryptedHLK) > 0 {
+		credID, err = randomToken(16)
+		if err != nil {
+			oauthError(w, http.StatusInternalServerError, "server_error", "could not generate credential id")
+			return
+		}
+		if err := p.store.SaveCredential(r.Context(), credID, ac.UserID, ac.EncryptedHLK); err != nil {
+			oauthError(w, http.StatusInternalServerError, "server_error", "could not persist credential")
+			return
+		}
+	}
+	p.issueTokens(w, r, ac.UserID, ac.ClientID, ac.Scope, credID)
 }
 
 func (p *Provider) grantRefreshToken(w http.ResponseWriter, r *http.Request) {
@@ -124,16 +139,16 @@ func (p *Provider) grantRefreshToken(w http.ResponseWriter, r *http.Request) {
 		oauthError(w, http.StatusBadRequest, "invalid_grant", "refresh token no longer valid")
 		return
 	}
-	p.issueTokensWithPrev(w, r, rt.UserID, rt.ClientID, rt.Scope, rt.TokenHash)
+	p.issueTokensWithPrev(w, r, rt.UserID, rt.ClientID, rt.Scope, rt.CredentialID, rt.TokenHash)
 }
 
-func (p *Provider) issueTokens(w http.ResponseWriter, r *http.Request, userID, clientID, scope string) {
-	p.issueTokensWithPrev(w, r, userID, clientID, scope, "")
+func (p *Provider) issueTokens(w http.ResponseWriter, r *http.Request, userID, clientID, scope, credID string) {
+	p.issueTokensWithPrev(w, r, userID, clientID, scope, credID, "")
 }
 
-func (p *Provider) issueTokensWithPrev(w http.ResponseWriter, r *http.Request, userID, clientID, scope, prevHash string) {
+func (p *Provider) issueTokensWithPrev(w http.ResponseWriter, r *http.Request, userID, clientID, scope, credID, prevHash string) {
 	now := p.now()
-	access, err := p.signer.Sign(userID, p.cfg.Resource, clientID, scope, now)
+	access, err := p.signer.Sign(userID, p.cfg.Resource, clientID, scope, credID, now)
 	if err != nil {
 		oauthError(w, http.StatusInternalServerError, "server_error", "could not sign token")
 		return
@@ -144,13 +159,14 @@ func (p *Provider) issueTokensWithPrev(w http.ResponseWriter, r *http.Request, u
 		return
 	}
 	if err := p.store.SaveRefreshToken(r.Context(), &RefreshToken{
-		TokenHash: hashToken(refresh),
-		UserID:    userID,
-		ClientID:  clientID,
-		Scope:     scope,
-		Resource:  p.cfg.Resource,
-		PrevHash:  prevHash,
-		ExpiresAt: now.Add(refreshTokenTTL),
+		TokenHash:    hashToken(refresh),
+		UserID:       userID,
+		ClientID:     clientID,
+		Scope:        scope,
+		Resource:     p.cfg.Resource,
+		PrevHash:     prevHash,
+		CredentialID: credID,
+		ExpiresAt:    now.Add(refreshTokenTTL),
 	}); err != nil {
 		oauthError(w, http.StatusInternalServerError, "server_error", "could not persist refresh token")
 		return

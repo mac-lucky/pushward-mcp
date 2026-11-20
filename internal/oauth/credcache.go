@@ -5,11 +5,12 @@ import (
 	"time"
 )
 
-// credCache holds recently-decrypted hlk_ keys keyed by user id so the hot
-// /mcp path avoids a Postgres read plus an HKDF/AES-GCM derivation on every
-// JSON-RPC call (initialize, tools/list, every tools/call). Entries are short-
-// lived so a credential rotation or revocation propagates quickly, and the map
-// is hard-capped so a flood of distinct users cannot grow it without bound.
+// credCache holds recently-decrypted hlk_ keys keyed by user and grant
+// credential (see loadHLK) so the hot /mcp path avoids a Postgres read plus an
+// HKDF/AES-GCM derivation on every JSON-RPC call (initialize, tools/list, every
+// tools/call). Entries are short-lived so a credential rotation or revocation
+// propagates quickly, and the map is hard-capped so a flood of distinct grants
+// cannot grow it without bound.
 //
 // Caching the plaintext key in memory is acceptable: the process already holds
 // the master key and decrypts the key transiently per request today.
@@ -30,20 +31,20 @@ func newCredCache(ttl time.Duration, max int, now func() time.Time) *credCache {
 	return &credCache{entries: make(map[string]credEntry), ttl: ttl, max: max, now: now}
 }
 
-// get returns the cached key for userID if present and unexpired.
-func (c *credCache) get(userID string) (string, bool) {
+// get returns the cached hlk for key if present and unexpired.
+func (c *credCache) get(key string) (string, bool) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	e, ok := c.entries[userID]
+	e, ok := c.entries[key]
 	if !ok || c.now().After(e.exp) {
 		return "", false
 	}
 	return e.hlk, true
 }
 
-// put stores hlk for userID with the cache TTL, evicting expired (then, if still
+// put stores hlk under key with the cache TTL, evicting expired (then, if still
 // at capacity, an arbitrary) entry so the map stays bounded.
-func (c *credCache) put(userID, hlk string) {
+func (c *credCache) put(key, hlk string) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if len(c.entries) >= c.max {
@@ -55,14 +56,14 @@ func (c *credCache) put(userID, hlk string) {
 			}
 		}
 	}
-	c.entries[userID] = credEntry{hlk: hlk, exp: c.now().Add(c.ttl)}
+	c.entries[key] = credEntry{hlk: hlk, exp: c.now().Add(c.ttl)}
 }
 
-// invalidate drops a user's cached key (e.g. on a decrypt failure).
-func (c *credCache) invalidate(userID string) {
+// invalidate drops a cached key (e.g. on a decrypt failure).
+func (c *credCache) invalidate(key string) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	delete(c.entries, userID)
+	delete(c.entries, key)
 }
 
 // setNow swaps the clock under the lock so the background janitor's sweep (which

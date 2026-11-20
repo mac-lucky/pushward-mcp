@@ -55,8 +55,11 @@ https://mcp.pushward.app/mcp
 
 You authenticate on first connect: the consent screen asks for your PushWard integration key
 (`hlk_...`) once, stores it encrypted server-side, and the MCP client only ever holds a
-short-lived token. The key never reaches the client. The hosted endpoint exposes the API
-tools only, not the relay tools (a multi-tenant endpoint can't share one relay credential).
+short-lived token. The key never reaches the client. It is stored per connection: a second
+client connected with another key (say a restricted one for a less trusted agent) gets its own,
+and the first keeps the key it was authorized with. Reconnect a client to change its key. The
+hosted endpoint exposes the API tools only, not the relay tools (a multi-tenant endpoint can't
+share one relay credential).
 
 ## Claude Code plugin
 

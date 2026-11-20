@@ -14,8 +14,17 @@ type memoryStore struct {
 	clients map[string]*Client
 	codes   map[string]*memCode
 	refresh map[string]*RefreshToken
-	creds   map[string][]byte
-	now     func() time.Time
+	creds   map[string]memCred // grant credentials, by credential id
+	// userCreds is the per-user row an empty credential id reads. Nothing writes
+	// it: a memory store starts empty, so only tests fill it.
+	userCreds map[string][]byte
+	now       func() time.Time
+}
+
+type memCred struct {
+	userID    string
+	blob      []byte
+	createdAt time.Time
 }
 
 // memCode tracks an auth code's single-use state so a replay is distinguishable
@@ -28,11 +37,12 @@ type memCode struct {
 
 func newMemoryStore() *memoryStore {
 	return &memoryStore{
-		clients: map[string]*Client{},
-		codes:   map[string]*memCode{},
-		refresh: map[string]*RefreshToken{},
-		creds:   map[string][]byte{},
-		now:     time.Now,
+		clients:   map[string]*Client{},
+		codes:     map[string]*memCode{},
+		refresh:   map[string]*RefreshToken{},
+		creds:     map[string]memCred{},
+		userCreds: map[string][]byte{},
+		now:       time.Now,
 	}
 }
 
@@ -145,6 +155,7 @@ func (m *memoryStore) ConsumeAuthCode(_ context.Context, codeHash string) (*Auth
 	t := m.now()
 	mc.usedAt = &t
 	cp := mc.ac
+	mc.ac.EncryptedHLK = nil
 	return &cp, nil
 }
 
@@ -191,25 +202,26 @@ func (m *memoryStore) RevokeUserRefreshTokens(_ context.Context, userID string) 
 	return nil
 }
 
-func (m *memoryStore) SaveUserCredential(_ context.Context, userID string, encryptedHLK []byte) error {
+func (m *memoryStore) SaveCredential(_ context.Context, credentialID, userID string, encryptedHLK []byte) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	b := make([]byte, len(encryptedHLK))
-	copy(b, encryptedHLK)
-	m.creds[userID] = b
+	m.creds[credentialID] = memCred{userID: userID, blob: append([]byte(nil), encryptedHLK...), createdAt: m.now()}
 	return nil
 }
 
-func (m *memoryStore) GetUserCredential(_ context.Context, userID string) ([]byte, error) {
+func (m *memoryStore) GetCredential(_ context.Context, userID, credentialID string) ([]byte, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	b, ok := m.creds[userID]
-	if !ok {
+	var b []byte
+	if credentialID == "" {
+		b = m.userCreds[userID]
+	} else if c, ok := m.creds[credentialID]; ok && c.userID == userID {
+		b = c.blob
+	}
+	if b == nil {
 		return nil, ErrNotFound
 	}
-	cp := make([]byte, len(b))
-	copy(cp, b)
-	return cp, nil
+	return append([]byte(nil), b...), nil
 }
 
 func (m *memoryStore) Cleanup(_ context.Context) error {
@@ -226,6 +238,17 @@ func (m *memoryStore) Cleanup(_ context.Context) error {
 	for h, rt := range m.refresh {
 		if rt.ExpiresAt.Before(now) || (rt.RevokedAt != nil && now.Sub(*rt.RevokedAt) > time.Hour) {
 			delete(m.refresh, h)
+		}
+	}
+	// Mirrors the Postgres Cleanup: drop a grant's key once no refresh token
+	// names it, sparing one written within the hour.
+	live := map[string]bool{}
+	for _, rt := range m.refresh {
+		live[rt.CredentialID] = true
+	}
+	for id, c := range m.creds {
+		if !live[id] && now.Sub(c.createdAt) > time.Hour {
+			delete(m.creds, id)
 		}
 	}
 	m.evictStaleClientsLocked(now)

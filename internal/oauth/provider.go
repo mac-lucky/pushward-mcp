@@ -86,7 +86,7 @@ func (p *Provider) RegisterRoutes(mux *http.ServeMux) {
 }
 
 // WrapMCP guards the MCP endpoint: it requires a valid access token issued by
-// this server, loads the user's encrypted PushWard key, and injects it (plus
+// this server, loads the PushWard key of the token's grant, and injects it (plus
 // the user id, for audit) into the request context for the tool handlers.
 func (p *Provider) WrapMCP(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -101,7 +101,7 @@ func (p *Provider) WrapMCP(next http.Handler) http.Handler {
 			return
 		}
 		userID := claims.Subject
-		hlk, err := p.loadHLK(r.Context(), userID)
+		hlk, err := p.loadHLK(r.Context(), userID, claims.CredentialID)
 		if err != nil {
 			p.challenge(w, "credential unavailable; re-authorization required")
 			return
@@ -112,14 +112,17 @@ func (p *Provider) WrapMCP(next http.Handler) http.Handler {
 	})
 }
 
-// loadHLK returns the user's decrypted PushWard key, serving from a short-TTL
-// cache so the hot /mcp path skips a DB read plus a key derivation on every
-// JSON-RPC call. A cache miss reads and decrypts once, then caches.
-func (p *Provider) loadHLK(ctx context.Context, userID string) (string, error) {
-	if hlk, ok := p.cred.get(userID); ok {
+// loadHLK returns the decrypted PushWard key of the user's grant credID (the
+// per-user row when credID is empty), serving from a short-TTL cache so the hot
+// /mcp path skips a DB read plus a key derivation on every JSON-RPC call. A
+// cache miss reads and decrypts once, then caches.
+func (p *Provider) loadHLK(ctx context.Context, userID, credID string) (string, error) {
+	// NUL cannot occur in either part, so two grants never share a cache key.
+	key := userID + "\x00" + credID
+	if hlk, ok := p.cred.get(key); ok {
 		return hlk, nil
 	}
-	blob, err := p.store.GetUserCredential(ctx, userID)
+	blob, err := p.store.GetCredential(ctx, userID, credID)
 	if err != nil {
 		return "", err
 	}
@@ -127,10 +130,10 @@ func (p *Provider) loadHLK(ctx context.Context, userID string) (string, error) {
 	if err != nil {
 		// Don't cache a failure; log without the credential.
 		p.log.Error("hlk decrypt failed", "user", userID)
-		p.cred.invalidate(userID)
+		p.cred.invalidate(key)
 		return "", err
 	}
-	p.cred.put(userID, hlk)
+	p.cred.put(key, hlk)
 	return hlk, nil
 }
 

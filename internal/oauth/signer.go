@@ -74,18 +74,22 @@ func elliptic2Bytes(priv *ecdsa.PrivateKey) []byte {
 }
 
 // accessClaims are the registered claims of an issued access token.
+// CredentialID names the grant's stored key; tokens issued before per-grant
+// credentials lack it and resolve the per-user row.
 type accessClaims struct {
-	Scope    string `json:"scope,omitempty"`
-	ClientID string `json:"client_id,omitempty"`
+	Scope        string `json:"scope,omitempty"`
+	ClientID     string `json:"client_id,omitempty"`
+	CredentialID string `json:"cred,omitempty"`
 	jwt.RegisteredClaims
 }
 
 // Sign issues an access-token JWT for the given subject, audience (resource),
-// client and scope.
-func (s *signer) Sign(subject, audience, clientID, scope string, now time.Time) (string, error) {
+// client, scope and grant credential.
+func (s *signer) Sign(subject, audience, clientID, scope, credentialID string, now time.Time) (string, error) {
 	claims := accessClaims{
-		Scope:    scope,
-		ClientID: clientID,
+		Scope:        scope,
+		ClientID:     clientID,
+		CredentialID: credentialID,
 		RegisteredClaims: jwt.RegisteredClaims{
 			Issuer:    s.issuer,
 			Subject:   subject,

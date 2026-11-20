@@ -233,13 +233,9 @@ func (p *Provider) authorizePost(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
-	// Persist the encrypted credential (the single source of truth used by /mcp)
-	// BEFORE issuing a code, so a storage failure aborts the grant rather than
-	// minting tokens that can never load a credential. Upsert makes a retry safe.
-	if err := p.store.SaveUserCredential(r.Context(), userID, encHLK); err != nil {
-		http.Error(w, "internal error", http.StatusInternalServerError)
-		return
-	}
+	// The key waits on the code and goes live for this grant alone at exchange
+	// (grantAuthorizationCode): consent changes nothing another connection uses,
+	// and an abandoned consent changes nothing at all.
 	code, err := randomToken(32)
 	if err != nil {
 		http.Error(w, "internal error", http.StatusInternalServerError)
@@ -253,6 +249,7 @@ func (p *Provider) authorizePost(w http.ResponseWriter, r *http.Request) {
 		RedirectURI:   pr.RedirectURI,
 		CodeChallenge: pr.CodeChallenge,
 		Resource:      p.cfg.Resource,
+		EncryptedHLK:  encHLK,
 		ExpiresAt:     p.now().Add(authCodeTTL),
 	}
 	if err := p.store.SaveAuthCode(r.Context(), ac); err != nil {

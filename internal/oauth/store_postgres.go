@@ -66,6 +66,21 @@ CREATE TABLE IF NOT EXISTS oauth_user_credentials (
 	`
 ALTER TABLE oauth_clients ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT now();
 CREATE INDEX IF NOT EXISTS idx_oauth_clients_updated ON oauth_clients(updated_at);`,
+	// 3: bind the stored key to the grant instead of the user. The pasted key
+	// waits on its auth code until exchange, the exchange writes it to
+	// oauth_grant_credentials, and every refresh token of the grant names it.
+	// oauth_user_credentials stays as is for tokens issued before this; the new
+	// columns are nullable or defaulted so pods still on the old code keep working.
+	`
+CREATE TABLE IF NOT EXISTS oauth_grant_credentials (
+  credential_id TEXT PRIMARY KEY,
+  user_id       TEXT NOT NULL,
+  encrypted_hlk BYTEA NOT NULL,
+  created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+ALTER TABLE oauth_auth_codes ADD COLUMN IF NOT EXISTS encrypted_hlk BYTEA;
+ALTER TABLE oauth_refresh_tokens ADD COLUMN IF NOT EXISTS credential_id TEXT NOT NULL DEFAULT '';
+CREATE INDEX IF NOT EXISTS idx_oauth_refresh_credential ON oauth_refresh_tokens(credential_id);`,
 }
 
 // migrationAdvisoryLock is a fixed key for pg_advisory_xact_lock so only one pod
@@ -208,20 +223,23 @@ func (s *pgStore) GetClient(ctx context.Context, id string) (*Client, error) {
 func (s *pgStore) SaveAuthCode(ctx context.Context, ac *AuthCode) error {
 	_, err := s.pool.Exec(ctx,
 		`INSERT INTO oauth_auth_codes
-		 (code_hash, client_id, user_id, scope, redirect_uri, code_challenge, resource, expires_at)
-		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
-		ac.CodeHash, ac.ClientID, ac.UserID, ac.Scope, ac.RedirectURI, ac.CodeChallenge, ac.Resource, ac.ExpiresAt)
+		 (code_hash, client_id, user_id, scope, redirect_uri, code_challenge, resource, encrypted_hlk, expires_at)
+		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+		ac.CodeHash, ac.ClientID, ac.UserID, ac.Scope, ac.RedirectURI, ac.CodeChallenge, ac.Resource, ac.EncryptedHLK, ac.ExpiresAt)
 	return err
 }
 
 func (s *pgStore) ConsumeAuthCode(ctx context.Context, codeHash string) (*AuthCode, error) {
 	ac := &AuthCode{CodeHash: codeHash}
+	// RETURNING sees the updated row, so the pending key comes from the locked
+	// pre-update copy in old: the used code keeps no copy of it.
 	err := s.pool.QueryRow(ctx,
-		`UPDATE oauth_auth_codes SET used_at=now()
-		 WHERE code_hash=$1 AND expires_at>now() AND used_at IS NULL
-		 RETURNING client_id, user_id, scope, redirect_uri, code_challenge, resource, expires_at`,
+		`UPDATE oauth_auth_codes a SET used_at=now(), encrypted_hlk=NULL
+		 FROM (SELECT code_hash, encrypted_hlk FROM oauth_auth_codes WHERE code_hash=$1 FOR UPDATE) old
+		 WHERE a.code_hash=old.code_hash AND a.expires_at>now() AND a.used_at IS NULL
+		 RETURNING a.client_id, a.user_id, a.scope, a.redirect_uri, a.code_challenge, a.resource, old.encrypted_hlk, a.expires_at`,
 		codeHash).
-		Scan(&ac.ClientID, &ac.UserID, &ac.Scope, &ac.RedirectURI, &ac.CodeChallenge, &ac.Resource, &ac.ExpiresAt)
+		Scan(&ac.ClientID, &ac.UserID, &ac.Scope, &ac.RedirectURI, &ac.CodeChallenge, &ac.Resource, &ac.EncryptedHLK, &ac.ExpiresAt)
 	if err == nil {
 		return ac, nil
 	}
@@ -241,18 +259,18 @@ func (s *pgStore) ConsumeAuthCode(ctx context.Context, codeHash string) (*AuthCo
 
 func (s *pgStore) SaveRefreshToken(ctx context.Context, rt *RefreshToken) error {
 	_, err := s.pool.Exec(ctx,
-		`INSERT INTO oauth_refresh_tokens (token_hash, user_id, client_id, scope, resource, prev_hash, expires_at)
-		 VALUES ($1,$2,$3,$4,$5,$6,$7)`,
-		rt.TokenHash, rt.UserID, rt.ClientID, rt.Scope, rt.Resource, rt.PrevHash, rt.ExpiresAt)
+		`INSERT INTO oauth_refresh_tokens (token_hash, user_id, client_id, scope, resource, prev_hash, credential_id, expires_at)
+		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
+		rt.TokenHash, rt.UserID, rt.ClientID, rt.Scope, rt.Resource, rt.PrevHash, rt.CredentialID, rt.ExpiresAt)
 	return err
 }
 
 func (s *pgStore) GetRefreshToken(ctx context.Context, tokenHash string) (*RefreshToken, error) {
 	rt := &RefreshToken{TokenHash: tokenHash}
 	err := s.pool.QueryRow(ctx,
-		`SELECT user_id, client_id, scope, resource, prev_hash, expires_at, revoked_at
+		`SELECT user_id, client_id, scope, resource, prev_hash, credential_id, expires_at, revoked_at
 		 FROM oauth_refresh_tokens WHERE token_hash=$1`, tokenHash).
-		Scan(&rt.UserID, &rt.ClientID, &rt.Scope, &rt.Resource, &rt.PrevHash, &rt.ExpiresAt, &rt.RevokedAt)
+		Scan(&rt.UserID, &rt.ClientID, &rt.Scope, &rt.Resource, &rt.PrevHash, &rt.CredentialID, &rt.ExpiresAt, &rt.RevokedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, ErrNotFound
 	}
@@ -272,18 +290,23 @@ func (s *pgStore) RevokeUserRefreshTokens(ctx context.Context, userID string) er
 	return err
 }
 
-func (s *pgStore) SaveUserCredential(ctx context.Context, userID string, encryptedHLK []byte) error {
+func (s *pgStore) SaveCredential(ctx context.Context, credentialID, userID string, encryptedHLK []byte) error {
 	_, err := s.pool.Exec(ctx,
-		`INSERT INTO oauth_user_credentials (user_id, encrypted_hlk)
-		 VALUES ($1,$2)
-		 ON CONFLICT (user_id) DO UPDATE SET encrypted_hlk=EXCLUDED.encrypted_hlk, updated_at=now()`,
-		userID, encryptedHLK)
+		`INSERT INTO oauth_grant_credentials (credential_id, user_id, encrypted_hlk) VALUES ($1,$2,$3)`,
+		credentialID, userID, encryptedHLK)
 	return err
 }
 
-func (s *pgStore) GetUserCredential(ctx context.Context, userID string) ([]byte, error) {
+func (s *pgStore) GetCredential(ctx context.Context, userID, credentialID string) ([]byte, error) {
 	var blob []byte
-	err := s.pool.QueryRow(ctx, `SELECT encrypted_hlk FROM oauth_user_credentials WHERE user_id=$1`, userID).Scan(&blob)
+	var err error
+	if credentialID == "" {
+		err = s.pool.QueryRow(ctx, `SELECT encrypted_hlk FROM oauth_user_credentials WHERE user_id=$1`, userID).Scan(&blob)
+	} else {
+		err = s.pool.QueryRow(ctx,
+			`SELECT encrypted_hlk FROM oauth_grant_credentials WHERE credential_id=$1 AND user_id=$2`,
+			credentialID, userID).Scan(&blob)
+	}
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, ErrNotFound
 	}
@@ -298,6 +321,14 @@ func (s *pgStore) Cleanup(ctx context.Context) error {
 	if _, err := s.pool.Exec(ctx,
 		`DELETE FROM oauth_refresh_tokens
 		 WHERE expires_at < now() OR (revoked_at IS NOT NULL AND revoked_at < now() - interval '1 hour')`); err != nil {
+		return err
+	}
+	// A grant's key goes once its last refresh token is purged above. The hour
+	// spares a credential the code exchange wrote just before its first token.
+	if _, err := s.pool.Exec(ctx,
+		`DELETE FROM oauth_grant_credentials g
+		 WHERE g.created_at < now() - interval '1 hour'
+		   AND NOT EXISTS (SELECT 1 FROM oauth_refresh_tokens r WHERE r.credential_id = g.credential_id)`); err != nil {
 		return err
 	}
 	// Prune abandoned clients so anonymous DCR/CIMD traffic cannot grow the table

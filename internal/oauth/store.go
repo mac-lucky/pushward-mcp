@@ -24,10 +24,10 @@ type Client struct {
 	UpdatedAt time.Time
 }
 
-// AuthCode is a pending authorization code grant. Code is stored hashed. The
-// encrypted credential is NOT stored here - it lives once in user_credentials,
-// written before the code is issued, so the short-lived code table never holds a
-// second copy of a secret.
+// AuthCode is a pending authorization code grant. Code is stored hashed.
+// EncryptedHLK is the key pasted at consent, held only here until the code is
+// exchanged, so an abandoned consent changes no live credential. It is empty on
+// codes minted before per-grant credentials, whose key went to the per-user row.
 type AuthCode struct {
 	CodeHash      string
 	ClientID      string
@@ -36,6 +36,7 @@ type AuthCode struct {
 	RedirectURI   string
 	CodeChallenge string
 	Resource      string
+	EncryptedHLK  []byte
 	ExpiresAt     time.Time
 }
 
@@ -44,15 +45,20 @@ type AuthCode struct {
 // RevokeRefreshToken plus the post-grace family revoke in grantRefreshToken - not
 // by walking PrevHash, which is retained only as audit lineage of the rotation
 // chain (it is written and scanned, but no logic branches on it).
+//
+// CredentialID names the grant's stored key and is carried unchanged through
+// every rotation. Empty means a grant from before per-grant credentials, which
+// resolves the per-user row.
 type RefreshToken struct {
-	TokenHash string
-	UserID    string
-	ClientID  string
-	Scope     string
-	Resource  string
-	PrevHash  string
-	ExpiresAt time.Time
-	RevokedAt *time.Time
+	TokenHash    string
+	UserID       string
+	ClientID     string
+	Scope        string
+	Resource     string
+	PrevHash     string
+	CredentialID string
+	ExpiresAt    time.Time
+	RevokedAt    *time.Time
 }
 
 // Store persists OAuth state. Implementations must be safe for concurrent use.
@@ -62,7 +68,8 @@ type Store interface {
 
 	SaveAuthCode(ctx context.Context, ac *AuthCode) error
 	// ConsumeAuthCode atomically fetches and marks an unexpired, unused code as
-	// used. It returns ErrNotFound if missing/expired and ErrCodeAlreadyUsed if the
+	// used, returning its pending EncryptedHLK and clearing it from the store.
+	// It returns ErrNotFound if missing/expired and ErrCodeAlreadyUsed if the
 	// code was already consumed - and on that reuse path it returns a non-nil
 	// *AuthCode carrying at least the UserID, so the caller can treat the replay as
 	// an attack and revoke the tokens minted from that grant.
@@ -79,13 +86,18 @@ type Store interface {
 	// response).
 	RevokeUserRefreshTokens(ctx context.Context, userID string) error
 
-	// SaveUserCredential upserts the encrypted hlk_ for a user.
-	SaveUserCredential(ctx context.Context, userID string, encryptedHLK []byte) error
-	GetUserCredential(ctx context.Context, userID string) ([]byte, error)
+	// SaveCredential stores the encrypted hlk_ of one grant under a new
+	// credential id.
+	SaveCredential(ctx context.Context, credentialID, userID string, encryptedHLK []byte) error
+	// GetCredential returns the encrypted hlk_ of the user's grant credentialID.
+	// An empty credentialID reads the per-user row, which only tokens issued
+	// before per-grant credentials resolve and which nothing writes any more.
+	GetCredential(ctx context.Context, userID, credentialID string) ([]byte, error)
 
 	// Cleanup purges expired authorization codes, expired/long-revoked refresh
-	// tokens, and stale clients (older than clientRetention with no active refresh
-	// token or live auth code) so none of the tables grows without bound.
+	// tokens, grant credentials no refresh token references any more, and stale
+	// clients (older than clientRetention with no active refresh token or live
+	// auth code) so none of the tables grows without bound.
 	Cleanup(ctx context.Context) error
 
 	Close()

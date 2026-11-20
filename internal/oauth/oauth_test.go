@@ -117,7 +117,7 @@ func TestSigner_SignVerifyAndAudience(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	tok, err := sg.Sign("user-9", "https://mcp.test", "client-1", "mcp", time.Now())
+	tok, err := sg.Sign("user-9", "https://mcp.test", "client-1", "mcp", "", time.Now())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -172,7 +172,10 @@ func newTestProvider(t *testing.T) (*httptest.Server, *Provider) {
 	client.SetRemoteMode(true)
 
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Header.Get("Authorization") == "Bearer hlk_good" {
+		// Like /auth/me, any key of the account (default or restricted) maps to
+		// the same user id.
+		switch r.Header.Get("Authorization") {
+		case "Bearer hlk_good", "Bearer hlk_k0", "Bearer hlk_k1":
 			_, _ = w.Write([]byte(`{"id":"user-123"}`))
 			return
 		}
@@ -710,18 +713,18 @@ func TestSigner_RejectsAlgConfusionTamperAndExpiry(t *testing.T) {
 		t.Fatal("HS256 algorithm-confusion token must be rejected")
 	}
 	// Expired token.
-	expired, _ := sg.Sign("u", "https://mcp.test", "c", "mcp", time.Now().Add(-2*time.Hour))
+	expired, _ := sg.Sign("u", "https://mcp.test", "c", "mcp", "", time.Now().Add(-2*time.Hour))
 	if _, err := sg.Verify(expired, "https://mcp.test"); err == nil {
 		t.Fatal("expired token must be rejected")
 	}
 	// Tampered signature.
-	good, _ := sg.Sign("u", "https://mcp.test", "c", "mcp", time.Now())
+	good, _ := sg.Sign("u", "https://mcp.test", "c", "mcp", "", time.Now())
 	if _, err := sg.Verify(good[:len(good)-2]+"xy", "https://mcp.test"); err == nil {
 		t.Fatal("tampered token must be rejected")
 	}
 	// Wrong issuer.
 	other, _ := newSigner(testKeyPEM(t), "https://evil.test")
-	wrongIss, _ := other.Sign("u", "https://mcp.test", "c", "mcp", time.Now())
+	wrongIss, _ := other.Sign("u", "https://mcp.test", "c", "mcp", "", time.Now())
 	if _, err := sg.Verify(wrongIss, "https://mcp.test"); err == nil {
 		t.Fatal("wrong-issuer token must be rejected")
 	}
