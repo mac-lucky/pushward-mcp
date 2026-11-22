@@ -328,8 +328,9 @@ func (s *pgStore) RevokeRefreshToken(ctx context.Context, tokenHash string) (boo
 	return tag.RowsAffected() > 0, nil
 }
 
-func (s *pgStore) RevokeUserRefreshTokens(ctx context.Context, userID string) error {
-	_, err := s.pool.Exec(ctx, `UPDATE oauth_refresh_tokens SET revoked_at=now() WHERE user_id=$1 AND revoked_at IS NULL`, userID)
+func (s *pgStore) RevokeLegacyRefreshTokens(ctx context.Context, userID string) error {
+	_, err := s.pool.Exec(ctx,
+		`UPDATE oauth_refresh_tokens SET revoked_at=now() WHERE user_id=$1 AND credential_id='' AND revoked_at IS NULL`, userID)
 	return err
 }
 

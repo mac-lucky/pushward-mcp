@@ -67,6 +67,47 @@ func TestRefreshReplay_AfterPurgeRevokesFamily(t *testing.T) {
 	}
 }
 
+// A legacy chain has no grant id, so its replay ends every legacy chain of the
+// user, and none of the user's key-bound grants, whose keys it never held.
+func TestRefreshReplay_LegacyEndsLegacyChainsOnly(t *testing.T) {
+	srv, p := newTestProvider(t)
+	clk := &fakeClock{t: time.Now()}
+	p.setClock(clk.now)
+	m := p.store.(*memoryStore)
+	ctx := context.Background()
+	blob, err := p.crypto.Encrypt("user-123", "hlk_legacy")
+	if err != nil {
+		t.Fatal(err)
+	}
+	m.mu.Lock()
+	m.userCreds["user-123"] = blob
+	m.mu.Unlock()
+	for _, tok := range []string{"rtok-a", "rtok-b"} {
+		if err := m.SaveRefreshToken(ctx, &RefreshToken{
+			TokenHash: hashToken(tok), UserID: "user-123", ClientID: "c-old", Scope: "mcp",
+			Resource: "https://mcp.test", ExpiresAt: clk.now().Add(time.Hour),
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	_, bound := connect(t, srv, "hlk_k1")
+	_, a2 := refreshGrant(t, srv, "rtok-a")
+
+	clk.advance(refreshGrace + time.Second)
+	if !refreshRefused(t, srv.URL, "rtok-a") {
+		t.Fatal("a replayed legacy refresh token must be refused")
+	}
+	if !refreshRefused(t, srv.URL, a2) {
+		t.Fatal("a legacy replay must revoke the rest of its chain")
+	}
+	if !refreshRefused(t, srv.URL, "rtok-b") {
+		t.Fatal("a legacy replay must revoke the user's other legacy chains")
+	}
+	if _, next := refreshGrant(t, srv, bound); next == "" {
+		t.Fatal("a legacy replay must not end a key-bound grant of the user")
+	}
+}
+
 func TestCodeReplay_RevokesOnlyThatGrant(t *testing.T) {
 	srv, _ := newTestProvider(t)
 	clientID, verifier, redirect, code := obtainCode(t, srv, "hlk_k1")

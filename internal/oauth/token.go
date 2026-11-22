@@ -187,14 +187,14 @@ func (p *Provider) grantRefreshToken(w http.ResponseWriter, r *http.Request) {
 
 // revokeGrant is the theft response to a replayed code or refresh token: it
 // revokes the refresh tokens of the one grant the replay belongs to. A legacy
-// grant has no id of its own, so all of the user's tokens go, as they always
-// did.
+// grant has no id of its own, so all of the user's legacy chains go; the
+// user's key-bound grants hold keys of their own that the replay never had.
 func (p *Provider) revokeGrant(ctx context.Context, what, userID, credID string) {
 	var err error
 	if credID != "" {
 		err = p.store.RevokeGrantRefreshTokens(ctx, credID)
 	} else {
-		err = p.store.RevokeUserRefreshTokens(ctx, userID)
+		err = p.store.RevokeLegacyRefreshTokens(ctx, userID)
 	}
 	if err != nil {
 		p.log.Warn("failed to revoke refresh tokens after "+what, "user", userID, "err", err)

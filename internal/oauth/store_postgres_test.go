@@ -434,6 +434,12 @@ func TestPostgresGrantScopedRevoke(t *testing.T) {
 	if err := s.RevokeGrantRefreshTokens(ctx, ""); err == nil || !live("l1-"+suffix) {
 		t.Fatal("an empty credential id must be refused, not revoke legacy tokens")
 	}
+	if err := s.RevokeLegacyRefreshTokens(ctx, user); err != nil {
+		t.Fatal(err)
+	}
+	if live("l1-"+suffix) || !live("b1-"+suffix) {
+		t.Fatal("a legacy revoke must reach the user's legacy tokens and no key-bound grant")
+	}
 }
 
 // TestPostgresRotateRefreshToken checks the rotation transaction: of

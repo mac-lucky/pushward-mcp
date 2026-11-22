@@ -402,7 +402,7 @@ func TestMemoryStore_UsedClientOutlivesItsTokens(t *testing.T) {
 		_ = m.SaveClient(ctx, &Client{ID: id, RedirectURIs: []string{"https://client.test/cb"}})
 	}
 	_ = m.SaveRefreshToken(ctx, &RefreshToken{TokenHash: "rt", UserID: "u", ClientID: "used", ExpiresAt: clk.Add(time.Hour)})
-	_ = m.RevokeUserRefreshTokens(ctx, "u")
+	_ = m.RevokeLegacyRefreshTokens(ctx, "u")
 
 	clk = clk.Add(2 * clientRetention)
 	_ = m.Cleanup(ctx)

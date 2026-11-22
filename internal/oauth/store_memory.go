@@ -229,12 +229,12 @@ func (m *memoryStore) RotateRefreshToken(_ context.Context, oldHash string, next
 	return true, nil
 }
 
-func (m *memoryStore) RevokeUserRefreshTokens(_ context.Context, userID string) error {
+func (m *memoryStore) RevokeLegacyRefreshTokens(_ context.Context, userID string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	t := m.now()
 	for _, rt := range m.refresh {
-		if rt.UserID == userID && rt.RevokedAt == nil {
+		if rt.UserID == userID && rt.CredentialID == "" && rt.RevokedAt == nil {
 			rt.RevokedAt = &t
 		}
 	}

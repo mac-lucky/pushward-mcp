@@ -100,9 +100,10 @@ type Store interface {
 	// RevokeRefreshToken's single-winner result: on false nothing is saved, and
 	// a failed save leaves oldHash live, so a grant never ends up without a token.
 	RotateRefreshToken(ctx context.Context, oldHash string, next *RefreshToken) (bool, error)
-	// RevokeUserRefreshTokens revokes all of a user's refresh tokens (theft
-	// response).
-	RevokeUserRefreshTokens(ctx context.Context, userID string) error
+	// RevokeLegacyRefreshTokens revokes the user's refresh tokens that carry no
+	// credential id (theft response for a legacy chain, which no id tells apart
+	// from the user's other legacy chains). Key-bound grants are left alone.
+	RevokeLegacyRefreshTokens(ctx context.Context, userID string) error
 	// RevokeGrantRefreshTokens revokes every refresh token of the key-bound grant
 	// credentialID and no other grant. An empty id is an error, never "all
 	// legacy tokens".
