@@ -68,7 +68,7 @@ func (p *Provider) resourceOK(resource string) bool {
 
 // handleAuthorize renders the consent screen (GET) and processes it (POST).
 func (p *Provider) handleAuthorize(w http.ResponseWriter, r *http.Request) {
-	if !p.authorizeLimiter.Allow(p.clientIP(r)) {
+	if !p.authorizeLimiter.Allow(rateKey(p.clientIP(r))) {
 		http.Error(w, "rate limited", http.StatusTooManyRequests)
 		return
 	}

@@ -1,6 +1,7 @@
 package oauth
 
 import (
+	"net/netip"
 	"sync"
 	"time"
 )
@@ -11,9 +12,10 @@ import (
 const maxLimiterKeys = 100_000
 
 // keyedLimiter is a small token-bucket rate limiter keyed by an arbitrary
-// string (client IP, client_id). It avoids an external dependency and is safe
-// for concurrent use. Stale buckets are evicted opportunistically and the map
-// is size-capped (fail-closed) so it can never grow without bound.
+// string (see rateKey). It avoids an external dependency and is safe for
+// concurrent use. Stale buckets are evicted opportunistically and the map is
+// size-capped; a full map makes room rather than refusing new keys, so a flood
+// of addresses cannot lock out legitimate ones.
 type keyedLimiter struct {
 	mu      sync.Mutex
 	buckets map[string]*bucket
@@ -41,12 +43,44 @@ func newKeyedLimiter(perMinute, burst int) *keyedLimiter {
 	}
 }
 
-// Allow reports whether a request keyed by k may proceed.
+// Allow reports whether a request keyed by k may proceed, spending a token if
+// so.
 func (l *keyedLimiter) Allow(k string) bool {
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	now := l.now()
+	b := l.bucketLocked(k)
+	if b.tokens < 1 {
+		return false
+	}
+	b.tokens--
+	return true
+}
 
+// Peek reports whether k has a token left, without spending it. With Charge it
+// limits only the requests that turn out to fail.
+func (l *keyedLimiter) Peek(k string) bool {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	b, ok := l.buckets[k]
+	if !ok {
+		return true
+	}
+	l.refillLocked(b, l.now())
+	return b.tokens >= 1
+}
+
+// Charge spends one of k's tokens, if it has one left.
+func (l *keyedLimiter) Charge(k string) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	b := l.bucketLocked(k)
+	b.tokens = max(b.tokens-1, 0)
+}
+
+// bucketLocked returns k's bucket refilled up to now, creating a full one if k
+// has none. Caller holds l.mu.
+func (l *keyedLimiter) bucketLocked(k string) *bucket {
+	now := l.now()
 	if now.Sub(l.lastGC) > 10*time.Minute {
 		for key, b := range l.buckets {
 			if now.Sub(b.last) > 10*time.Minute {
@@ -55,32 +89,50 @@ func (l *keyedLimiter) Allow(k string) bool {
 		}
 		l.lastGC = now
 	}
-
-	b, ok := l.buckets[k]
-	if !ok {
-		// At capacity for a new key: aggressively evict recently-idle buckets to
-		// make room; if the map is still full, fail closed (deny) rather than grow.
-		if len(l.buckets) >= l.max {
-			for key, bb := range l.buckets {
-				if now.Sub(bb.last) > time.Minute {
-					delete(l.buckets, key)
-				}
-			}
-			if len(l.buckets) >= l.max {
-				return false
+	if b, ok := l.buckets[k]; ok {
+		l.refillLocked(b, now)
+		return b
+	}
+	if len(l.buckets) >= l.max {
+		// A bucket idle for a minute has refilled, so dropping it loses nothing.
+		// If every key is that active, drop an arbitrary one: at worst it gets a
+		// fresh burst, where refusing the new key would lock its owner out.
+		for key, b := range l.buckets {
+			if now.Sub(b.last) > time.Minute {
+				delete(l.buckets, key)
 			}
 		}
-		l.buckets[k] = &bucket{tokens: l.burst - 1, last: now}
-		return true
+		if len(l.buckets) >= l.max {
+			for key := range l.buckets {
+				delete(l.buckets, key)
+				break
+			}
+		}
 	}
-	b.tokens += now.Sub(b.last).Seconds() * l.rate
-	if b.tokens > l.burst {
-		b.tokens = l.burst
-	}
+	b := &bucket{tokens: l.burst, last: now}
+	l.buckets[k] = b
+	return b
+}
+
+func (l *keyedLimiter) refillLocked(b *bucket, now time.Time) {
+	b.tokens = min(b.tokens+now.Sub(b.last).Seconds()*l.rate, l.burst)
 	b.last = now
-	if b.tokens < 1 {
-		return false
+}
+
+// rateKey is the limiter key of a client address: an IPv4 address as is, an
+// IPv6 address by its /64, which one subscriber usually holds whole and can
+// rotate through freely. Anything unparseable is used verbatim.
+func rateKey(ip string) string {
+	a, err := netip.ParseAddr(ip)
+	if err != nil {
+		return ip
 	}
-	b.tokens--
-	return true
+	if a = a.Unmap(); a.Is4() {
+		return a.String()
+	}
+	p, err := a.WithZone("").Prefix(64)
+	if err != nil {
+		return ip
+	}
+	return p.String()
 }

@@ -15,10 +15,21 @@ func (p *Provider) handleToken(w http.ResponseWriter, r *http.Request) {
 		oauthError(w, http.StatusMethodNotAllowed, "invalid_request", "POST required")
 		return
 	}
-	if !p.tokenLimiter.Allow(p.clientIP(r)) {
+	// Hosted connectors (Claude.ai, ChatGPT) refresh every user's grant from a
+	// few shared egress addresses, so only failed requests cost a token: valid
+	// refreshes never drain the bucket, guessed or replayed tokens still do.
+	key := rateKey(p.clientIP(r))
+	if !p.tokenLimiter.Peek(key) {
 		oauthError(w, http.StatusTooManyRequests, "temporarily_unavailable", "rate limited")
 		return
 	}
+	sw := &statusWriter{ResponseWriter: w, status: http.StatusOK}
+	defer func() {
+		if sw.status >= 400 && sw.status < 500 {
+			p.tokenLimiter.Charge(key)
+		}
+	}()
+	w = sw
 	r.Body = http.MaxBytesReader(w, r.Body, maxFormBytes)
 	if err := r.ParseForm(); err != nil {
 		oauthError(w, http.StatusBadRequest, "invalid_request", "invalid form body")
@@ -32,6 +43,17 @@ func (p *Provider) handleToken(w http.ResponseWriter, r *http.Request) {
 	default:
 		oauthError(w, http.StatusBadRequest, "unsupported_grant_type", "unsupported grant_type")
 	}
+}
+
+// statusWriter records the status a handler answered with.
+type statusWriter struct {
+	http.ResponseWriter
+	status int
+}
+
+func (s *statusWriter) WriteHeader(code int) {
+	s.status = code
+	s.ResponseWriter.WriteHeader(code)
 }
 
 func (p *Provider) grantAuthorizationCode(w http.ResponseWriter, r *http.Request) {

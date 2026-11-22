@@ -64,7 +64,7 @@ func New(ctx context.Context, cfg *Config, log *slog.Logger) (*Provider, error) 
 		now:              time.Now,
 		cred:             newCredCache(credCacheTTL, credCacheMax, time.Now),
 		authorizeLimiter: newKeyedLimiter(60, 20),
-		tokenLimiter:     newKeyedLimiter(120, 30),
+		tokenLimiter:     newKeyedLimiter(120, 30), // failed requests only, see handleToken
 		registerLimiter:  newKeyedLimiter(10, 5),
 		bgCtx:            bgCtx,
 		cancel:           cancel,

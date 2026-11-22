@@ -57,7 +57,7 @@ func (p *Provider) handleRegister(w http.ResponseWriter, r *http.Request) {
 		oauthError(w, http.StatusMethodNotAllowed, "invalid_request", "POST required")
 		return
 	}
-	if !p.registerLimiter.Allow(p.clientIP(r)) {
+	if !p.registerLimiter.Allow(rateKey(p.clientIP(r))) {
 		oauthError(w, http.StatusTooManyRequests, "temporarily_unavailable", "rate limited")
 		return
 	}
