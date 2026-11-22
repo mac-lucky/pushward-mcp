@@ -279,16 +279,16 @@ func (s *pgStore) ConsumeAuthCode(ctx context.Context, codeHash, credentialID st
 	return nil, ErrNotFound
 }
 
-// insertRefreshTokenSQL saves a refresh token and marks its client used, at
+// insertRefreshSQL saves a refresh token and marks its client used, at
 // most once a day, in the same statement.
-const insertRefreshTokenSQL = `WITH used AS (
+const insertRefreshSQL = `WITH used AS (
   UPDATE oauth_clients SET last_used_at=now()
   WHERE client_id=$3 AND (last_used_at IS NULL OR last_used_at < now() - interval '1 day'))
 INSERT INTO oauth_refresh_tokens (token_hash, user_id, client_id, scope, resource, prev_hash, credential_id, family, expires_at)
  VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`
 
 func (s *pgStore) SaveRefreshToken(ctx context.Context, rt *RefreshToken) error {
-	_, err := s.pool.Exec(ctx, insertRefreshTokenSQL,
+	_, err := s.pool.Exec(ctx, insertRefreshSQL,
 		rt.TokenHash, rt.UserID, rt.ClientID, rt.Scope, rt.Resource, rt.PrevHash, rt.CredentialID, rt.Family, rt.ExpiresAt)
 	return err
 }
@@ -301,7 +301,7 @@ func (s *pgStore) RotateRefreshToken(ctx context.Context, oldHash string, next *
 			return err
 		}
 		won = true
-		_, err = tx.Exec(ctx, insertRefreshTokenSQL,
+		_, err = tx.Exec(ctx, insertRefreshSQL,
 			next.TokenHash, next.UserID, next.ClientID, next.Scope, next.Resource, next.PrevHash, next.CredentialID, next.Family, next.ExpiresAt)
 		return err
 	})
