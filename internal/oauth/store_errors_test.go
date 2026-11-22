@@ -24,7 +24,7 @@ func (f *flakyStore) GetRefreshToken(context.Context, string) (*RefreshToken, er
 	return nil, f.err
 }
 
-func (f *flakyStore) ConsumeAuthCode(context.Context, string) (*AuthCode, error) {
+func (f *flakyStore) ConsumeAuthCode(context.Context, string, string) (*AuthCode, error) {
 	return nil, f.err
 }
 

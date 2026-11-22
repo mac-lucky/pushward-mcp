@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -142,7 +143,11 @@ func TestGrantKey_LegacyTokenResolvesUserRow(t *testing.T) {
 	if got := mcpKey(t, srv, refreshed); got != "hlk_legacy" {
 		t.Fatalf("refreshed legacy token sees %q, want hlk_legacy", got)
 	}
-	// An older release must still find the rotated token of a legacy grant.
+	// An older release must still find the rotated token of a legacy grant,
+	// and a legacy grant gets no family prefix.
+	if strings.Contains(legacyRefresh, ".") {
+		t.Fatalf("legacy refresh token %q must stay unprefixed", legacyRefresh)
+	}
 	if rt, err := m.GetRefreshToken(ctx, hashToken(legacyRefresh)); err != nil || rt.CredentialID != "" {
 		t.Fatalf("older release cannot rotate a legacy grant: %+v %v", rt, err)
 	}
@@ -158,7 +163,7 @@ func TestGrantKey_OlderReleaseCannotRedeemKeyBoundGrant(t *testing.T) {
 	m := p.store.(*memoryStore)
 
 	clientID, verifier, redirect, code := obtainCode(t, srv, "hlk_k1")
-	if _, err := m.ConsumeAuthCode(ctx, hashToken(code)); !errors.Is(err, ErrNotFound) {
+	if _, err := m.ConsumeAuthCode(ctx, hashToken(code), ""); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("older release redeemed a code with a pending key: %v", err)
 	}
 	access, refresh := exchangeForTokens(t, srv, code, clientID, verifier, redirect)
@@ -238,7 +243,7 @@ func TestMemoryStore_PendingKeyAndCredentialCleanup(t *testing.T) {
 	if err := m.SaveAuthCode(ctx, &AuthCode{CodeHash: "h", UserID: "u", EncryptedHLK: []byte("pending"), ExpiresAt: clk.Add(time.Minute)}); err != nil {
 		t.Fatal(err)
 	}
-	ac, err := m.ConsumeAuthCode(ctx, "h")
+	ac, err := m.ConsumeAuthCode(ctx, "h", "")
 	if err != nil || string(ac.EncryptedHLK) != "pending" {
 		t.Fatalf("consume must return the pending key: %+v %v", ac, err)
 	}

@@ -84,6 +84,15 @@ CREATE TABLE IF NOT EXISTS oauth_grant_credentials (
 ALTER TABLE oauth_auth_codes ADD COLUMN IF NOT EXISTS encrypted_hlk BYTEA;
 ALTER TABLE oauth_refresh_tokens ADD COLUMN IF NOT EXISTS credential_id TEXT NOT NULL DEFAULT '';
 CREATE INDEX IF NOT EXISTS idx_oauth_refresh_credential ON oauth_refresh_tokens(credential_id);`,
+	// 4: let a replay end only its own grant. A used code records the
+	// credential it was exchanged into, and refresh tokens carry the grant's
+	// family, which also rides in the raw token so a replay of a purged token
+	// still finds the grant. Defaulted columns: older releases write '' and
+	// keep working.
+	`
+ALTER TABLE oauth_auth_codes ADD COLUMN IF NOT EXISTS credential_id TEXT NOT NULL DEFAULT '';
+ALTER TABLE oauth_refresh_tokens ADD COLUMN IF NOT EXISTS family TEXT NOT NULL DEFAULT '';
+CREATE INDEX IF NOT EXISTS idx_oauth_refresh_family ON oauth_refresh_tokens(family) WHERE family <> '';`,
 }
 
 // migrationAdvisoryLock is a fixed key for pg_advisory_xact_lock so only one pod
@@ -232,16 +241,16 @@ func (s *pgStore) SaveAuthCode(ctx context.Context, ac *AuthCode) error {
 	return err
 }
 
-func (s *pgStore) ConsumeAuthCode(ctx context.Context, codeHash string) (*AuthCode, error) {
-	ac := &AuthCode{CodeHash: codeHash}
+func (s *pgStore) ConsumeAuthCode(ctx context.Context, codeHash, credentialID string) (*AuthCode, error) {
+	ac := &AuthCode{CodeHash: codeHash, CredentialID: credentialID}
 	// RETURNING sees the updated row, so the pending key comes from the locked
 	// pre-update copy in old: the used code keeps no copy of it.
 	err := s.pool.QueryRow(ctx,
-		`UPDATE oauth_auth_codes a SET used_at=now(), encrypted_hlk=NULL
+		`UPDATE oauth_auth_codes a SET used_at=now(), encrypted_hlk=NULL, credential_id=$2
 		 FROM (SELECT code_hash, encrypted_hlk FROM oauth_auth_codes WHERE code_hash=$1 FOR UPDATE) old
 		 WHERE a.code_hash=old.code_hash AND a.expires_at>now() AND a.used_at IS NULL
 		 RETURNING a.client_id, a.user_id, a.scope, a.redirect_uri, a.code_challenge, a.resource, old.encrypted_hlk, a.expires_at`,
-		codeHash).
+		codeHash, credentialID).
 		Scan(&ac.ClientID, &ac.UserID, &ac.Scope, &ac.RedirectURI, &ac.CodeChallenge, &ac.Resource, &ac.EncryptedHLK, &ac.ExpiresAt)
 	if err == nil {
 		return ac, nil
@@ -252,23 +261,24 @@ func (s *pgStore) ConsumeAuthCode(ctx context.Context, codeHash string) (*AuthCo
 	// Distinguish reuse (used_at set) from absent/expired. On reuse, surface the
 	// user_id so the caller can revoke the grant's token family (replay = attack).
 	var used *time.Time
-	var userID string
-	e2 := s.pool.QueryRow(ctx, `SELECT used_at, user_id FROM oauth_auth_codes WHERE code_hash=$1`, codeHash).Scan(&used, &userID)
+	var userID, credID string
+	e2 := s.pool.QueryRow(ctx, `SELECT used_at, user_id, credential_id FROM oauth_auth_codes WHERE code_hash=$1`, codeHash).
+		Scan(&used, &userID, &credID)
 	if e2 != nil && !errors.Is(e2, pgx.ErrNoRows) {
 		return nil, e2
 	}
 	if e2 == nil && used != nil {
-		return &AuthCode{CodeHash: codeHash, UserID: userID}, ErrCodeAlreadyUsed
+		return &AuthCode{CodeHash: codeHash, UserID: userID, CredentialID: credID}, ErrCodeAlreadyUsed
 	}
 	return nil, ErrNotFound
 }
 
-const insertRefreshTokenSQL = `INSERT INTO oauth_refresh_tokens (token_hash, user_id, client_id, scope, resource, prev_hash, credential_id, expires_at)
- VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`
+const insertRefreshTokenSQL = `INSERT INTO oauth_refresh_tokens (token_hash, user_id, client_id, scope, resource, prev_hash, credential_id, family, expires_at)
+ VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`
 
 func (s *pgStore) SaveRefreshToken(ctx context.Context, rt *RefreshToken) error {
 	_, err := s.pool.Exec(ctx, insertRefreshTokenSQL,
-		rt.TokenHash, rt.UserID, rt.ClientID, rt.Scope, rt.Resource, rt.PrevHash, rt.CredentialID, rt.ExpiresAt)
+		rt.TokenHash, rt.UserID, rt.ClientID, rt.Scope, rt.Resource, rt.PrevHash, rt.CredentialID, rt.Family, rt.ExpiresAt)
 	return err
 }
 
@@ -281,7 +291,7 @@ func (s *pgStore) RotateRefreshToken(ctx context.Context, oldHash string, next *
 		}
 		won = true
 		_, err = tx.Exec(ctx, insertRefreshTokenSQL,
-			next.TokenHash, next.UserID, next.ClientID, next.Scope, next.Resource, next.PrevHash, next.CredentialID, next.ExpiresAt)
+			next.TokenHash, next.UserID, next.ClientID, next.Scope, next.Resource, next.PrevHash, next.CredentialID, next.Family, next.ExpiresAt)
 		return err
 	})
 	return won && err == nil, err
@@ -290,9 +300,9 @@ func (s *pgStore) RotateRefreshToken(ctx context.Context, oldHash string, next *
 func (s *pgStore) GetRefreshToken(ctx context.Context, tokenHash string) (*RefreshToken, error) {
 	rt := &RefreshToken{TokenHash: tokenHash}
 	err := s.pool.QueryRow(ctx,
-		`SELECT user_id, client_id, scope, resource, prev_hash, credential_id, expires_at, revoked_at
+		`SELECT user_id, client_id, scope, resource, prev_hash, credential_id, family, expires_at, revoked_at
 		 FROM oauth_refresh_tokens WHERE token_hash=$1`, tokenHash).
-		Scan(&rt.UserID, &rt.ClientID, &rt.Scope, &rt.Resource, &rt.PrevHash, &rt.CredentialID, &rt.ExpiresAt, &rt.RevokedAt)
+		Scan(&rt.UserID, &rt.ClientID, &rt.Scope, &rt.Resource, &rt.PrevHash, &rt.CredentialID, &rt.Family, &rt.ExpiresAt, &rt.RevokedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, ErrNotFound
 	}
@@ -318,6 +328,17 @@ func (s *pgStore) RevokeGrantRefreshTokens(ctx context.Context, credentialID str
 	}
 	_, err := s.pool.Exec(ctx, `UPDATE oauth_refresh_tokens SET revoked_at=now() WHERE credential_id=$1 AND revoked_at IS NULL`, credentialID)
 	return err
+}
+
+func (s *pgStore) RevokeRefreshFamily(ctx context.Context, family string) (bool, error) {
+	if family == "" {
+		return false, nil
+	}
+	tag, err := s.pool.Exec(ctx, `UPDATE oauth_refresh_tokens SET revoked_at=now() WHERE family=$1 AND revoked_at IS NULL`, family)
+	if err != nil {
+		return false, err
+	}
+	return tag.RowsAffected() > 0, nil
 }
 
 func (s *pgStore) SaveCredential(ctx context.Context, credentialID, userID string, encryptedHLK []byte) error {

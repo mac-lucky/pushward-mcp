@@ -136,7 +136,7 @@ func (m *memoryStore) SaveAuthCode(_ context.Context, ac *AuthCode) error {
 	return nil
 }
 
-func (m *memoryStore) ConsumeAuthCode(_ context.Context, codeHash string) (*AuthCode, error) {
+func (m *memoryStore) ConsumeAuthCode(_ context.Context, codeHash, credentialID string) (*AuthCode, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	mc, ok := m.codes[codeHash]
@@ -147,13 +147,14 @@ func (m *memoryStore) ConsumeAuthCode(_ context.Context, codeHash string) (*Auth
 	// expired-but-used code is still reported as ErrCodeAlreadyUsed with its
 	// user_id - matching the Postgres store's retention. Cleanup handles eviction.
 	if mc.usedAt != nil {
-		return &AuthCode{CodeHash: codeHash, UserID: mc.ac.UserID}, ErrCodeAlreadyUsed
+		return &AuthCode{CodeHash: codeHash, UserID: mc.ac.UserID, CredentialID: mc.ac.CredentialID}, ErrCodeAlreadyUsed
 	}
 	if mc.ac.ExpiresAt.Before(m.now()) {
 		return nil, ErrNotFound
 	}
 	t := m.now()
 	mc.usedAt = &t
+	mc.ac.CredentialID = credentialID
 	cp := mc.ac
 	mc.ac.EncryptedHLK = nil
 	return &cp, nil
@@ -229,6 +230,23 @@ func (m *memoryStore) RevokeGrantRefreshTokens(_ context.Context, credentialID s
 		}
 	}
 	return nil
+}
+
+func (m *memoryStore) RevokeRefreshFamily(_ context.Context, family string) (bool, error) {
+	if family == "" {
+		return false, nil
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	t := m.now()
+	revoked := false
+	for _, rt := range m.refresh {
+		if rt.Family == family && rt.RevokedAt == nil {
+			rt.RevokedAt = &t
+			revoked = true
+		}
+	}
+	return revoked, nil
 }
 
 func (m *memoryStore) SaveCredential(_ context.Context, credentialID, userID string, encryptedHLK []byte) error {

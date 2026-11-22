@@ -896,13 +896,13 @@ func TestConsumeAuthCode_MemoryContract(t *testing.T) {
 	if err := m.SaveAuthCode(ctx, &AuthCode{CodeHash: "h1", ExpiresAt: time.Now().Add(time.Minute)}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := m.ConsumeAuthCode(ctx, "h1"); err != nil {
+	if _, err := m.ConsumeAuthCode(ctx, "h1", ""); err != nil {
 		t.Fatalf("first consume must succeed: %v", err)
 	}
-	if _, err := m.ConsumeAuthCode(ctx, "h1"); !errors.Is(err, ErrCodeAlreadyUsed) {
+	if _, err := m.ConsumeAuthCode(ctx, "h1", ""); !errors.Is(err, ErrCodeAlreadyUsed) {
 		t.Fatalf("replay must be ErrCodeAlreadyUsed, got %v", err)
 	}
-	if _, err := m.ConsumeAuthCode(ctx, "missing"); !errors.Is(err, ErrNotFound) {
+	if _, err := m.ConsumeAuthCode(ctx, "missing", ""); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("absent code must be ErrNotFound, got %v", err)
 	}
 }
@@ -920,17 +920,17 @@ func TestConsumeAuthCode_ReuseSurfacesUserID(t *testing.T) {
 	if err := m.SaveAuthCode(ctx, &AuthCode{CodeHash: "h", UserID: "user-7", ExpiresAt: clk.Add(time.Minute)}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := m.ConsumeAuthCode(ctx, "h"); err != nil {
+	if _, err := m.ConsumeAuthCode(ctx, "h", ""); err != nil {
 		t.Fatalf("first consume must succeed: %v", err)
 	}
-	ac, err := m.ConsumeAuthCode(ctx, "h")
+	ac, err := m.ConsumeAuthCode(ctx, "h", "")
 	if !errors.Is(err, ErrCodeAlreadyUsed) || ac == nil || ac.UserID != "user-7" {
 		t.Fatalf("replay must be ErrCodeAlreadyUsed with the user_id, got %v %+v", err, ac)
 	}
 
 	// After expiry the used code must STILL report reuse (not ErrNotFound).
 	clk = clk.Add(2 * time.Minute)
-	ac2, err := m.ConsumeAuthCode(ctx, "h")
+	ac2, err := m.ConsumeAuthCode(ctx, "h", "")
 	if !errors.Is(err, ErrCodeAlreadyUsed) || ac2 == nil || ac2.UserID != "user-7" {
 		t.Fatalf("expired-but-used code must still report reuse with user_id, got %v %+v", err, ac2)
 	}

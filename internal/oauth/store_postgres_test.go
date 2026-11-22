@@ -187,7 +187,7 @@ func TestPostgresGrantCredentials(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			got[i], errs[i] = s.ConsumeAuthCode(ctx, code)
+			got[i], errs[i] = s.ConsumeAuthCode(ctx, code, "")
 		}()
 	}
 	wg.Wait()
@@ -254,6 +254,78 @@ func TestPostgresGrantCredentials(t *testing.T) {
 	}
 	if _, err := s.GetCredential(ctx, user, ""); err != nil {
 		t.Fatalf("cleanup must leave the per-user row: %v", err)
+	}
+}
+
+// TestPostgresGrantScopedRevoke covers what a replay needs from the store: a
+// used code names the credential it was exchanged into, and the grant and
+// family revokes reach that grant's tokens and no other.
+func TestPostgresGrantScopedRevoke(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	s := testPGStore(t, ctx)
+
+	suffix, _ := randomToken(8)
+	user := "pgrev-" + suffix
+	t.Cleanup(func() {
+		c := context.Background()
+		_, _ = s.pool.Exec(c, `DELETE FROM oauth_auth_codes WHERE user_id=$1`, user)
+		_, _ = s.pool.Exec(c, `DELETE FROM oauth_refresh_tokens WHERE user_id=$1`, user)
+	})
+
+	code := "code-" + suffix
+	if err := s.SaveAuthCode(ctx, &AuthCode{
+		CodeHash: code, ClientID: "c", UserID: user, Scope: "mcp", RedirectURI: "https://client.test/cb",
+		CodeChallenge: "x", Resource: "https://mcp.test", ExpiresAt: time.Now().Add(time.Minute),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.ConsumeAuthCode(ctx, code, "cred-a"); err != nil {
+		t.Fatal(err)
+	}
+	if ac, err := s.ConsumeAuthCode(ctx, code, "cred-other"); !errors.Is(err, ErrCodeAlreadyUsed) || ac.CredentialID != "cred-a" {
+		t.Fatalf("a replay must name the first exchange's credential: %+v %v", ac, err)
+	}
+
+	live := func(hash string) bool {
+		rt, err := s.GetRefreshToken(ctx, hash)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return rt.RevokedAt == nil
+	}
+	for _, rt := range []*RefreshToken{
+		{TokenHash: "a1-" + suffix, CredentialID: "cred-a-" + suffix, Family: "fam-a-" + suffix},
+		{TokenHash: "a2-" + suffix, CredentialID: "cred-a-" + suffix},
+		{TokenHash: "b1-" + suffix, CredentialID: "cred-b-" + suffix, Family: "fam-b-" + suffix},
+		{TokenHash: "l1-" + suffix},
+	} {
+		rt.UserID, rt.ClientID, rt.Scope, rt.Resource, rt.ExpiresAt = user, "c", "mcp", "https://mcp.test", time.Now().Add(time.Hour)
+		if err := s.SaveRefreshToken(ctx, rt); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if rt, err := s.GetRefreshToken(ctx, "a1-"+suffix); err != nil || rt.Family != "fam-a-"+suffix {
+		t.Fatalf("refresh token lost its family: %+v %v", rt, err)
+	}
+
+	if revoked, err := s.RevokeRefreshFamily(ctx, "fam-a-"+suffix); err != nil || !revoked {
+		t.Fatalf("family revoke: %v %v, want a live token revoked", revoked, err)
+	}
+	if revoked, err := s.RevokeRefreshFamily(ctx, "fam-a-"+suffix); err != nil || revoked {
+		t.Fatalf("second family revoke: %v %v, want nothing left", revoked, err)
+	}
+	if live("a1-"+suffix) || !live("a2-"+suffix) || !live("b1-"+suffix) || !live("l1-"+suffix) {
+		t.Fatal("a family revoke must reach exactly that family's tokens")
+	}
+	if err := s.RevokeGrantRefreshTokens(ctx, "cred-a-"+suffix); err != nil {
+		t.Fatal(err)
+	}
+	if live("a2-"+suffix) || !live("b1-"+suffix) || !live("l1-"+suffix) {
+		t.Fatal("a grant revoke must reach exactly that grant's tokens")
+	}
+	if err := s.RevokeGrantRefreshTokens(ctx, ""); err == nil || !live("l1-"+suffix) {
+		t.Fatal("an empty credential id must be refused, not revoke legacy tokens")
 	}
 }
 
@@ -371,7 +443,7 @@ INSERT INTO oauth_auth_codes (code_hash, client_id, user_id, scope, redirect_uri
 	if err != nil || rt.CredentialID != "" {
 		t.Fatalf("pre-upgrade refresh token must have no credential id: %+v %v", rt, err)
 	}
-	ac, err := s.ConsumeAuthCode(ctx, "code")
+	ac, err := s.ConsumeAuthCode(ctx, "code", "")
 	if err != nil || ac.EncryptedHLK != nil {
 		t.Fatalf("pre-upgrade code must carry no pending key: %+v %v", ac, err)
 	}

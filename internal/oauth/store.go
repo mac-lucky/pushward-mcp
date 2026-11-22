@@ -39,7 +39,10 @@ type AuthCode struct {
 	CodeChallenge string
 	Resource      string
 	EncryptedHLK  []byte
-	ExpiresAt     time.Time
+	// CredentialID is the credential the code was exchanged into, recorded by
+	// ConsumeAuthCode so a replay can end that one grant.
+	CredentialID string
+	ExpiresAt    time.Time
 }
 
 // RefreshToken is an issued refresh token (stored hashed). Rotation-reuse theft
@@ -51,6 +54,12 @@ type AuthCode struct {
 // CredentialID names the grant's stored key and is carried unchanged through
 // every rotation. Empty means a grant from before per-grant credentials, which
 // resolves the per-user row.
+//
+// Family is a random id of a key-bound grant, also carried through every
+// rotation and sent as the "<family>." prefix of its raw refresh tokens, so a
+// token replayed after its row was purged still names the grant to revoke. It
+// is never the credential id, which every access token shows. Empty on legacy
+// grants and on key-bound ones until their next rotation here.
 type RefreshToken struct {
 	TokenHash    string
 	UserID       string
@@ -59,6 +68,7 @@ type RefreshToken struct {
 	Resource     string
 	PrevHash     string
 	CredentialID string
+	Family       string
 	ExpiresAt    time.Time
 	RevokedAt    *time.Time
 }
@@ -70,12 +80,14 @@ type Store interface {
 
 	SaveAuthCode(ctx context.Context, ac *AuthCode) error
 	// ConsumeAuthCode atomically fetches and marks an unexpired, unused code as
-	// used, returning its pending EncryptedHLK and clearing it from the store.
+	// used, returning its pending EncryptedHLK and clearing it from the store,
+	// and records credentialID as the credential it is exchanged into.
 	// It returns ErrNotFound if missing/expired and ErrCodeAlreadyUsed if the
 	// code was already consumed - and on that reuse path it returns a non-nil
-	// *AuthCode carrying at least the UserID, so the caller can treat the replay as
-	// an attack and revoke the tokens minted from that grant.
-	ConsumeAuthCode(ctx context.Context, codeHash string) (*AuthCode, error)
+	// *AuthCode carrying at least the UserID and the recorded CredentialID, so
+	// the caller can treat the replay as an attack and revoke the tokens minted
+	// from that grant.
+	ConsumeAuthCode(ctx context.Context, codeHash, credentialID string) (*AuthCode, error)
 
 	SaveRefreshToken(ctx context.Context, rt *RefreshToken) error
 	GetRefreshToken(ctx context.Context, tokenHash string) (*RefreshToken, error)
@@ -95,6 +107,9 @@ type Store interface {
 	// credentialID and no other grant. An empty id is an error, never "all
 	// legacy tokens".
 	RevokeGrantRefreshTokens(ctx context.Context, credentialID string) error
+	// RevokeRefreshFamily revokes the live refresh tokens of family and reports
+	// whether there were any.
+	RevokeRefreshFamily(ctx context.Context, family string) (bool, error)
 
 	// SaveCredential stores the encrypted hlk_ of one grant under a new
 	// credential id.
