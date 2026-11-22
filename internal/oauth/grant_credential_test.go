@@ -303,7 +303,9 @@ func TestRefresh_DeadKeyEndsOnlyItsGrant(t *testing.T) {
 	if status != http.StatusBadRequest || m["error"] != "invalid_grant" {
 		t.Fatalf("refresh with a rolled key: %d %v, want invalid_grant", status, m)
 	}
-	// The grant is over, not just this one token.
+	// The grant is over, not just this one refresh: with the key accepted
+	// again, only the revoke can still refuse the token.
+	up.dead.Delete("Bearer hlk_k1")
 	if status, _ := tokenPost(t, srv, url.Values{"grant_type": {"refresh_token"}, "refresh_token": {refreshA}}); status == http.StatusOK {
 		t.Fatal("a grant ended for a dead key must stay ended")
 	}

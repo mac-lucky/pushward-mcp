@@ -69,6 +69,27 @@ func TestToken_StoreErrorIsServerError(t *testing.T) {
 	}
 }
 
+// credStoreDown fails only the credential read, so a refresh gets as far as
+// the key check.
+type credStoreDown struct{ Store }
+
+func (credStoreDown) GetCredential(context.Context, string, string) ([]byte, error) {
+	return nil, errStoreDown
+}
+
+func TestRefresh_CredentialStoreErrorKeepsGrant(t *testing.T) {
+	srv, p := newTestProvider(t)
+	_, refresh := connect(t, srv, "hlk_k1")
+	store := p.store
+	p.store = credStoreDown{store}
+	status, m := tokenPost(t, srv, url.Values{"grant_type": {"refresh_token"}, "refresh_token": {refresh}})
+	if status != http.StatusInternalServerError || m["error"] != "server_error" {
+		t.Fatalf("credential store outage on refresh: %d %v, want 500 server_error", status, m)
+	}
+	p.store = store
+	_, _ = refreshGrant(t, srv, refresh) // fails the test unless the grant is still live
+}
+
 func TestRotateRefreshToken_MemoryWinsOnce(t *testing.T) {
 	m := newMemoryStore()
 	ctx := context.Background()
