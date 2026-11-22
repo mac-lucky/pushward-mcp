@@ -3,6 +3,7 @@ package oauth
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"regexp"
 	"strings"
@@ -253,6 +254,66 @@ func TestPostgresGrantCredentials(t *testing.T) {
 	}
 	if _, err := s.GetCredential(ctx, user, ""); err != nil {
 		t.Fatalf("cleanup must leave the per-user row: %v", err)
+	}
+}
+
+// TestPostgresRotateRefreshToken checks the rotation transaction: of
+// concurrent rotations of one token exactly one saves a successor, and a
+// failed save rolls the revoke back so the grant keeps a live token.
+func TestPostgresRotateRefreshToken(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	s := testPGStore(t, ctx)
+
+	suffix, _ := randomToken(8)
+	user := "pgrot-" + suffix
+	t.Cleanup(func() {
+		_, _ = s.pool.Exec(context.Background(), `DELETE FROM oauth_refresh_tokens WHERE user_id=$1`, user)
+	})
+	tok := func(hash, prev string) *RefreshToken {
+		return &RefreshToken{TokenHash: hash, UserID: user, ClientID: "c", Scope: "mcp", Resource: "https://mcp.test",
+			PrevHash: prev, ExpiresAt: time.Now().Add(time.Hour)}
+	}
+	old := "old-" + suffix
+	if err := s.SaveRefreshToken(ctx, tok(old, "")); err != nil {
+		t.Fatal(err)
+	}
+
+	// A successor that cannot be saved (its hash is taken) must leave old live.
+	if won, err := s.RotateRefreshToken(ctx, old, tok(old, old)); err == nil || won {
+		t.Fatalf("rotation onto a taken hash: won=%v err=%v, want an error", won, err)
+	}
+	if rt, err := s.GetRefreshToken(ctx, old); err != nil || rt.RevokedAt != nil {
+		t.Fatalf("a failed rotation must not revoke the old token: %+v %v", rt, err)
+	}
+
+	const racers = 4
+	won := make([]bool, racers)
+	errs := make([]error, racers)
+	var wg sync.WaitGroup
+	for i := range racers {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			won[i], errs[i] = s.RotateRefreshToken(ctx, old, tok(fmt.Sprintf("next-%d-%s", i, suffix), old))
+		}()
+	}
+	wg.Wait()
+	winners := 0
+	for i := range racers {
+		if errs[i] != nil {
+			t.Fatalf("rotate: %v", errs[i])
+		}
+		if won[i] {
+			winners++
+		}
+	}
+	var rows int
+	if err := s.pool.QueryRow(ctx, `SELECT count(*) FROM oauth_refresh_tokens WHERE user_id=$1 AND prev_hash=$2`, user, old).Scan(&rows); err != nil {
+		t.Fatal(err)
+	}
+	if winners != 1 || rows != 1 {
+		t.Fatalf("%d rotations won and %d successors were saved, want 1 and 1", winners, rows)
 	}
 }
 

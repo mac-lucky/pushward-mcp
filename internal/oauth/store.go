@@ -42,7 +42,7 @@ type AuthCode struct {
 
 // RefreshToken is an issued refresh token (stored hashed). Rotation-reuse theft
 // detection is implemented by the atomic single-winner revoke in
-// RevokeRefreshToken plus the post-grace family revoke in grantRefreshToken - not
+// RotateRefreshToken plus the post-grace family revoke in grantRefreshToken - not
 // by walking PrevHash, which is retained only as audit lineage of the rotation
 // chain (it is written and scanned, but no logic branches on it).
 //
@@ -82,6 +82,10 @@ type Store interface {
 	// means the token was already revoked - i.e. this caller lost a rotation
 	// race - and the caller must not mint new tokens.
 	RevokeRefreshToken(ctx context.Context, tokenHash string) (bool, error)
+	// RotateRefreshToken revokes oldHash and saves next in one transaction, with
+	// RevokeRefreshToken's single-winner result: on false nothing is saved, and
+	// a failed save leaves oldHash live, so a grant never ends up without a token.
+	RotateRefreshToken(ctx context.Context, oldHash string, next *RefreshToken) (bool, error)
 	// RevokeUserRefreshTokens revokes all of a user's refresh tokens (theft
 	// response).
 	RevokeUserRefreshTokens(ctx context.Context, userID string) error

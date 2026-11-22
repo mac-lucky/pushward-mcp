@@ -190,6 +190,20 @@ func (m *memoryStore) RevokeRefreshToken(_ context.Context, tokenHash string) (b
 	return true, nil
 }
 
+func (m *memoryStore) RotateRefreshToken(_ context.Context, oldHash string, next *RefreshToken) (bool, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	rt, ok := m.refresh[oldHash]
+	if !ok || rt.RevokedAt != nil {
+		return false, nil
+	}
+	t := m.now()
+	rt.RevokedAt = &t
+	cp := *next
+	m.refresh[next.TokenHash] = &cp
+	return true, nil
+}
+
 func (m *memoryStore) RevokeUserRefreshTokens(_ context.Context, userID string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()

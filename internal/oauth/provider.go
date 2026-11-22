@@ -2,6 +2,7 @@ package oauth
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -102,8 +103,16 @@ func (p *Provider) WrapMCP(next http.Handler) http.Handler {
 		}
 		userID := claims.Subject
 		hlk, err := p.loadHLK(r.Context(), userID, claims.CredentialID)
-		if err != nil {
+		if credentialGone(err) {
 			p.challenge(w, "credential unavailable; re-authorization required")
+			return
+		}
+		if err != nil {
+			// A store failure is not a bad token: a 401 would send the client
+			// through refresh and, on a second failure, back through consent.
+			p.log.Warn("credential lookup failed", "user", userID, "err", err)
+			w.Header().Set("Retry-After", "5")
+			oauthError(w, http.StatusServiceUnavailable, "temporarily_unavailable", "credential store unavailable; retry shortly")
 			return
 		}
 		ctx := client.ContextWithToken(r.Context(), hlk)
@@ -131,10 +140,20 @@ func (p *Provider) loadHLK(ctx context.Context, userID, credID string) (string, 
 		// Don't cache a failure; log without the credential.
 		p.log.Error("hlk decrypt failed", "user", userID)
 		p.cred.invalidate(key)
-		return "", err
+		return "", fmt.Errorf("%w: %w", errHLKDecrypt, err)
 	}
 	p.cred.put(key, hlk)
 	return hlk, nil
+}
+
+// errHLKDecrypt marks a stored key that no longer decrypts (a rotated
+// encryption key, a corrupt row): retrying cannot fix it.
+var errHLKDecrypt = errors.New("stored key does not decrypt")
+
+// credentialGone reports whether a loadHLK error means the grant's key is gone
+// for good, as opposed to a store failure worth retrying.
+func credentialGone(err error) bool {
+	return errors.Is(err, ErrNotFound) || errors.Is(err, errHLKDecrypt)
 }
 
 // janitor periodically purges expired store rows and sweeps the credential

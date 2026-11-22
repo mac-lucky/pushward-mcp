@@ -254,18 +254,37 @@ func (s *pgStore) ConsumeAuthCode(ctx context.Context, codeHash string) (*AuthCo
 	var used *time.Time
 	var userID string
 	e2 := s.pool.QueryRow(ctx, `SELECT used_at, user_id FROM oauth_auth_codes WHERE code_hash=$1`, codeHash).Scan(&used, &userID)
+	if e2 != nil && !errors.Is(e2, pgx.ErrNoRows) {
+		return nil, e2
+	}
 	if e2 == nil && used != nil {
 		return &AuthCode{CodeHash: codeHash, UserID: userID}, ErrCodeAlreadyUsed
 	}
 	return nil, ErrNotFound
 }
 
+const insertRefreshTokenSQL = `INSERT INTO oauth_refresh_tokens (token_hash, user_id, client_id, scope, resource, prev_hash, credential_id, expires_at)
+ VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`
+
 func (s *pgStore) SaveRefreshToken(ctx context.Context, rt *RefreshToken) error {
-	_, err := s.pool.Exec(ctx,
-		`INSERT INTO oauth_refresh_tokens (token_hash, user_id, client_id, scope, resource, prev_hash, credential_id, expires_at)
-		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
+	_, err := s.pool.Exec(ctx, insertRefreshTokenSQL,
 		rt.TokenHash, rt.UserID, rt.ClientID, rt.Scope, rt.Resource, rt.PrevHash, rt.CredentialID, rt.ExpiresAt)
 	return err
+}
+
+func (s *pgStore) RotateRefreshToken(ctx context.Context, oldHash string, next *RefreshToken) (bool, error) {
+	won := false
+	err := pgx.BeginFunc(ctx, s.pool, func(tx pgx.Tx) error {
+		tag, err := tx.Exec(ctx, `UPDATE oauth_refresh_tokens SET revoked_at=now() WHERE token_hash=$1 AND revoked_at IS NULL`, oldHash)
+		if err != nil || tag.RowsAffected() == 0 {
+			return err
+		}
+		won = true
+		_, err = tx.Exec(ctx, insertRefreshTokenSQL,
+			next.TokenHash, next.UserID, next.ClientID, next.Scope, next.Resource, next.PrevHash, next.CredentialID, next.ExpiresAt)
+		return err
+	})
+	return won && err == nil, err
 }
 
 func (s *pgStore) GetRefreshToken(ctx context.Context, tokenHash string) (*RefreshToken, error) {

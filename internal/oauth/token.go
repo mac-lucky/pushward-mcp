@@ -63,8 +63,14 @@ func (p *Provider) grantAuthorizationCode(w http.ResponseWriter, r *http.Request
 		oauthError(w, http.StatusBadRequest, "invalid_grant", "authorization code already used")
 		return
 	}
-	if err != nil {
+	if errors.Is(err, ErrNotFound) {
 		oauthError(w, http.StatusBadRequest, "invalid_grant", "invalid or expired authorization code")
+		return
+	}
+	if err != nil {
+		// A store failure is not a bad code: invalid_grant would make the client
+		// drop it and restart consent, a 500 lets it retry.
+		oauthError(w, http.StatusInternalServerError, "server_error", "could not read authorization code")
 		return
 	}
 	if clientID != ac.ClientID {
@@ -109,8 +115,12 @@ func (p *Provider) grantRefreshToken(w http.ResponseWriter, r *http.Request) {
 		// A grant from before per-grant credentials (see issueTokensWithPrev).
 		rt, err = p.store.GetRefreshToken(r.Context(), hashToken(raw))
 	}
-	if err != nil {
+	if errors.Is(err, ErrNotFound) {
 		oauthError(w, http.StatusBadRequest, "invalid_grant", "invalid refresh token")
+		return
+	}
+	if err != nil {
+		oauthError(w, http.StatusInternalServerError, "server_error", "could not read refresh token")
 		return
 	}
 	if rt.RevokedAt != nil {
@@ -129,18 +139,9 @@ func (p *Provider) grantRefreshToken(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Rotate atomically: only the request that wins the conditional revoke may
-	// mint a new pair. A lost race (concurrent reuse of one token) gets won=false
-	// and is rejected, closing the double-spend window that would otherwise let a
-	// stolen token and the legitimate client both rotate undetected.
-	won, err := p.store.RevokeRefreshToken(r.Context(), rt.TokenHash)
-	if err != nil {
-		oauthError(w, http.StatusInternalServerError, "server_error", "could not rotate refresh token")
-		return
-	}
-	if !won {
-		oauthError(w, http.StatusBadRequest, "invalid_grant", "refresh token no longer valid")
-		return
-	}
+	// mint a new pair (issueTokensWithPrev). A lost race (concurrent reuse of one
+	// token) is rejected, closing the double-spend window that would otherwise
+	// let a stolen token and the legitimate client both rotate undetected.
 	p.issueTokensWithPrev(w, r, rt.UserID, rt.ClientID, rt.Scope, rt.CredentialID, rt.TokenHash)
 }
 
@@ -166,7 +167,7 @@ func (p *Provider) issueTokensWithPrev(w http.ResponseWriter, r *http.Request, u
 	if credID != "" {
 		tokenHash = grantTokenHash(refresh)
 	}
-	if err := p.store.SaveRefreshToken(r.Context(), &RefreshToken{
+	next := &RefreshToken{
 		TokenHash:    tokenHash,
 		UserID:       userID,
 		ClientID:     clientID,
@@ -175,7 +176,18 @@ func (p *Provider) issueTokensWithPrev(w http.ResponseWriter, r *http.Request, u
 		PrevHash:     prevHash,
 		CredentialID: credID,
 		ExpiresAt:    now.Add(refreshTokenTTL),
-	}); err != nil {
+	}
+	if prevHash == "" {
+		err = p.store.SaveRefreshToken(r.Context(), next)
+	} else {
+		var won bool
+		won, err = p.store.RotateRefreshToken(r.Context(), prevHash, next)
+		if err == nil && !won {
+			oauthError(w, http.StatusBadRequest, "invalid_grant", "refresh token no longer valid")
+			return
+		}
+	}
+	if err != nil {
 		oauthError(w, http.StatusInternalServerError, "server_error", "could not persist refresh token")
 		return
 	}
