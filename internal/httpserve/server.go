@@ -50,10 +50,7 @@ type Authenticator interface {
 // development/tests: without it the MCP endpoint extracts the raw inbound
 // Bearer token and forwards it upstream unverified (never use in production).
 func Run(ctx context.Context, cfg *config.Config, mcp *mcpserver.MCPServer, auth Authenticator, log *slog.Logger) error {
-	streamable := mcpserver.NewStreamableHTTPServer(mcp,
-		mcpserver.WithStateLess(true),
-		mcpserver.WithEndpointPath("/mcp"),
-	)
+	streamable := newStreamable(mcp)
 
 	mux := http.NewServeMux()
 
@@ -122,6 +119,19 @@ func Run(ctx context.Context, cfg *config.Config, mcp *mcpserver.MCPServer, auth
 	}
 	_ = streamable.Shutdown(shutdownCtx)
 	return srv.Shutdown(shutdownCtx)
+}
+
+// newStreamable serves /mcp statelessly. The standalone GET stream is off: in
+// stateless mode nothing is ever sent on it, yet each one pins a connection
+// slot, and mcp-go files all of them under one empty session id shared by
+// every tenant on the pod. A 405 is the spec's answer for "no stream here";
+// the SSE upgrade of a POST response, which the wait tools stream on, stays.
+func newStreamable(mcp *mcpserver.MCPServer) *mcpserver.StreamableHTTPServer {
+	return mcpserver.NewStreamableHTTPServer(mcp,
+		mcpserver.WithStateLess(true),
+		mcpserver.WithDisableStreaming(true),
+		mcpserver.WithEndpointPath("/mcp"),
+	)
 }
 
 func liveness(w http.ResponseWriter, _ *http.Request) {

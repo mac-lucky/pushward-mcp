@@ -1,6 +1,7 @@
 package httpserve
 
 import (
+	"context"
 	"errors"
 	"io"
 	"net"
@@ -9,6 +10,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	mcpserver "github.com/mark3labs/mcp-go/server"
 
 	"github.com/mac-lucky/pushward-mcp/internal/client"
 )
@@ -168,5 +171,31 @@ func TestLimitListenerBoundsConcurrentConns(t *testing.T) {
 		c.Close()
 	case <-time.After(2 * time.Second):
 		t.Fatal("second conn never accepted after the slot was released")
+	}
+}
+
+func TestStreamableRefusesStandaloneGET(t *testing.T) {
+	h := newStreamable(mcpserver.NewMCPServer("test", "1.0.0"))
+
+	// Without the fix this GET opens a stream; the deadline keeps a regression
+	// from hanging the test.
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	r := httptest.NewRequest(http.MethodGet, "/mcp", nil).WithContext(ctx)
+	r.Header.Set("Accept", "text/event-stream")
+	rr := httptest.NewRecorder()
+	h.ServeHTTP(rr, r)
+	if rr.Code != http.StatusMethodNotAllowed {
+		t.Fatalf("standalone GET /mcp = %d, want 405", rr.Code)
+	}
+
+	body := `{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"t","version":"1"}}}`
+	r = httptest.NewRequest(http.MethodPost, "/mcp", strings.NewReader(body)).WithContext(ctx)
+	r.Header.Set("Content-Type", "application/json")
+	r.Header.Set("Accept", "application/json, text/event-stream")
+	rr = httptest.NewRecorder()
+	h.ServeHTTP(rr, r)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("POST initialize = %d %s, want 200", rr.Code, rr.Body.String())
 	}
 }
