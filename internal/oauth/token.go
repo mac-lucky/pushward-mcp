@@ -170,10 +170,14 @@ func (p *Provider) grantRefreshToken(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	g := RefreshToken{UserID: rt.UserID, ClientID: rt.ClientID, Scope: rt.Scope, CredentialID: rt.CredentialID, Family: rt.Family}
-	if g.CredentialID != "" && g.Family == "" {
-		// A key-bound grant from before families, or rotated by an older pod.
-		if g.Family, err = randomToken(16); err != nil {
+	g := RefreshToken{UserID: rt.UserID, ClientID: rt.ClientID, Scope: rt.Scope, CredentialID: rt.CredentialID}
+	if g.CredentialID != "" {
+		// The row holds only the family's hash; the raw id is the prefix of the
+		// token just presented.
+		if family, _, ok := strings.Cut(raw, "."); ok && hashToken(family) == rt.Family {
+			g.Family = family
+		} else if g.Family, err = randomToken(16); err != nil {
+			// A key-bound grant from before families, or rotated by an older pod.
 			oauthError(w, http.StatusInternalServerError, "server_error", "could not generate grant id")
 			return
 		}
@@ -214,7 +218,7 @@ func (p *Provider) revokePurgedFamily(ctx context.Context, raw string) {
 	if !ok || family == "" {
 		return
 	}
-	revoked, err := p.store.RevokeRefreshFamily(ctx, family)
+	revoked, err := p.store.RevokeRefreshFamily(ctx, hashToken(family))
 	if err != nil {
 		p.log.Warn("failed to revoke refresh token family after a replay", "err", err)
 		return
@@ -261,7 +265,8 @@ func (p *Provider) grantKeyUsable(w http.ResponseWriter, r *http.Request, rt *Re
 
 // issueTokens signs an access token for grant g and mints its next refresh
 // token. With prevHash set it rotates that token into the new one, and answers
-// invalid_grant if another request rotated it first.
+// invalid_grant if another request rotated it first. g.Family is the raw
+// family id; the row stores its hash.
 func (p *Provider) issueTokens(w http.ResponseWriter, r *http.Request, g RefreshToken, prevHash string) {
 	now := p.now()
 	access, err := p.signer.Sign(g.UserID, p.cfg.Resource, g.ClientID, g.Scope, g.CredentialID, now)
@@ -277,6 +282,9 @@ func (p *Provider) issueTokens(w http.ResponseWriter, r *http.Request, g Refresh
 	if g.Family != "" {
 		// "." is outside the base64url alphabet, so the prefix parses back out.
 		refresh = g.Family + "." + refresh
+		// Hashed like the token itself, so a leaked table cannot be replayed
+		// into family revokes.
+		g.Family = hashToken(g.Family)
 	}
 	// A grant without a credential id keeps the hash older releases read, so a
 	// pod on one can still rotate it during a rollout or after a rollback.

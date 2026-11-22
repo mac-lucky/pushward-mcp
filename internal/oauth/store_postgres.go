@@ -85,10 +85,10 @@ ALTER TABLE oauth_auth_codes ADD COLUMN IF NOT EXISTS encrypted_hlk BYTEA;
 ALTER TABLE oauth_refresh_tokens ADD COLUMN IF NOT EXISTS credential_id TEXT NOT NULL DEFAULT '';
 CREATE INDEX IF NOT EXISTS idx_oauth_refresh_credential ON oauth_refresh_tokens(credential_id);`,
 	// 4: let a replay end only its own grant. A used code records the
-	// credential it was exchanged into, and refresh tokens carry the grant's
-	// family, which also rides in the raw token so a replay of a purged token
-	// still finds the grant. Defaulted columns: older releases write '' and
-	// keep working.
+	// credential it was exchanged into, and refresh tokens carry the hash of
+	// the grant's family, whose raw id rides in the raw token so a replay of a
+	// purged token still finds the grant. Defaulted columns: older releases
+	// write '' and keep working.
 	`
 ALTER TABLE oauth_auth_codes ADD COLUMN IF NOT EXISTS credential_id TEXT NOT NULL DEFAULT '';
 ALTER TABLE oauth_refresh_tokens ADD COLUMN IF NOT EXISTS family TEXT NOT NULL DEFAULT '';

@@ -129,9 +129,10 @@ func TestCodeReplay_RevokesOnlyThatGrant(t *testing.T) {
 	}
 }
 
-// The family prefix is not the credential id an access token shows, so an
-// access token alone cannot be turned into a grant-killing refresh token.
-func TestRefreshFamily_NotDerivableFromAccessToken(t *testing.T) {
+// The family prefix is neither the credential id an access token shows nor
+// the value a stored row holds, so neither an access token nor a leaked table
+// can be turned into a grant-killing refresh token.
+func TestRefreshFamily_NotDerivableFromAccessTokenOrRow(t *testing.T) {
 	srv, p := newTestProvider(t)
 	access, refresh := connect(t, srv, "hlk_k1")
 	claims, err := p.signer.Verify(access, "https://mcp.test")
@@ -142,11 +143,17 @@ func TestRefreshFamily_NotDerivableFromAccessToken(t *testing.T) {
 	if !ok || family == "" || family == claims.CredentialID {
 		t.Fatalf("refresh token %q must carry a family prefix other than the credential id", refresh)
 	}
-	if !refreshRefused(t, srv.URL, claims.CredentialID+".forged") {
-		t.Fatal("a forged refresh token must be refused")
+	rt, err := p.store.GetRefreshToken(context.Background(), grantTokenHash(refresh))
+	if err != nil || rt.Family == family || rt.Family != hashToken(family) {
+		t.Fatalf("the row must store the family hashed, not %q: %+v %v", family, rt, err)
+	}
+	for _, forged := range []string{claims.CredentialID + ".forged", rt.Family + ".forged"} {
+		if !refreshRefused(t, srv.URL, forged) {
+			t.Fatal("a forged refresh token must be refused")
+		}
 	}
 	if _, next := refreshGrant(t, srv, refresh); next == "" {
-		t.Fatal("a token forged from the credential id must not end the grant")
+		t.Fatal("a token forged from the credential id or the stored family must not end the grant")
 	}
 }
 
@@ -167,10 +174,11 @@ func TestRefreshFamily_AssignedOnNextRotation(t *testing.T) {
 	})
 	_, next := refreshGrant(t, srv, "rtok-nofamily")
 	rt, err := m.GetRefreshToken(ctx, grantTokenHash(next))
-	if err != nil || rt.Family == "" || !strings.HasPrefix(next, rt.Family+".") {
-		t.Fatalf("rotated token %q must carry its row's family: %+v %v", next, rt, err)
+	family, _, _ := strings.Cut(next, ".")
+	if err != nil || rt.Family == "" || rt.Family != hashToken(family) {
+		t.Fatalf("rotated token %q must carry the family its row names: %+v %v", next, rt, err)
 	}
-	if _, again := refreshGrant(t, srv, next); !strings.HasPrefix(again, rt.Family+".") {
+	if _, again := refreshGrant(t, srv, next); !strings.HasPrefix(again, family+".") {
 		t.Fatalf("the family must stay the same across rotations: %q", again)
 	}
 }

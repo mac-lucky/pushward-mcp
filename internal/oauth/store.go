@@ -55,11 +55,12 @@ type AuthCode struct {
 // every rotation. Empty means a grant from before per-grant credentials, which
 // resolves the per-user row.
 //
-// Family is a random id of a key-bound grant, also carried through every
-// rotation and sent as the "<family>." prefix of its raw refresh tokens, so a
-// token replayed after its row was purged still names the grant to revoke. It
-// is never the credential id, which every access token shows. Empty on legacy
-// grants and on key-bound ones until their next rotation here.
+// Family is the hash (hashToken) of a random id of a key-bound grant, carried
+// through every rotation. The raw id is sent as the "<family>." prefix of its
+// raw refresh tokens, so a token replayed after its row was purged still names
+// the grant to revoke; only the hash is stored, so a leaked row names none. The
+// id is never the credential id, which every access token shows. Empty on
+// legacy grants and on key-bound ones until their next rotation here.
 type RefreshToken struct {
 	TokenHash    string
 	UserID       string
@@ -108,8 +109,8 @@ type Store interface {
 	// credentialID and no other grant. An empty id is an error, never "all
 	// legacy tokens".
 	RevokeGrantRefreshTokens(ctx context.Context, credentialID string) error
-	// RevokeRefreshFamily revokes the live refresh tokens of family and reports
-	// whether there were any.
+	// RevokeRefreshFamily revokes the live refresh tokens whose stored Family is
+	// family (a hash) and reports whether there were any.
 	RevokeRefreshFamily(ctx context.Context, family string) (bool, error)
 
 	// SaveCredential stores the encrypted hlk_ of one grant under a new
