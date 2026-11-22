@@ -12,8 +12,6 @@ import (
 	"time"
 
 	mcpserver "github.com/mark3labs/mcp-go/server"
-
-	"github.com/mac-lucky/pushward-mcp/internal/client"
 )
 
 func TestSecurityHeaders(t *testing.T) {
@@ -76,39 +74,6 @@ func TestLimitBodyCapsReads(t *testing.T) {
 	var mbe *http.MaxBytesError
 	if !errors.As(readErr, &mbe) {
 		t.Errorf("read error = %v, want *http.MaxBytesError", readErr)
-	}
-}
-
-func TestBearerToken(t *testing.T) {
-	cases := []struct {
-		header, want string
-	}{
-		{"Bearer hlk_abc123", "hlk_abc123"},
-		{"", ""},
-		{"Basic dXNlcg==", ""},
-	}
-	for _, tc := range cases {
-		r := httptest.NewRequest(http.MethodGet, "/mcp", nil)
-		if tc.header != "" {
-			r.Header.Set("Authorization", tc.header)
-		}
-		if got := bearerToken(r); got != tc.want {
-			t.Errorf("bearerToken(%q) = %q, want %q", tc.header, got, tc.want)
-		}
-	}
-}
-
-func TestPassthroughBearerInjectsContextToken(t *testing.T) {
-	var got string
-	h := passthroughBearer(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
-		got = client.TokenFromContext(r.Context())
-	}))
-	r := httptest.NewRequest(http.MethodPost, "/mcp", nil)
-	r.Header.Set("Authorization", "Bearer hlk_test")
-	h.ServeHTTP(httptest.NewRecorder(), r)
-
-	if got != "hlk_test" {
-		t.Errorf("context token = %q, want hlk_test", got)
 	}
 }
 

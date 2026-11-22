@@ -17,7 +17,6 @@ import (
 
 	mcpserver "github.com/mark3labs/mcp-go/server"
 
-	"github.com/mac-lucky/pushward-mcp/internal/client"
 	"github.com/mac-lucky/pushward-mcp/internal/config"
 )
 
@@ -46,22 +45,17 @@ type Authenticator interface {
 }
 
 // Run builds the HTTP server and blocks until ctx is cancelled, then drains
-// in-flight requests within a bounded timeout. auth may be nil only in
-// development/tests: without it the MCP endpoint extracts the raw inbound
-// Bearer token and forwards it upstream unverified (never use in production).
+// in-flight requests within a bounded timeout. auth is required: it is what
+// turns an inbound request into an upstream identity.
 func Run(ctx context.Context, cfg *config.Config, mcp *mcpserver.MCPServer, auth Authenticator, log *slog.Logger) error {
+	if auth == nil {
+		return errors.New("httpserve: an Authenticator is required")
+	}
 	streamable := newStreamable(mcp)
 
 	mux := http.NewServeMux()
-
-	var mcpHandler http.Handler = streamable
-	if auth != nil {
-		auth.RegisterRoutes(mux)
-		mcpHandler = auth.WrapMCP(streamable)
-	} else {
-		mcpHandler = passthroughBearer(streamable)
-	}
-	mux.Handle("/mcp", corsMCP(limitBody(maxMCPBytes, mcpHandler)))
+	auth.RegisterRoutes(mux)
+	mux.Handle("/mcp", corsMCP(limitBody(maxMCPBytes, auth.WrapMCP(streamable))))
 	mux.HandleFunc("/health", liveness)
 	mux.HandleFunc("/ready", readiness)
 
@@ -228,16 +222,4 @@ func (c *limitConn) Close() error {
 	err := c.Conn.Close()
 	c.once.Do(c.release)
 	return err
-}
-
-// passthroughBearer is the dev-only fallback when no Authenticator is wired: it
-// copies the raw inbound Bearer token into the request context so upstream
-// calls carry it. Production always supplies an Authenticator.
-func passthroughBearer(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if tok := bearerToken(r); tok != "" {
-			r = r.WithContext(client.ContextWithToken(r.Context(), tok))
-		}
-		next.ServeHTTP(w, r)
-	})
 }

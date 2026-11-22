@@ -238,3 +238,19 @@ func TestRelayClient_RejectsBadProvider(t *testing.T) {
 		}
 	}
 }
+
+func TestParseBearer(t *testing.T) {
+	for header, want := range map[string]string{
+		"Bearer hlk_abc123":  "hlk_abc123",
+		"bearer hlk_abc123":  "hlk_abc123",
+		"BEARER  hlk_abc123": "hlk_abc123",
+		"":                   "",
+		"Bearer":             "",
+		"Basic dXNlcg==":     "",
+		"Bearerhlk_abc123":   "",
+	} {
+		if got := ParseBearer(header); got != want {
+			t.Errorf("ParseBearer(%q) = %q, want %q", header, got, want)
+		}
+	}
+}
