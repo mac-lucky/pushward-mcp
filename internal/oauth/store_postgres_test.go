@@ -257,6 +257,57 @@ func TestPostgresGrantCredentials(t *testing.T) {
 	}
 }
 
+// TestPostgresLegacyCredentialCleanup checks that Cleanup drops a per-user key
+// only once no live legacy chain of that user can read it.
+func TestPostgresLegacyCredentialCleanup(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	s := testPGStore(t, ctx)
+
+	suffix, _ := randomToken(8)
+	live, dead, fresh := "pglive-"+suffix, "pgdead-"+suffix, "pgfresh-"+suffix
+	t.Cleanup(func() {
+		c := context.Background()
+		for _, u := range []string{live, dead, fresh} {
+			_, _ = s.pool.Exec(c, `DELETE FROM oauth_refresh_tokens WHERE user_id=$1`, u)
+			_, _ = s.pool.Exec(c, `DELETE FROM oauth_user_credentials WHERE user_id=$1`, u)
+		}
+	})
+	for _, u := range []string{live, dead, fresh} {
+		if _, err := s.pool.Exec(ctx, `INSERT INTO oauth_user_credentials (user_id, encrypted_hlk) VALUES ($1,'k')`, u); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := s.pool.Exec(ctx, `UPDATE oauth_user_credentials SET updated_at=now()-interval '2 hours' WHERE user_id IN ($1,$2)`, live, dead); err != nil {
+		t.Fatal(err)
+	}
+	save := func(hash, user, credID string) {
+		if err := s.SaveRefreshToken(ctx, &RefreshToken{TokenHash: hash + suffix, UserID: user, ClientID: "c", Scope: "mcp",
+			Resource: "https://mcp.test", CredentialID: credID, ExpiresAt: time.Now().Add(time.Hour)}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	save("live-legacy-", live, "")
+	save("dead-legacy-", dead, "")
+	save("dead-bound-", dead, "cred-"+suffix) // a key-bound grant never reads the per-user row
+	if _, err := s.RevokeRefreshToken(ctx, "dead-legacy-"+suffix); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := s.Cleanup(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.GetCredential(ctx, live, ""); err != nil {
+		t.Fatalf("a per-user key with a live legacy chain must stay: %v", err)
+	}
+	if _, err := s.GetCredential(ctx, fresh, ""); err != nil {
+		t.Fatalf("a per-user key written within the hour must stay: %v", err)
+	}
+	if _, err := s.GetCredential(ctx, dead, ""); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("a per-user key no live legacy chain reads must go, got %v", err)
+	}
+}
+
 // TestPostgresGrantScopedRevoke covers what a replay needs from the store: a
 // used code names the credential it was exchanged into, and the grant and
 // family revokes reach that grant's tokens and no other.

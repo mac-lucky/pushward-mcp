@@ -382,6 +382,18 @@ func (s *pgStore) Cleanup(ctx context.Context) error {
 		   AND NOT EXISTS (SELECT 1 FROM oauth_refresh_tokens r WHERE r.credential_id = g.credential_id)`); err != nil {
 		return err
 	}
+	// A per-user key goes once no legacy chain of the user is live: only
+	// tokens without a credential id read it, and none is issued any more.
+	// The hour outlasts the access tokens of the last chain and spares a row
+	// an older release wrote at consent just before its code exchange.
+	if _, err := s.pool.Exec(ctx,
+		`DELETE FROM oauth_user_credentials u
+		 WHERE u.updated_at < now() - interval '1 hour'
+		   AND NOT EXISTS (SELECT 1 FROM oauth_refresh_tokens r
+		                   WHERE r.user_id = u.user_id AND r.credential_id = ''
+		                     AND r.revoked_at IS NULL AND r.expires_at > now())`); err != nil {
+		return err
+	}
 	// Prune abandoned clients so anonymous DCR/CIMD traffic cannot grow the table
 	// without bound: drop clients not written within clientRetention that hold no
 	// active refresh token and no live authorization code. Run last so the token

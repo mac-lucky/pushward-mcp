@@ -120,7 +120,8 @@ type Store interface {
 	GetCredential(ctx context.Context, userID, credentialID string) ([]byte, error)
 
 	// Cleanup purges expired authorization codes, expired/long-revoked refresh
-	// tokens, grant credentials no refresh token references any more, and stale
+	// tokens, grant credentials no refresh token references any more, per-user
+	// keys no live legacy chain reads any more, and stale
 	// clients (older than clientRetention with no active refresh token or live
 	// auth code) so none of the tables grows without bound.
 	Cleanup(ctx context.Context) error
