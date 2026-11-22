@@ -312,6 +312,14 @@ func (s *pgStore) RevokeUserRefreshTokens(ctx context.Context, userID string) er
 	return err
 }
 
+func (s *pgStore) RevokeGrantRefreshTokens(ctx context.Context, credentialID string) error {
+	if credentialID == "" {
+		return errNoCredentialID
+	}
+	_, err := s.pool.Exec(ctx, `UPDATE oauth_refresh_tokens SET revoked_at=now() WHERE credential_id=$1 AND revoked_at IS NULL`, credentialID)
+	return err
+}
+
 func (s *pgStore) SaveCredential(ctx context.Context, credentialID, userID string, encryptedHLK []byte) error {
 	_, err := s.pool.Exec(ctx,
 		`INSERT INTO oauth_grant_credentials (credential_id, user_id, encrypted_hlk) VALUES ($1,$2,$3)`,

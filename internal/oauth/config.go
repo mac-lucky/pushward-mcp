@@ -36,6 +36,9 @@ const (
 	// credCacheTTL bounds how long a decrypted hlk_ stays cached on the hot /mcp
 	// path; short so a credential rotation/revocation propagates quickly.
 	credCacheTTL = 60 * time.Second
+	// keyCheckTimeout bounds the /auth/me check of a grant's key on refresh; past
+	// it the refresh goes on as if PushWard were down.
+	keyCheckTimeout = 5 * time.Second
 	// credCacheMax hard-caps the decrypted-credential cache size.
 	credCacheMax = 50_000
 	// cimdCacheTTL bounds how long a fetched Client ID Metadata Document is served

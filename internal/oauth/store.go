@@ -12,6 +12,8 @@ var ErrNotFound = errors.New("not found")
 // ErrCodeAlreadyUsed is returned when an authorization code is replayed.
 var ErrCodeAlreadyUsed = errors.New("authorization code already used")
 
+var errNoCredentialID = errors.New("no credential id: not a key-bound grant")
+
 // Client is a registered OAuth client (via DCR or cached CIMD).
 type Client struct {
 	ID           string
@@ -89,6 +91,10 @@ type Store interface {
 	// RevokeUserRefreshTokens revokes all of a user's refresh tokens (theft
 	// response).
 	RevokeUserRefreshTokens(ctx context.Context, userID string) error
+	// RevokeGrantRefreshTokens revokes every refresh token of the key-bound grant
+	// credentialID and no other grant. An empty id is an error, never "all
+	// legacy tokens".
+	RevokeGrantRefreshTokens(ctx context.Context, credentialID string) error
 
 	// SaveCredential stores the encrypted hlk_ of one grant under a new
 	// credential id.

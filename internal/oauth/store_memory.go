@@ -216,6 +216,21 @@ func (m *memoryStore) RevokeUserRefreshTokens(_ context.Context, userID string) 
 	return nil
 }
 
+func (m *memoryStore) RevokeGrantRefreshTokens(_ context.Context, credentialID string) error {
+	if credentialID == "" {
+		return errNoCredentialID
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	t := m.now()
+	for _, rt := range m.refresh {
+		if rt.CredentialID == credentialID && rt.RevokedAt == nil {
+			rt.RevokedAt = &t
+		}
+	}
+	return nil
+}
+
 func (m *memoryStore) SaveCredential(_ context.Context, credentialID, userID string, encryptedHLK []byte) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()

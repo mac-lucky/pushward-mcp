@@ -1,6 +1,7 @@
 package oauth
 
 import (
+	"context"
 	"errors"
 	"net/http"
 	"strings"
@@ -137,12 +138,50 @@ func (p *Provider) grantRefreshToken(w http.ResponseWriter, r *http.Request) {
 		oauthError(w, http.StatusBadRequest, "invalid_grant", "refresh token expired")
 		return
 	}
+	if !p.grantKeyUsable(w, r, rt) {
+		return
+	}
 
 	// Rotate atomically: only the request that wins the conditional revoke may
 	// mint a new pair (issueTokensWithPrev). A lost race (concurrent reuse of one
 	// token) is rejected, closing the double-spend window that would otherwise
 	// let a stolen token and the legitimate client both rotate undetected.
 	p.issueTokensWithPrev(w, r, rt.UserID, rt.ClientID, rt.Scope, rt.CredentialID, rt.TokenHash)
+}
+
+// grantKeyUsable checks the grant's stored key before a refresh. A key that is
+// gone, no longer decrypts or that PushWard refuses (rolled, revoked, expired)
+// ends the grant with invalid_grant, so the client re-runs consent instead of
+// refreshing into a key that fails every call. A PushWard outage, rate limit or
+// timeout is not proof of a dead key, so the refresh goes on. It writes the
+// response itself when it returns false.
+func (p *Provider) grantKeyUsable(w http.ResponseWriter, r *http.Request, rt *RefreshToken) bool {
+	hlk, err := p.loadHLK(r.Context(), rt.UserID, rt.CredentialID)
+	if err != nil && !credentialGone(err) {
+		oauthError(w, http.StatusInternalServerError, "server_error", "could not read credential")
+		return false
+	}
+	if err == nil {
+		ctx, cancel := context.WithTimeout(r.Context(), keyCheckTimeout)
+		_, status, verr := validateHLK(ctx, p.cfg.APIBaseURL, hlk)
+		cancel()
+		if verr == nil || status != http.StatusUnauthorized {
+			return true
+		}
+	}
+	// Credential rows stay: Cleanup drops a grant key once its tokens are gone,
+	// and a legacy per-user row may still serve the user's other chains.
+	if rt.CredentialID != "" {
+		err = p.store.RevokeGrantRefreshTokens(r.Context(), rt.CredentialID)
+	} else {
+		_, err = p.store.RevokeRefreshToken(r.Context(), rt.TokenHash)
+	}
+	if err != nil {
+		p.log.Warn("failed to end grant with an unusable key", "user", rt.UserID, "err", err)
+	}
+	p.log.Info("refresh refused: the grant's PushWard key is no longer usable", "user", rt.UserID, "client_id", rt.ClientID)
+	oauthError(w, http.StatusBadRequest, "invalid_grant", "the stored PushWard API key is no longer valid; authorize again")
+	return false
 }
 
 func (p *Provider) issueTokens(w http.ResponseWriter, r *http.Request, userID, clientID, scope, credID string) {

@@ -218,7 +218,7 @@ func (p *Provider) authorizePost(w http.ResponseWriter, r *http.Request) {
 	}
 
 	apiKey := strings.TrimSpace(r.PostFormValue("api_key"))
-	userID, err := validateHLK(r.Context(), p.cfg.APIBaseURL, apiKey)
+	userID, _, err := validateHLK(r.Context(), p.cfg.APIBaseURL, apiKey)
 	if err != nil {
 		// Re-render the consent page with an error rather than leaking detail. The
 		// page reads the same for a wrong key and an unreachable upstream, so the

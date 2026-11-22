@@ -169,19 +169,27 @@ func TestIsBlockedIP(t *testing.T) {
 // WrapMCP whose inner handler echoes the per-request token + user id it sees.
 func newTestProvider(t *testing.T) (*httptest.Server, *Provider) {
 	t.Helper()
+	return newTestProviderUpstream(t, fakeAuthMe)
+}
+
+// fakeAuthMe answers GET /auth/me like pushward-server: any key of the account
+// (default or restricted) maps to the same user id, anything else is a 401.
+func fakeAuthMe(w http.ResponseWriter, r *http.Request) {
+	switch r.Header.Get("Authorization") {
+	case "Bearer hlk_good", "Bearer hlk_k0", "Bearer hlk_k1", "Bearer hlk_legacy":
+		_, _ = w.Write([]byte(`{"id":"user-123"}`))
+		return
+	}
+	w.WriteHeader(http.StatusUnauthorized)
+	_, _ = w.Write([]byte(`{"code":"token.invalid"}`))
+}
+
+// newTestProviderUpstream is newTestProvider with authMe as the upstream.
+func newTestProviderUpstream(t *testing.T, authMe http.HandlerFunc) (*httptest.Server, *Provider) {
+	t.Helper()
 	client.SetRemoteMode(true)
 
-	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Like /auth/me, any key of the account (default or restricted) maps to
-		// the same user id.
-		switch r.Header.Get("Authorization") {
-		case "Bearer hlk_good", "Bearer hlk_k0", "Bearer hlk_k1":
-			_, _ = w.Write([]byte(`{"id":"user-123"}`))
-			return
-		}
-		w.WriteHeader(http.StatusUnauthorized)
-		_, _ = w.Write([]byte(`{"code":"unauthorized"}`))
-	}))
+	upstream := httptest.NewServer(authMe)
 	t.Cleanup(upstream.Close)
 
 	cfg := &Config{

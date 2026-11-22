@@ -7,6 +7,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -261,5 +263,125 @@ func TestMemoryStore_PendingKeyAndCredentialCleanup(t *testing.T) {
 	}
 	if _, err := m.GetCredential(ctx, "u", "live"); err != nil {
 		t.Fatalf("a credential with a refresh token must stay: %v", err)
+	}
+}
+
+// keyUpstream is a fake /auth/me whose keys can be rolled and which can be
+// made to fail as a whole, for the refresh-time key check.
+type keyUpstream struct {
+	dead   sync.Map     // "Bearer <key>" -> struct{}
+	status atomic.Int32 // non-zero: every call answers this status
+}
+
+func (u *keyUpstream) serve(w http.ResponseWriter, r *http.Request) {
+	if s := u.status.Load(); s != 0 {
+		w.WriteHeader(int(s))
+		return
+	}
+	if _, ok := u.dead.Load(r.Header.Get("Authorization")); ok {
+		w.WriteHeader(http.StatusUnauthorized)
+		_, _ = w.Write([]byte(`{"code":"integration_key.expired"}`))
+		return
+	}
+	fakeAuthMe(w, r)
+}
+
+func TestRefresh_DeadKeyEndsOnlyItsGrant(t *testing.T) {
+	up := &keyUpstream{}
+	srv, _ := newTestProviderUpstream(t, up.serve)
+	_, refreshA := connect(t, srv, "hlk_k1")
+	_, refreshB := connect(t, srv, "hlk_k0")
+	_, refreshA = refreshGrant(t, srv, refreshA)
+
+	up.dead.Store("Bearer hlk_k1", struct{}{})
+	status, m := tokenPost(t, srv, url.Values{"grant_type": {"refresh_token"}, "refresh_token": {refreshA}})
+	if status != http.StatusBadRequest || m["error"] != "invalid_grant" {
+		t.Fatalf("refresh with a rolled key: %d %v, want invalid_grant", status, m)
+	}
+	// The grant is over, not just this one token.
+	if status, _ := tokenPost(t, srv, url.Values{"grant_type": {"refresh_token"}, "refresh_token": {refreshA}}); status == http.StatusOK {
+		t.Fatal("a grant ended for a dead key must stay ended")
+	}
+	// The user's other connection, with its own key, carries on.
+	if access, _ := refreshGrant(t, srv, refreshB); mcpKey(t, srv, access) != "hlk_k0" {
+		t.Fatal("ending one grant must not touch another grant of the user")
+	}
+}
+
+func TestRefresh_UpstreamFailureKeepsGrant(t *testing.T) {
+	up := &keyUpstream{}
+	srv, _ := newTestProviderUpstream(t, up.serve)
+	_, refresh := connect(t, srv, "hlk_k1")
+	for _, s := range []int32{http.StatusServiceUnavailable, http.StatusTooManyRequests, http.StatusInternalServerError} {
+		up.status.Store(s)
+		_, refresh = refreshGrant(t, srv, refresh) // fails the test unless 200
+	}
+	up.status.Store(0)
+	_, _ = refreshGrant(t, srv, refresh)
+}
+
+func TestRefresh_UnusableCredentialEndsGrant(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		breakIt func(m *memoryStore, credID string)
+	}{
+		{"missing", func(m *memoryStore, credID string) { delete(m.creds, credID) }},
+		{"undecryptable", func(m *memoryStore, credID string) {
+			c := m.creds[credID]
+			c.blob = append([]byte(nil), c.blob...)
+			c.blob[len(c.blob)-1] ^= 0xff
+			m.creds[credID] = c
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			srv, p := newTestProvider(t)
+			access, refresh := connect(t, srv, "hlk_k1")
+			c, err := p.signer.Verify(access, "https://mcp.test")
+			if err != nil {
+				t.Fatal(err)
+			}
+			m := p.store.(*memoryStore)
+			m.mu.Lock()
+			tc.breakIt(m, c.CredentialID)
+			m.mu.Unlock()
+			status, body := tokenPost(t, srv, url.Values{"grant_type": {"refresh_token"}, "refresh_token": {refresh}})
+			if status != http.StatusBadRequest || body["error"] != "invalid_grant" {
+				t.Fatalf("refresh with a %s credential: %d %v, want invalid_grant", tc.name, status, body)
+			}
+		})
+	}
+}
+
+// A legacy chain shares the per-user row with the user's other legacy chains,
+// so a dead key ends only the presented chain.
+func TestRefresh_DeadLegacyKeyEndsPresentedTokenOnly(t *testing.T) {
+	up := &keyUpstream{}
+	srv, p := newTestProviderUpstream(t, up.serve)
+	m := p.store.(*memoryStore)
+	ctx := context.Background()
+	blob, err := p.crypto.Encrypt("user-123", "hlk_legacy")
+	if err != nil {
+		t.Fatal(err)
+	}
+	m.mu.Lock()
+	m.userCreds["user-123"] = blob
+	m.mu.Unlock()
+	for _, tok := range []string{"rtok-a", "rtok-b"} {
+		if err := m.SaveRefreshToken(ctx, &RefreshToken{
+			TokenHash: hashToken(tok), UserID: "user-123", ClientID: "c-old", Scope: "mcp",
+			Resource: "https://mcp.test", ExpiresAt: time.Now().Add(time.Hour),
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	up.dead.Store("Bearer hlk_legacy", struct{}{})
+	if status, _ := tokenPost(t, srv, url.Values{"grant_type": {"refresh_token"}, "refresh_token": {"rtok-a"}}); status != http.StatusBadRequest {
+		t.Fatalf("legacy refresh with a dead key: %d, want 400", status)
+	}
+	if rt, err := m.GetRefreshToken(ctx, hashToken("rtok-b")); err != nil || rt.RevokedAt != nil {
+		t.Fatalf("another legacy chain must stay live: %+v %v", rt, err)
+	}
+	if _, err := m.GetCredential(ctx, "user-123", ""); err != nil {
+		t.Fatalf("the per-user row must stay: %v", err)
 	}
 }
