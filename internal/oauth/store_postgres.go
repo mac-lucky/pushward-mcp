@@ -96,9 +96,13 @@ CREATE INDEX IF NOT EXISTS idx_oauth_refresh_family ON oauth_refresh_tokens(fami
 	// 5: when a grant last used a client, so Cleanup keeps a client that
 	// completed a grant (it caches its client_id) until it has been idle far
 	// longer than a refresh token lives. updated_at stays the CIMD re-fetch
-	// clock. NULL: never used, pruned as before.
+	// clock. NULL: never used, pruned as before. A client that holds a refresh
+	// token completed a grant before the column existed, so it starts as used.
 	`
-ALTER TABLE oauth_clients ADD COLUMN IF NOT EXISTS last_used_at TIMESTAMPTZ;`,
+ALTER TABLE oauth_clients ADD COLUMN IF NOT EXISTS last_used_at TIMESTAMPTZ;
+UPDATE oauth_clients c SET last_used_at=now()
+ WHERE c.last_used_at IS NULL
+   AND EXISTS (SELECT 1 FROM oauth_refresh_tokens r WHERE r.client_id = c.client_id);`,
 }
 
 // migrationAdvisoryLock is a fixed key for pg_advisory_xact_lock so only one pod

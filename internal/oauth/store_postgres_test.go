@@ -544,7 +544,10 @@ INSERT INTO oauth_user_credentials (user_id, encrypted_hlk) VALUES ('u', 'legacy
 INSERT INTO oauth_refresh_tokens (token_hash, user_id, client_id, scope, resource, expires_at)
   VALUES ('rt', 'u', 'c', 'mcp', 'https://mcp.test', now() + interval '1 day');
 INSERT INTO oauth_auth_codes (code_hash, client_id, user_id, scope, redirect_uri, code_challenge, resource, expires_at)
-  VALUES ('code', 'c', 'u', 'mcp', 'https://client.test/cb', 'x', 'https://mcp.test', now() + interval '5 minutes');`
+  VALUES ('code', 'c', 'u', 'mcp', 'https://client.test/cb', 'x', 'https://mcp.test', now() + interval '5 minutes');
+INSERT INTO oauth_clients (client_id, redirect_uris, updated_at)
+  VALUES ('c', '{https://client.test/cb}', now() - interval '30 days'),
+         ('c-idle', '{https://client.test/cb}', now() - interval '30 days');`
 	if _, err := pool.Exec(ctx, old); err != nil {
 		t.Fatalf("seed version 2: %v", err)
 	}
@@ -562,5 +565,21 @@ INSERT INTO oauth_auth_codes (code_hash, client_id, user_id, scope, redirect_uri
 	}
 	if b, err := s.GetCredential(ctx, "u", ""); err != nil || string(b) != "legacy" {
 		t.Fatalf("per-user row after migration: %q %v", b, err)
+	}
+	// The grant's client counts as used, so Cleanup keeps it once its token goes.
+	if _, err := pool.Exec(ctx, `DELETE FROM oauth_refresh_tokens`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(ctx, `DELETE FROM oauth_auth_codes`); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Cleanup(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.GetClient(ctx, "c"); err != nil {
+		t.Fatalf("a client with a grant from before the upgrade must outlive its token: %v", err)
+	}
+	if _, err := s.GetClient(ctx, "c-idle"); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("a client no grant used must still be pruned, got %v", err)
 	}
 }
