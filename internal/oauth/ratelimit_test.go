@@ -3,7 +3,9 @@ package oauth
 import (
 	"fmt"
 	"net/http"
+	"net/http/httptest"
 	"net/url"
+	"strings"
 	"testing"
 	"time"
 )
@@ -65,12 +67,37 @@ func TestKeyedLimiter_PeekAndCharge(t *testing.T) {
 	}
 }
 
+// userPerKey answers /auth/me with a user of its own for each hlk_u<N> key.
+func userPerKey(w http.ResponseWriter, r *http.Request) {
+	if n, ok := strings.CutPrefix(r.Header.Get("Authorization"), "Bearer hlk_u"); ok {
+		_, _ = w.Write([]byte(`{"id":"user-` + n + `"}`))
+		return
+	}
+	fakeAuthMe(w, r)
+}
+
+// newRefreshLimitedProvider is newTestProvider with one user per hlk_u<N> key
+// and the per-user refresh limiter on a clock the test moves.
+func newRefreshLimitedProvider(t *testing.T) (*httptest.Server, *fakeClock) {
+	t.Helper()
+	srv, p := newTestProviderUpstream(t, userPerKey)
+	clk := &fakeClock{t: time.Now()}
+	p.refreshLimiter.now = clk.now
+	return srv, clk
+}
+
 func TestTokenEndpoint_OnlyFailuresAreLimited(t *testing.T) {
-	srv, _ := newTestProvider(t)
-	_, refresh := connect(t, srv, "hlk_k1")
-	// Well past the 30-request burst: shared-egress refreshes must not drain it.
-	for range 40 {
-		_, refresh = refreshGrant(t, srv, refresh)
+	srv, _ := newRefreshLimitedProvider(t)
+	// Well past the 30-request burst from one address, spread over users the
+	// way a hosted connector's egress is: those refreshes must not drain it.
+	var refresh [4]string
+	for u := range refresh {
+		_, refresh[u] = connect(t, srv, fmt.Sprintf("hlk_u%d", u))
+	}
+	for range 10 {
+		for u := range refresh {
+			_, refresh[u] = refreshGrant(t, srv, refresh[u])
+		}
 	}
 	limited := false
 	for i := range 40 {
@@ -83,4 +110,36 @@ func TestTokenEndpoint_OnlyFailuresAreLimited(t *testing.T) {
 	if !limited {
 		t.Fatal("failed token requests must still be rate limited")
 	}
+}
+
+func TestTokenEndpoint_RefreshLimitedPerUser(t *testing.T) {
+	srv, clk := newRefreshLimitedProvider(t)
+	_, looping := connect(t, srv, "hlk_u1")
+	_, other := connect(t, srv, "hlk_u2")
+	limited := false
+	for range 20 {
+		status, m := tokenPost(t, srv, url.Values{"grant_type": {"refresh_token"}, "refresh_token": {looping}})
+		if status == http.StatusTooManyRequests {
+			limited = true
+			break
+		}
+		if status != http.StatusOK {
+			t.Fatalf("refresh failed: %d %v", status, m)
+		}
+		looping, _ = m["refresh_token"].(string)
+	}
+	if !limited {
+		t.Fatal("one user's refresh loop must be cut off")
+	}
+	// More refused refreshes than the per-address burst: none may be charged
+	// to the address, or the other user behind it would be refused too.
+	for range 40 {
+		if status, _ := tokenPost(t, srv, url.Values{"grant_type": {"refresh_token"}, "refresh_token": {looping}}); status != http.StatusTooManyRequests {
+			t.Fatalf("a user over the refresh limit got %d, want 429", status)
+		}
+	}
+	_, _ = refreshGrant(t, srv, other)
+	// A refused refresh leaves the grant as it was.
+	clk.advance(time.Minute)
+	_, _ = refreshGrant(t, srv, looping)
 }

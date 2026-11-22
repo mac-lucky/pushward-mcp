@@ -25,6 +25,7 @@ type Provider struct {
 
 	authorizeLimiter *keyedLimiter
 	tokenLimiter     *keyedLimiter
+	refreshLimiter   *keyedLimiter
 	registerLimiter  *keyedLimiter
 
 	// bgCtx scopes the background janitor to the provider lifetime; cancel stops it.
@@ -65,6 +66,7 @@ func New(ctx context.Context, cfg *Config, log *slog.Logger) (*Provider, error) 
 		cred:             newCredCache(credCacheTTL, credCacheMax, time.Now),
 		authorizeLimiter: newKeyedLimiter(60, 20),
 		tokenLimiter:     newKeyedLimiter(120, 30), // failed requests only, see handleToken
+		refreshLimiter:   newKeyedLimiter(30, 10),  // per user, see grantRefreshToken
 		registerLimiter:  newKeyedLimiter(10, 5),
 		bgCtx:            bgCtx,
 		cancel:           cancel,

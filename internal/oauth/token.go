@@ -25,7 +25,9 @@ func (p *Provider) handleToken(w http.ResponseWriter, r *http.Request) {
 	}
 	sw := &statusWriter{ResponseWriter: w, status: http.StatusOK}
 	defer func() {
-		if sw.status >= 400 && sw.status < 500 {
+		// The only 429 past Peek is one user's refresh limit, which must not
+		// drain an egress address that user shares with others.
+		if sw.status >= 400 && sw.status < 500 && sw.status != http.StatusTooManyRequests {
 			p.tokenLimiter.Charge(key)
 		}
 	}()
@@ -164,6 +166,14 @@ func (p *Provider) grantRefreshToken(w http.ResponseWriter, r *http.Request) {
 	}
 	if rt.ExpiresAt.Before(p.now()) {
 		oauthError(w, http.StatusBadRequest, "invalid_grant", "refresh token expired")
+		return
+	}
+	// Successful refreshes are not charged per IP, so they are capped per user:
+	// one account looping its own grant stops here, before the key check and
+	// the rotation write, while users behind a shared egress never share a
+	// bucket. Keyed only once the token is live, so junk cannot create buckets.
+	if !p.refreshLimiter.Allow(rt.UserID) {
+		oauthError(w, http.StatusTooManyRequests, "temporarily_unavailable", "rate limited")
 		return
 	}
 	if !p.grantKeyUsable(w, r, rt) {
