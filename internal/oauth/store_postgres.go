@@ -93,6 +93,12 @@ CREATE INDEX IF NOT EXISTS idx_oauth_refresh_credential ON oauth_refresh_tokens(
 ALTER TABLE oauth_auth_codes ADD COLUMN IF NOT EXISTS credential_id TEXT NOT NULL DEFAULT '';
 ALTER TABLE oauth_refresh_tokens ADD COLUMN IF NOT EXISTS family TEXT NOT NULL DEFAULT '';
 CREATE INDEX IF NOT EXISTS idx_oauth_refresh_family ON oauth_refresh_tokens(family) WHERE family <> '';`,
+	// 5: when a grant last used a client, so Cleanup keeps a client that
+	// completed a grant (it caches its client_id) until it has been idle far
+	// longer than a refresh token lives. updated_at stays the CIMD re-fetch
+	// clock. NULL: never used, pruned as before.
+	`
+ALTER TABLE oauth_clients ADD COLUMN IF NOT EXISTS last_used_at TIMESTAMPTZ;`,
 }
 
 // migrationAdvisoryLock is a fixed key for pg_advisory_xact_lock so only one pod
@@ -273,7 +279,12 @@ func (s *pgStore) ConsumeAuthCode(ctx context.Context, codeHash, credentialID st
 	return nil, ErrNotFound
 }
 
-const insertRefreshTokenSQL = `INSERT INTO oauth_refresh_tokens (token_hash, user_id, client_id, scope, resource, prev_hash, credential_id, family, expires_at)
+// insertRefreshTokenSQL saves a refresh token and marks its client used, at
+// most once a day, in the same statement.
+const insertRefreshTokenSQL = `WITH used AS (
+  UPDATE oauth_clients SET last_used_at=now()
+  WHERE client_id=$3 AND (last_used_at IS NULL OR last_used_at < now() - interval '1 day'))
+INSERT INTO oauth_refresh_tokens (token_hash, user_id, client_id, scope, resource, prev_hash, credential_id, family, expires_at)
  VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`
 
 func (s *pgStore) SaveRefreshToken(ctx context.Context, rt *RefreshToken) error {
@@ -395,15 +406,18 @@ func (s *pgStore) Cleanup(ctx context.Context) error {
 		return err
 	}
 	// Prune abandoned clients so anonymous DCR/CIMD traffic cannot grow the table
-	// without bound: drop clients not written within clientRetention that hold no
-	// active refresh token and no live authorization code. Run last so the token
-	// deletes above have already removed expired grants this pass.
+	// without bound: drop clients that hold no refresh token and no live
+	// authorization code and were either never used by a grant and not written
+	// within clientRetention, or last used longer than usedClientRetention ago.
+	// Run last so the token deletes above have already removed expired grants
+	// this pass.
 	if _, err := s.pool.Exec(ctx,
 		`DELETE FROM oauth_clients c
-		 WHERE c.updated_at < now() - make_interval(secs => $1)
+		 WHERE ((c.last_used_at IS NULL AND c.updated_at < now() - make_interval(secs => $1))
+		        OR c.last_used_at < now() - make_interval(secs => $2))
 		   AND NOT EXISTS (SELECT 1 FROM oauth_refresh_tokens r WHERE r.client_id = c.client_id)
 		   AND NOT EXISTS (SELECT 1 FROM oauth_auth_codes a WHERE a.client_id = c.client_id)`,
-		clientRetention.Seconds()); err != nil {
+		clientRetention.Seconds(), usedClientRetention.Seconds()); err != nil {
 		return err
 	}
 	return nil

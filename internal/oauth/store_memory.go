@@ -12,9 +12,11 @@ import (
 type memoryStore struct {
 	mu      sync.Mutex
 	clients map[string]*Client
-	codes   map[string]*memCode
-	refresh map[string]*RefreshToken
-	creds   map[string]memCred // grant credentials, by credential id
+	// clientUsed is when a grant last used a client (last_used_at).
+	clientUsed map[string]time.Time
+	codes      map[string]*memCode
+	refresh    map[string]*RefreshToken
+	creds      map[string]memCred // grant credentials, by credential id
 	// userCreds is the per-user row an empty credential id reads. Nothing writes
 	// it: a memory store starts empty, so only tests fill it.
 	userCreds map[string][]byte
@@ -37,12 +39,13 @@ type memCode struct {
 
 func newMemoryStore() *memoryStore {
 	return &memoryStore{
-		clients:   map[string]*Client{},
-		codes:     map[string]*memCode{},
-		refresh:   map[string]*RefreshToken{},
-		creds:     map[string]memCred{},
-		userCreds: map[string][]byte{},
-		now:       time.Now,
+		clients:    map[string]*Client{},
+		clientUsed: map[string]time.Time{},
+		codes:      map[string]*memCode{},
+		refresh:    map[string]*RefreshToken{},
+		creds:      map[string]memCred{},
+		userCreds:  map[string][]byte{},
+		now:        time.Now,
 	}
 }
 
@@ -83,20 +86,39 @@ func (m *memoryStore) evictOldestClientLocked() {
 	}
 	if oldestID != "" {
 		delete(m.clients, oldestID)
+		delete(m.clientUsed, oldestID)
 	}
 }
 
-// evictStaleClientsLocked drops clients past clientRetention that hold no refresh
-// token and no live auth code, mirroring the Postgres Cleanup. Caller holds m.mu.
+// evictStaleClientsLocked drops clients that hold no refresh token and no live
+// auth code and are past their retention (clientRetention since the last write
+// for a client no grant used, usedClientRetention since the last use
+// otherwise), mirroring the Postgres Cleanup. Caller holds m.mu.
 func (m *memoryStore) evictStaleClientsLocked(now time.Time) {
 	for id, c := range m.clients {
-		if now.Sub(c.UpdatedAt) <= clientRetention {
+		if used, ok := m.clientUsed[id]; ok {
+			if now.Sub(used) <= usedClientRetention {
+				continue
+			}
+		} else if now.Sub(c.UpdatedAt) <= clientRetention {
 			continue
 		}
 		if m.clientHasTokenLocked(id) || m.clientHasCodeLocked(id) {
 			continue
 		}
 		delete(m.clients, id)
+		delete(m.clientUsed, id)
+	}
+}
+
+// markClientUsedLocked records a grant's use of a known client, at most once a
+// day like the Postgres store. Caller holds m.mu.
+func (m *memoryStore) markClientUsedLocked(clientID string, now time.Time) {
+	if _, ok := m.clients[clientID]; !ok {
+		return
+	}
+	if used, ok := m.clientUsed[clientID]; !ok || now.Sub(used) > 24*time.Hour {
+		m.clientUsed[clientID] = now
 	}
 }
 
@@ -165,6 +187,7 @@ func (m *memoryStore) SaveRefreshToken(_ context.Context, rt *RefreshToken) erro
 	defer m.mu.Unlock()
 	cp := *rt
 	m.refresh[rt.TokenHash] = &cp
+	m.markClientUsedLocked(rt.ClientID, m.now())
 	return nil
 }
 
@@ -202,6 +225,7 @@ func (m *memoryStore) RotateRefreshToken(_ context.Context, oldHash string, next
 	rt.RevokedAt = &t
 	cp := *next
 	m.refresh[next.TokenHash] = &cp
+	m.markClientUsedLocked(next.ClientID, t)
 	return true, nil
 }
 

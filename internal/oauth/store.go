@@ -121,9 +121,10 @@ type Store interface {
 
 	// Cleanup purges expired authorization codes, expired/long-revoked refresh
 	// tokens, grant credentials no refresh token references any more, per-user
-	// keys no live legacy chain reads any more, and stale
-	// clients (older than clientRetention with no active refresh token or live
-	// auth code) so none of the tables grows without bound.
+	// keys no live legacy chain reads any more, and stale clients (no refresh
+	// token or live auth code, and unwritten for clientRetention if no grant
+	// ever used them, unused for usedClientRetention otherwise) so none of the
+	// tables grows without bound.
 	Cleanup(ctx context.Context) error
 
 	Close()

@@ -390,3 +390,31 @@ func TestRefresh_DeadLegacyKeyEndsPresentedTokenOnly(t *testing.T) {
 		t.Fatalf("the per-user row must stay: %v", err)
 	}
 }
+
+// A client that completed a grant caches its client_id, so losing its tokens
+// (a theft response, an idle expiry) must not prune it at once.
+func TestMemoryStore_UsedClientOutlivesItsTokens(t *testing.T) {
+	m := newMemoryStore()
+	ctx := context.Background()
+	clk := time.Now()
+	m.now = func() time.Time { return clk }
+	for _, id := range []string{"used", "idle"} {
+		_ = m.SaveClient(ctx, &Client{ID: id, RedirectURIs: []string{"https://client.test/cb"}})
+	}
+	_ = m.SaveRefreshToken(ctx, &RefreshToken{TokenHash: "rt", UserID: "u", ClientID: "used", ExpiresAt: clk.Add(time.Hour)})
+	_ = m.RevokeUserRefreshTokens(ctx, "u")
+
+	clk = clk.Add(2 * clientRetention)
+	_ = m.Cleanup(ctx)
+	if _, err := m.GetClient(ctx, "used"); err != nil {
+		t.Fatalf("a used client must outlive its tokens: %v", err)
+	}
+	if _, err := m.GetClient(ctx, "idle"); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("a never-used client must still be pruned, got %v", err)
+	}
+	clk = clk.Add(usedClientRetention)
+	_ = m.Cleanup(ctx)
+	if _, err := m.GetClient(ctx, "used"); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("a client idle past usedClientRetention must be pruned, got %v", err)
+	}
+}

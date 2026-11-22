@@ -49,6 +49,12 @@ const (
 	// token and no live authorization code is kept before Cleanup prunes it, so the
 	// clients table cannot grow without bound from anonymous DCR/CIMD traffic.
 	clientRetention = 24 * time.Hour
+	// usedClientRetention replaces clientRetention for a client a grant has
+	// used: such a client caches its client_id, and a pruned one dead-ends at
+	// "unknown client_id" instead of registering again. A theft response
+	// revokes its tokens at once, and an idle grant expires after
+	// refreshTokenTTL, so the margin covers both.
+	usedClientRetention = 2 * refreshTokenTTL
 	// clientCacheMax hard-caps the in-memory store's client map (the Postgres store
 	// is bounded by clientRetention cleanup instead).
 	clientCacheMax = 50_000

@@ -257,6 +257,62 @@ func TestPostgresGrantCredentials(t *testing.T) {
 	}
 }
 
+// TestPostgresUsedClientRetention checks that a client a grant used survives
+// its tokens until it has been idle for usedClientRetention, while a
+// never-used one is pruned after clientRetention as before.
+func TestPostgresUsedClientRetention(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	s := testPGStore(t, ctx)
+
+	suffix, _ := randomToken(8)
+	used, idle := "dcr_used_"+suffix, "dcr_idle_"+suffix
+	t.Cleanup(func() {
+		c := context.Background()
+		_, _ = s.pool.Exec(c, `DELETE FROM oauth_refresh_tokens WHERE client_id=$1`, used)
+		_, _ = s.pool.Exec(c, `DELETE FROM oauth_clients WHERE client_id IN ($1,$2)`, used, idle)
+	})
+	for _, id := range []string{used, idle} {
+		if err := s.SaveClient(ctx, &Client{ID: id, RedirectURIs: []string{"https://client.test/cb"}}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := s.SaveRefreshToken(ctx, &RefreshToken{TokenHash: "rt-" + suffix, UserID: "u-" + suffix, ClientID: used,
+		Scope: "mcp", Resource: "https://mcp.test", ExpiresAt: time.Now().Add(time.Hour)}); err != nil {
+		t.Fatal(err)
+	}
+	var lastUsed *time.Time
+	if err := s.pool.QueryRow(ctx, `SELECT last_used_at FROM oauth_clients WHERE client_id=$1`, used).Scan(&lastUsed); err != nil || lastUsed == nil {
+		t.Fatalf("saving a grant's token must mark its client used: %v %v", lastUsed, err)
+	}
+	// Its tokens are gone (a theft response, purged) and both rows are old.
+	if _, err := s.pool.Exec(ctx, `DELETE FROM oauth_refresh_tokens WHERE client_id=$1`, used); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.pool.Exec(ctx, `UPDATE oauth_clients SET updated_at=now()-interval '2 days' WHERE client_id IN ($1,$2)`, used, idle); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Cleanup(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.GetClient(ctx, used); err != nil {
+		t.Fatalf("a used client must outlive its tokens: %v", err)
+	}
+	if _, err := s.GetClient(ctx, idle); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("a never-used client must still be pruned, got %v", err)
+	}
+	if _, err := s.pool.Exec(ctx, `UPDATE oauth_clients SET last_used_at=now()-make_interval(secs => $2) WHERE client_id=$1`,
+		used, (usedClientRetention + time.Hour).Seconds()); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Cleanup(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.GetClient(ctx, used); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("a client idle past usedClientRetention must be pruned, got %v", err)
+	}
+}
+
 // TestPostgresLegacyCredentialCleanup checks that Cleanup drops a per-user key
 // only once no live legacy chain of that user can read it.
 func TestPostgresLegacyCredentialCleanup(t *testing.T) {
