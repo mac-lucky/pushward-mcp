@@ -180,6 +180,9 @@ func safeGet(ctx context.Context, rawurl string) ([]byte, error) {
 			return d.DialContext(ctx, network, net.JoinHostPort(dialIP.String(), port))
 		},
 		TLSHandshakeTimeout: 5 * time.Second,
+		// One request per transport: a pooled connection would idle on with
+		// nothing left to reuse it.
+		DisableKeepAlives: true,
 	}
 	hc := &http.Client{
 		Transport: transport,
