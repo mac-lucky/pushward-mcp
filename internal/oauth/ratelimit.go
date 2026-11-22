@@ -69,12 +69,13 @@ func (l *keyedLimiter) Peek(k string) bool {
 	return b.tokens >= 1
 }
 
-// Charge spends one of k's tokens, if it has one left.
+// Charge spends one of k's tokens, going into debt if none is left: requests
+// that passed Peek together are all paid for, so concurrent failures cannot
+// outrun the refill rate. The debt is at most the number of such requests.
 func (l *keyedLimiter) Charge(k string) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	b := l.bucketLocked(k)
-	b.tokens = max(b.tokens-1, 0)
+	l.bucketLocked(k).tokens--
 }
 
 // bucketLocked returns k's bucket refilled up to now, creating a full one if k

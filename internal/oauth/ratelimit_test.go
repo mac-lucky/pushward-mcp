@@ -48,13 +48,18 @@ func TestKeyedLimiter_PeekAndCharge(t *testing.T) {
 			t.Fatal("peeking must not spend tokens")
 		}
 	}
+	// Three failures that passed Peek at once: the third is owed.
 	l.Charge("k")
 	l.Charge("k")
-	l.Charge("k") // nothing left to take; must not go into debt
+	l.Charge("k")
 	if l.Peek("k") {
 		t.Fatal("a bucket charged past its burst must be empty")
 	}
 	now = now.Add(time.Second) // 60/min refills one token a second
+	if l.Peek("k") {
+		t.Fatal("a bucket in debt must pay it off before it lets a request in")
+	}
+	now = now.Add(time.Second)
 	if !l.Peek("k") {
 		t.Fatal("an emptied bucket must refill")
 	}
