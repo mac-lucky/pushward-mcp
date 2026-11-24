@@ -73,6 +73,39 @@ func TestHandleCreateNotification_PushPresence(t *testing.T) {
 	}
 }
 
+// TestHandleCreateNotification_OpenURLOnTap: the flag reaches the body only
+// when the caller gives it, so an omitted value sends the same body as before.
+func TestHandleCreateNotification_OpenURLOnTap(t *testing.T) {
+	for name, c := range map[string]struct {
+		args map[string]any
+		want string
+	}{
+		"omitted": {map[string]any{"title": "T", "body": "B", "url": "https://example.com"}, ""},
+		"true":    {map[string]any{"title": "T", "body": "B", "url": "https://example.com", "open_url_on_tap": true}, "true"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			var raw map[string]json.RawMessage
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				body, _ := io.ReadAll(r.Body)
+				if err := json.Unmarshal(body, &raw); err != nil {
+					t.Errorf("unmarshal request body: %v", err)
+				}
+				w.WriteHeader(http.StatusCreated)
+				w.Write([]byte(`{"id":"notif-1"}`))
+			}))
+			defer srv.Close()
+
+			result, err := handleCreateNotification(context.Background(), newReq(c.args), client.NewAPIClient(srv.URL, "tok"))
+			if err != nil || result.IsError {
+				t.Fatalf("unexpected error: %v %v", err, result)
+			}
+			if got := string(raw["open_url_on_tap"]); got != c.want {
+				t.Errorf("open_url_on_tap = %q, want %q", got, c.want)
+			}
+		})
+	}
+}
+
 // TestHandleCreateNotification_MissingRequiredIsError covers the generated
 // RequireString error path: omitting a required string returns an MCP error
 // result (not a Go error), rather than the old error-swallowing inline closure

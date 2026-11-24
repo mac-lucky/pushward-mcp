@@ -99,6 +99,9 @@ func registerAPITools(s *mcpserver.MCPServer, api *client.APIClient) {
 				mcp.Description("Rich media attachment (image, video, or audio). HTTPS only."),
 				mcp.Properties(map[string]any{"type": map[string]any{"description": "Media type", "enum": []string{"image", "video", "audio"}, "type": "string"}, "url": map[string]any{"description": "HTTPS URL of the media file", "type": "string"}}),
 			),
+			mcp.WithBoolean("open_url_on_tap",
+				mcp.Description("When true, a plain tap on the notification opens its url instead of the notification, if the device trusts that link (its host or scheme is on the user's trusted links, or link confirmation is off). Other links open the notification first, where the link asks before opening. Requires url, or encrypted with the url inside. Stays plaintext beside encrypted. App versions without support open the notification as before."),
+			),
 			mcp.WithBoolean("push",
 				mcp.Description("Send as an APNs push to the user's devices. Defaults to true; set false to store in the inbox only."),
 			),
@@ -184,6 +187,9 @@ func registerAPITools(s *mcpserver.MCPServer, api *client.APIClient) {
 			mcp.WithObject("media",
 				mcp.Description("Rich media attachment (image, video, or audio). HTTPS only."),
 				mcp.Properties(map[string]any{"type": map[string]any{"description": "Media type", "enum": []string{"image", "video", "audio"}, "type": "string"}, "url": map[string]any{"description": "HTTPS URL of the media file", "type": "string"}}),
+			),
+			mcp.WithBoolean("open_url_on_tap",
+				mcp.Description("When true, a plain tap on the notification opens its url instead of the notification, if the device trusts that link (its host or scheme is on the user's trusted links, or link confirmation is off). Other links open the notification first, where the link asks before opening. Requires url, or encrypted with the url inside. Stays plaintext beside encrypted. App versions without support open the notification as before."),
 			),
 			mcp.WithBoolean("push",
 				mcp.Description("Send as an APNs push to the user's devices. Defaults to true; set false to store in the inbox only."),
@@ -620,6 +626,13 @@ func handleCreateNotification(ctx context.Context, req mcp.CallToolRequest, api 
 	// (or null) value inherits the server-side default - e.g. push defaults to
 	// true - instead of being forced to false. RequireBool errors on absent, null,
 	// or non-bool input; assign only on success. Requires a *bool client field.
+	if v, err := req.RequireBool("open_url_on_tap"); err == nil {
+		input.OpenURLOnTap = &v
+	}
+	// Send the field only when the caller supplied a real boolean, so an omitted
+	// (or null) value inherits the server-side default - e.g. push defaults to
+	// true - instead of being forced to false. RequireBool errors on absent, null,
+	// or non-bool input; assign only on success. Requires a *bool client field.
 	if v, err := req.RequireBool("push"); err == nil {
 		input.Push = &v
 	}
@@ -741,6 +754,13 @@ func handleCreateScheduledNotification(ctx context.Context, req mcp.CallToolRequ
 			return mcp.NewToolResultError("parsing media: " + err.Error()), nil
 		}
 		input.Media = parsed
+	}
+	// Send the field only when the caller supplied a real boolean, so an omitted
+	// (or null) value inherits the server-side default - e.g. push defaults to
+	// true - instead of being forced to false. RequireBool errors on absent, null,
+	// or non-bool input; assign only on success. Requires a *bool client field.
+	if v, err := req.RequireBool("open_url_on_tap"); err == nil {
+		input.OpenURLOnTap = &v
 	}
 	// Send the field only when the caller supplied a real boolean, so an omitted
 	// (or null) value inherits the server-side default - e.g. push defaults to

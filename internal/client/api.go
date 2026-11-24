@@ -320,6 +320,7 @@ type CreateNotificationInput struct {
 	IconURL           string            `json:"icon_url,omitempty"`
 	Media             *MediaAttachment  `json:"media,omitempty"`
 	URL               string            `json:"url,omitempty"`
+	OpenURLOnTap      *bool             `json:"open_url_on_tap,omitempty"`
 	ActivitySlug      string            `json:"activity_slug,omitempty"`
 	Metadata          map[string]string `json:"metadata,omitempty"`
 	Actions           json.RawMessage   `json:"actions,omitempty"`
@@ -378,6 +379,7 @@ type CreateScheduledNotificationInput struct {
 	IconURL           string            `json:"icon_url,omitempty"`
 	Media             *MediaAttachment  `json:"media,omitempty"`
 	URL               string            `json:"url,omitempty"`
+	OpenURLOnTap      *bool             `json:"open_url_on_tap,omitempty"`
 	ActivitySlug      string            `json:"activity_slug,omitempty"`
 	Metadata          map[string]string `json:"metadata,omitempty"`
 	Actions           json.RawMessage   `json:"actions,omitempty"`
