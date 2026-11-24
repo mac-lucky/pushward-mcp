@@ -66,6 +66,8 @@ Titles carry the news, bodies the one detail that matters. `level` is `passive`,
 (default), `time-sensitive` or `critical`; keep `time-sensitive` for "I am stuck until you
 answer" and do not use `critical` unless asked. `collapse_id` replaces an earlier notification
 with the same id instead of stacking a new one; `url` opens a page on tap.
+`open_url_on_tap: true` (needs `url`) opens that page on the tap itself instead of the detail
+view, for a link the app trusts (PushWard 1.31.0).
 
 ```
 create_notification {"title": "Garage door open", "body": "Open since 21:40", "collapse_id": "garage-door", "snooze": [15, 60]}
