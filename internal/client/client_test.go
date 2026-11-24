@@ -978,8 +978,10 @@ func TestAPIClient_E2ESealsNotificationText(t *testing.T) {
 	api.SetE2EKey(k)
 	ctx := context.Background()
 
+	openOnTap := true
 	if _, err := api.CreateNotification(ctx, CreateNotificationInput{
 		Title: "Disk full", Subtitle: "db01", Body: "/var at 97%", URL: "https://grafana.example.com/d/1", Level: "critical",
+		OpenURLOnTap: &openOnTap,
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -996,6 +998,13 @@ func TestAPIClient_E2ESealsNotificationText(t *testing.T) {
 	if _, err := api.CreateNotification(ctx, CreateNotificationInput{Title: "T", Body: "B", URL: "javascript:alert(1)"}); err == nil {
 		t.Error("a url the apps would drop must fail before sealing")
 	}
+	// Sealed, the server could not see the url is missing, so the client refuses.
+	if _, err := api.CreateNotification(ctx, CreateNotificationInput{Title: "T", Body: "B", OpenURLOnTap: &openOnTap}); err == nil {
+		t.Error("open_url_on_tap without url must fail before sealing")
+	}
+	if _, err := api.CreateScheduledNotification(ctx, CreateScheduledNotificationInput{Title: "T", Body: "B", SendAt: "2030-01-01T09:00:00Z", OpenURLOnTap: &openOnTap}); err == nil {
+		t.Error("scheduled open_url_on_tap without url must fail before sealing")
+	}
 
 	if len(bodies) != 3 {
 		t.Fatalf("got %d requests, want 3", len(bodies))
@@ -1011,7 +1020,7 @@ func TestAPIClient_E2ESealsNotificationText(t *testing.T) {
 			}
 		}
 	}
-	if bodies[0]["level"] != "critical" || bodies[1]["send_at"] != "2030-01-01T09:00:00Z" {
+	if bodies[0]["level"] != "critical" || bodies[0]["open_url_on_tap"] != true || bodies[1]["send_at"] != "2030-01-01T09:00:00Z" {
 		t.Errorf("fields outside the envelope must stay: %v, %v", bodies[0], bodies[1])
 	}
 	if bodies[2]["encrypted"] != env || len(bodies[2]) != 2 {

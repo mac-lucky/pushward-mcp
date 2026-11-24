@@ -101,6 +101,17 @@ func checkAcknowledge(ack json.RawMessage, tags []string, callbackURL string) er
 	return nil
 }
 
+// checkOpenURLOnTap refuses open_url_on_tap without a url before sealing: once
+// sealText moves the text into an envelope the server can no longer see that
+// the url is missing, so the same call would pass with a key and 422 without.
+// A caller's own envelope may carry the url, so it is let through.
+func checkOpenURLOnTap(flag *bool, url, encrypted string) error {
+	if flag != nil && *flag && url == "" && encrypted == "" {
+		return errors.New("open_url_on_tap needs url, the link a tap opens")
+	}
+	return nil
+}
+
 // explainSealed names the cause when the server refuses a notification this
 // client encrypted because the token is an organization key and PushWard has
 // not enabled encryption for organizations: the agent cannot see that
@@ -353,6 +364,9 @@ func (c *APIClient) CreateNotification(ctx context.Context, input CreateNotifica
 	if err := checkAcknowledge(input.Acknowledge, input.Tags, input.CallbackURL); err != nil {
 		return nil, err
 	}
+	if err := checkOpenURLOnTap(input.OpenURLOnTap, input.URL, input.Encrypted); err != nil {
+		return nil, err
+	}
 	sealed, err := c.sealText(&input.Encrypted, &input.Title, &input.Subtitle, &input.Body, &input.URL)
 	if err != nil {
 		return nil, err
@@ -407,6 +421,9 @@ type Recurrence struct {
 // quota when it happens.
 func (c *APIClient) CreateScheduledNotification(ctx context.Context, input CreateScheduledNotificationInput) (json.RawMessage, error) {
 	if err := checkAcknowledge(input.Acknowledge, input.Tags, input.CallbackURL); err != nil {
+		return nil, err
+	}
+	if err := checkOpenURLOnTap(input.OpenURLOnTap, input.URL, input.Encrypted); err != nil {
 		return nil, err
 	}
 	sealed, err := c.sealText(&input.Encrypted, &input.Title, &input.Subtitle, &input.Body, &input.URL)
