@@ -271,6 +271,9 @@ func registerRelayTools(s *mcpserver.MCPServer, relay *client.RelayClient) {
 			mcp.WithString("hostname",
 				mcp.Description("hostname"),
 			),
+			mcp.WithString("job_id",
+				mcp.Description("job_id"),
+			),
 			mcp.WithString("message",
 				mcp.Description("message"),
 			),
@@ -610,6 +613,9 @@ func handleRelayProxmox(ctx context.Context, req mcp.CallToolRequest, relay *cli
 	body := map[string]any{}
 	if v := req.GetString("hostname", ""); v != "" {
 		body["hostname"] = v
+	}
+	if v := req.GetString("job_id", ""); v != "" {
+		body["job_id"] = v
 	}
 	if v := req.GetString("message", ""); v != "" {
 		body["message"] = v

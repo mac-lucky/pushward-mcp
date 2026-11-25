@@ -2,7 +2,7 @@
 
 > Full Markdown bundle of every PushWard docs page, auto-generated from the prerendered HTML at build time. Source: https://pushward.app
 
-> Generated: 2026-11-16T00:51:17.433Z
+> Generated: 2026-11-25T13:27:25.908Z
 
 ---
 <!-- source: https://pushward.app/docs/getting-started -->
@@ -2562,6 +2562,12 @@ A notification's detail view in the PushWard app offers the same actions as its 
 
 Before the app opens a link from a notification (the link or a link in the text of the detail view, or an action that opens its `url` instead of firing it silently, from the detail, the Lock Screen, a banner or the Mac), it shows where the link goes: the host or the app it opens, whether the connection is secure, and the full URL. You can open it, copy it, or trust the site so its links open without asking. **Settings > Links** turns the confirmation off and lists your trusted sites; both sync over iCloud. Buttons on widgets and Live Activities, and actions run from Siri or Shortcuts, open links directly.
 
+_Requires PushWard 1.31.0 or later on iPhone, iPad and Mac, or 1.5.0 or later on Android._
+
+**Open Trusted Links on Tap**, in **Settings > Links**, is off by default. With it on, tapping a notification whose link is trusted (its site or app is trusted, or the confirmation is off) opens the link instead of the notification. An untrusted link still opens the notification; open the link from there once with **Don't ask again** and later taps go straight to it. It only applies to notifications sent with a `url`, and needs PushWard 1.31 or later on iPhone, iPad and Mac, 1.5.0 or later on Android.
+
+A sender can ask for this on one notification, whether the setting is on or off, by adding `open_url_on_tap: true` to a notification with a `url` (or with the url inside `encrypted`) on [`POST /notifications`](https://pushward.app/docs/notifications/api) or a scheduled notification. A link the device does not trust still opens the notification first, where the link asks before it opens.
+
 ### Example: Overseerr request approval
 
 A new movie request lands. Three buttons: **Approve** (silent webhook), **Deny** (red, silent webhook), and **View Details** (opens the app). Each `id` and `url` is unique to the request.
@@ -4189,6 +4195,115 @@ CLI 1.3.x and earlier drop a stored encryption key when `pushward auth login` or
 
 ---
 
+<!-- source: https://pushward.app/docs/notifications/mutes -->
+
+# Mute, Pause and Quiet Hours
+
+Mute one source, pause PushWard for a while, or set daily quiet hours. Every device signed in to your account follows them.
+
+_Requires PushWard 1.32.0 or later on iPhone, iPad and Mac, or 1.6.0 or later on Android._
+
+One noisy source should not cost you the rest. Mute it from its row in the app, pause everything for an hour, or let PushWard go quiet at night. The server keeps all of it for your account, so every iPhone, iPad, Mac and Android device signed in to it follows the same mutes, and a notification that arrives while muted is still kept in the app's list. Muting needs PushWard 1.32 or later on iPhone, iPad and Mac, 1.6.0 or later on Android.
+
+## Mute one source or activity
+
+Long-press a notification, a source or an activity in the app (on the Mac, right-click it), choose **Mute** and how long:
+
+-   **For 1 Hour** or **For 8 Hours**
+-   **Until 8:00**, the next eight o'clock in the morning
+-   **Until I Unmute**
+
+A muted row shows a speaker with a line through it next to its name, and the same menu then offers **Unmute**. A mute from a row is always [Silent](#modes).
+
+-   Muting a notification mutes its source: every notification sent with the same `source`. One sent without a `source` has nothing to mute by, so its menu has no Mute.
+-   Muting an activity covers its Live Activity and the notifications sent for it with its `activity_slug`.
+
+## Pause
+
+**Settings > Notifications > Pause & Quiet Hours** pauses PushWard on all your devices at once. Pick what to pause (notifications, Live Activities or both) and the [mode](#modes), then **For 1 Hour**, **For 8 Hours**, **Until 8:00** or **Until I Turn It Off**. **Resume** ends it early.
+
+## Quiet hours
+
+On the same screen, **Quiet Hours** mutes PushWard every day between a start and an end time, with its own choice of what it applies to and which mode. The times are in the time zone of the device that last saved them, named under the times, and they stay in that zone when you travel until you save them again. A window that ends before it starts runs past midnight, so 22:00 to 7:00 covers the night; the start and the end cannot be the same.
+
+Below that, the screen lists everything you muted from a row, each with its own **Unmute**.
+
+## Silent or Off
+
+-   **Silent** delivers the notification as [passive](https://pushward.app/docs/notifications/basics): no sound, banner or screen wake. It still shows up in Notification Center, or in the notification shade on Android.
+-   **Off** sends no push at all.
+
+Either way the notification is kept in the app's list, so you can read it later. When two mutes cover the same notification, Off wins.
+
+## Critical alerts
+
+A pause and quiet hours let [critical alerts](https://pushward.app/docs/notifications/basics) through. A mute of one source does not: it covers that source's critical alerts too, so a source muted from its row sends them silently.
+
+## Live Activities
+
+While a mute covers Live Activities (Live Updates on Android), no new one starts on your devices for that activity, or for any activity during a pause or quiet hours, and the ones already running keep updating without sound. A mute never ends a Live Activity. Silent and Off mean the same thing here.
+
+PushWard 1.5.0 and earlier on Android ignore this, so a muted Live Update can still show up there, silently.
+
+## If you send notifications
+
+A mute changes what reaches the devices: the notification is stored as usual. When an Off mute covers it, the `POST /notifications` response has `delivery` `none` and `reason` `push_disabled`, the same as a `push: false` send; an organization's send counts a member's muted device as delivered. People mute by `source`, so send each kind of message under a steady `source` with a `source_display_name`; the app shows that name for the mute. An activity's `devices_targeted` leaves out your own devices while you have it muted.
+
+## Mutes over the API
+
+The app keeps mutes at `/app/mutes`, and an integration key can read and change them there too. The key needs the [`account` permission](https://pushward.app/docs/api/authentication#scopes): `read` to list them, `manage` to add and remove them. Every key starts at `none` on `account`: raise it in the app, or pass it on over the API from a default key that has it.
+
+GET `/app/mutes`
+
+Returns {"mutes": \[...\]}, oldest first. Timed mutes whose until has passed are left out.
+
+POST `/app/mutes`
+
+Adds a mute and returns it (201) with its id. Muting the same target and applies\_to again replaces the timed mute; a schedule is kept separately.
+
+DELETE `/app/mutes/{mute_id}`
+
+Removes a mute (204).
+
+| Field | Type | Required | Description |
+| --- | --- | --- | --- |
+| `target` | string | Yes | A notification `source` or an activity slug, matched exactly, or `*` for everything except critical alerts. Up to 128 characters. |
+| `applies_to` | string | Yes | `notifications`, `activities` or `both`. |
+| `mode` | string | No | `silent` (default) or `off`. |
+| `until` | string | No | When the mute ends, an RFC 3339 time in the future. Without it the mute lasts until you remove it. |
+| `schedule` | object | No | A daily window: `start_minute` and `end_minute` in minutes since local midnight (0 to 1439, never equal; an end below the start runs past midnight) and an IANA `time_zone`. With `until` as well, the schedule stops then. |
+| `label` | string | No | The name the app shows for the target, up to 100 characters. |
+
+No Grafana pushes until 8:00 tomorrow 
+
+```
+{
+  "target": "grafana",
+  "applies_to": "notifications",
+  "mode": "off",
+  "until": "YYYY-MM-DDT08:00:00+01:00",
+  "label": "Grafana"
+}
+```
+
+Quiet hours from 22:00 to 7:00 
+
+```
+{
+  "target": "*",
+  "applies_to": "both",
+  "schedule": { "start_minute": 1320, "end_minute": 420, "time_zone": "Europe/Warsaw" }
+}
+```
+
+A request gets `422` for a blank `target`, an `until` that is not in the future, a schedule whose start equals its end or whose time zone is unknown, or a new mute when the account already has 100.
+
+## From the CLI, MCP and integrations
+
+The [CLI](https://pushward.app/docs/api/cli), the [MCP server](https://pushward.app/docs/api/mcp), the [Home Assistant integration](https://pushward.app/docs/integrations/home-assistant) and the n8n node get mute commands in their next releases. They call the same endpoints, so their key needs the `account` permission as well.
+
+---
+
 <!-- source: https://pushward.app/docs/notifications/api -->
 
 # Notifications API
@@ -4227,6 +4342,7 @@ Create an in-app notification and optionally push it to all user devices. No sub
 | `tags` _(iOS app 1.17.0+)_ | array | No | Up to 10 labels (1-64 printable ASCII characters, no spaces) for canceling acknowledged notifications as a group. Requires `acknowledge`. |
 | `callback_url` _(iOS app 1.17.0+)_ | string | No | https URL that gets a signed `POST` when the notification is acknowledged or expires (max 2048 chars). Requires `acknowledge`. |
 | `snooze` _(PushWard 1.20.0+ on Apple, 1.1.0+ on Android)_ | array | No | 1 to 3 different durations in minutes (1-1440 each), shown as snooze buttons after the actions; a tap shows the notification again on that device after that long. Not with `acknowledge`, and actions plus snooze count at most 10. Returned with the notification. The buttons need PushWard 1.1.0 or later on Android, 1.20 or later on iPhone, iPad and Mac. See [Snooze](https://pushward.app/docs/notifications/actions#snooze). |
+| `open_url_on_tap` _(PushWard 1.31.0+ on Apple, 1.5.0+ on Android)_ | boolean | No | If `true`, a plain tap on the notification opens its `url` instead of the notification when the device trusts that link: its site or app is on the user's trusted links, or the confirmation before opening links is off. Any other link opens the notification first, where the link asks before it opens. Requires `url`, or `encrypted` with the url inside; it stays plaintext next to `encrypted`. Returned with the notification when set. Needs PushWard 1.5.0 or later on Android, 1.31 or later on iPhone, iPad and Mac; older versions open the notification as before. See [Opening links](https://pushward.app/docs/notifications/actions#opening-links). |
 
 Example 
 
@@ -4350,11 +4466,12 @@ Errors use the RFC 9457 Problem Details shape (`Content-Type: application/proble
 | `401` | Missing or invalid token |
 | `403` | Integration key's `notifications` level is `none` (`integration_key.permission_denied`), or it sets `activity_slug` without activity access, or an organization key limited to some groups and tags targets outside them (`integration_key.target_denied`) |
 | `422` | Schema violation (wrong shape, `maxLength`, or `enum`), an unknown `activity_slug`, or a bad `target` (`org.target_*`) |
-| `429` | Per-IP rate limit (`code: rate_limit.exceeded`) or monthly notification quota exhausted (`code: quota.exceeded`) - pairs with `Retry-After` and `retry_after_ms`. See [Errors](https://pushward.app/docs/api/activities#errors) for the quota body shape. |
+| `429` | Rate limit (`code: rate_limit.exceeded`) or monthly notification quota exhausted (`code: quota.exceeded`) - pairs with `Retry-After` and `retry_after_ms`. See [Errors](https://pushward.app/docs/api/activities#errors) for the quota body shape. |
 | `500` | Internal server error |
 | `409` _(iOS app 1.17.0+)_ | 25 acknowledged notifications are already active for the account (`notification_receipt.limit_exceeded`) |
 | `422` _(iOS app 1.17.0+)_ | An encrypted push that would not fit 4 KB (`notification.encrypted_too_large`), `encrypted` from an organization key while PushWard has encryption for organizations turned off (`notification.encryption_unavailable`), or acknowledged notifications switched off for now (`notification_receipt.disabled`) |
 | `422` _(PushWard 1.20.0+ on Apple, 1.1.0+ on Android)_ | `snooze` together with `acknowledge`, or more than 10 actions and snooze durations together (`notification.snooze_invalid`) |
+| `422` _(PushWard 1.31.0+ on Apple, 1.5.0+ on Android)_ | `open_url_on_tap: true` with neither `url` nor `encrypted` (`notification.open_url_on_tap_requires_url`) |
 
 ---
 
@@ -4569,7 +4686,7 @@ What your integration sends always wins on the sizes it covers: the app still pr
 A `stat_list` also has a Row Density, set the same way per size: `density_by_size`, then `density`, then the app user's pick for the size and for every size, then Auto. It sets how tightly the rows pack, and each look applies it its own way:
 
 -   **Auto** is each look's own layout. Standard puts its rows two to a line only where one column would leave a row out; Bold sets its tiles up to two across; Classic pairs rows once there are more than three, always on the medium size and on the small size (when it has no buttons) only when every value is three characters or less.
--   **Compact** fits more rows. Standard puts them two to a line, once there are three or more, where their values stay whole, and also where the earlier design paired them and one column would leave a row out, with the values cut as that design cut them; Bold sets three or more tiles three across in smaller type where each value fits; Classic sets its rows tighter and smaller, two to a line only where each keeps its whole value and at least the first three letters of its label.
+-   **Compact** fits more rows. Standard puts them two to a line, once there are three or more, only where every value stays whole: with a longer value they go one to a line and the rows that do not fit are counted; Bold sets three or more tiles three across in smaller type where each value fits; Classic sets its rows tighter and smaller, two to a line only where each keeps its whole value and at least the first three letters of its label.
 -   **Comfortable** keeps one full-width row (in Bold, one tile) per line, so fewer rows show.
 
 Rows that do not fit are left out from the end and counted, as "+2" in the header or a last "+2 more" line or tile; Classic at Auto and Comfortable shows its rows as the earlier design did. Beside action buttons, at every density, Classic keeps the rows that fit above the buttons and counts the rest. On the Lock Screen the rectangle draws the same in every look: with more than three rows it puts them two to a line, up to six, at Auto when every value is three characters or less and always at Compact; otherwise it shows the first three.
@@ -4606,11 +4723,11 @@ The medium size of each template in each style, as the iOS app draws it from the
 
 `gauge`
 
-  ![The gauge widget in the Standard style.](https://pushward.app/_app/immutable/assets/gauge-standard-540.xTp2Aw5h.png) Standard
+  ![The gauge widget in the Standard style.](https://pushward.app/_app/immutable/assets/gauge-standard-540.agbvhF0Y.png) Standard
 
   ![The gauge widget in the Bold style.](https://pushward.app/_app/immutable/assets/gauge-bold-540.CcarYnEb.png) Bold
 
-  ![The gauge widget in the Classic style.](https://pushward.app/_app/immutable/assets/gauge-classic-540.moZGnodv.png) Classic
+  ![The gauge widget in the Classic style.](https://pushward.app/_app/immutable/assets/gauge-classic-540.BhVNFJxQ.png) Classic
 
 `stat_list`
 
@@ -4646,9 +4763,9 @@ The medium size of each template in each style, as the iOS app draws it from the
 
 `schedule`
 
-  ![The schedule widget in the Standard style.](https://pushward.app/_app/immutable/assets/schedule-standard-540.C1xWqSCW.png) Standard
+  ![The schedule widget in the Standard style.](https://pushward.app/_app/immutable/assets/schedule-standard-540.vUjtjbkw.png) Standard
 
-  ![The schedule widget in the Bold style.](https://pushward.app/_app/immutable/assets/schedule-bold-540.BUU5jA4T.png) Bold
+  ![The schedule widget in the Bold style.](https://pushward.app/_app/immutable/assets/schedule-bold-540.DBMIY8mG.png) Bold
 
   ![The schedule widget in the Classic style.](https://pushward.app/_app/immutable/assets/schedule-classic-540.CkE_tbyj.png) Classic
 
@@ -5048,7 +5165,7 @@ Widget errors use the same [RFC 9457 Problem Details](https://pushward.app/docs/
 | `403` | Integration key's `widgets` level is below what the call needs (`integration_key.permission_denied`), or the slug is outside its `widget_slugs` (`integration_key.slug_invalid`). |
 | `404` | Widget slug not found. |
 | `422` | Validation failure: missing required content field for the template, value out of range, non-finite number, etc. A bad organization `target` uses the `org.target_*` codes listed under [Teams](https://pushward.app/docs/teams#errors). |
-| `429` | Per-user widget cap reached (`code: widget.limit_exceeded`) or IP rate limit hit. |
+| `429` | Per-user widget cap reached (`code: widget.limit_exceeded`) or rate limit hit. |
 
 ---
 
@@ -6661,7 +6778,7 @@ The fastest way to get started is the [**Relay**](https://pushward.app/docs/inte
 
 [
 
-![Relay logo](https://pushward.app/_app/immutable/assets/webhook.DfE0AVox.svg)
+![Relay logo](https://pushward.app/_app/immutable/assets/webhook.CIDm9p6s.svg)
 
 ### Relay Recommended
 
@@ -6671,7 +6788,7 @@ Point webhooks from 19+ services at relay.pushward.app - no deployment needed, j
 
 ](https://pushward.app/docs/integrations/relay)[
 
-![Universal Webhook logo](https://pushward.app/_app/immutable/assets/webhook.DfE0AVox.svg)
+![Universal Webhook logo](https://pushward.app/_app/immutable/assets/webhook.CIDm9p6s.svg)
 
 ### Universal Webhook
 
@@ -9783,7 +9900,7 @@ Match on the stable `code` field - not the human-readable `detail` string (rewor
 | `org.target_unavailable` | `422` | A `target` sent with a personal key; only organization keys can target. |
 | `org.target_invalid` | `422` | The `target` names nothing or a member by something other than a user id, or (on `PATCH`) more than 20 groups, 20 tags or 100 members. |
 | `org.target_unknown` | `422` | The `target` names groups, tags or members the organization does not have; `detail` lists them. |
-| `rate_limit.exceeded` | `429` | IP rate limit hit - back off using `Retry-After`. |
+| `rate_limit.exceeded` | `429` | Rate limit hit - back off using `Retry-After`. |
 | `answer_wait.limit_exceeded` | `429` | Too many long-poll reads (`?wait=` on `GET /activities/{slug}` or `GET /notifications/answers/{id}`) open at once for the account. Retry shortly, or read without `wait`. |
 | `quota.exceeded` | `429` | Free-tier monthly quota exhausted. The Problem Details body includes `kind` (`"notifications"`, `"live_activity_updates"`, `"widget_updates"`, or `"emails"`), `used`, `limit`, and `reset_at` (RFC 3339 UTC, the start of next calendar month). The `Retry-After` header gives seconds until `reset_at`. Upgrading the user's plan clears the quota immediately - retrying before `reset_at` on the free tier will keep failing. |
 | `notification.encrypted_too_large` _(iOS app 1.17.0+)_ | `422` | An end-to-end encrypted notification whose push, with its other fields, would exceed 4 KB. See [Encryption limits](https://pushward.app/docs/notifications/encryption#limits). |
@@ -10581,7 +10698,7 @@ PushWard's iOS app uses Apple's silent background-push channel (`apns-push-type:
 
 ### Rate Limiting
 
-Rate limits are enforced per IP address.
+Most authenticated calls are limited per API key or app session, so callers behind one address (a household, an office, a carrier NAT) do not share a budget; each address also has a higher backstop. Sign-in, sending email (`POST /emails`, 60 requests/minute) and redeeming a share code are limited per IP address.
 
 | Endpoint | Limit |
 | --- | --- |
@@ -11788,16 +11905,16 @@ Receives Proxmox VE notification webhooks for backup, replication, fencing, pack
 
 | Event | State | Icon | Color |
 |---|---|---|---|
-| `vzdump` (start) | Backing up... | `externaldrive.fill.badge.timemachine` | blue |
-| `vzdump` (complete) | Backup Complete | `checkmark.circle.fill` | green |
-| `vzdump` (failed) | Backup Failed | `xmark.circle.fill` | red |
-| `replication` (start) | Replicating... | `arrow.triangle.2.circlepath` | blue |
-| `replication` (complete) | Replication Complete | `checkmark.circle.fill` | green |
-| `replication` (failed) | Replication Failed | `xmark.circle.fill` | red |
+| `vzdump`, backup successful | Backup Complete | `checkmark.circle.fill` | green |
+| `vzdump`, backup failed | Backup Failed | `xmark.circle.fill` | red |
+| `replication`, job failed | Replication Failed | `xmark.circle.fill` | red |
+| `vzdump` / `replication` with "start" in the title | Backing up... / Replicating... | `externaldrive.fill.badge.timemachine` / `arrow.triangle.2.circlepath` | blue |
 | `fencing` | (title) | `exclamationmark.octagon.fill` | red |
 | `package-updates` | (title) | `arrow.down.circle` | blue |
 | `system-mail` | (title) | `bell.fill` / `exclamationmark.triangle.fill` | by severity (blue/orange/red) |
 | test button (empty `type`) | test notification | varies | varies |
+
+Proxmox sends a backup notification once, when the job ends, and a replication notification only when a job fails; neither has a start event. Each one opens a card that already shows the outcome and ends it after `end_delay` plus `end_display_time` (9s with the defaults). The outcome comes from the severity (the title only when a body sends none), never the message: a backup's message carries the job log, which always says "Starting Backup of VM". One card covers a whole backup job, however many guests it backed up: it is keyed on the node and `job_id`, and a manual backup, which has no job ID, on the node alone. A title with "start" in it, which Proxmox itself never sends (a hook script might), opens a running card that an outcome for the same node and `job_id` then ends. A hook script has no job ID to send, so its start card is ended only by an outcome from a body without `job_id`.
 
 **Setup:** In Proxmox VE, go to **Datacenter > Notifications** and add a webhook target:
 
@@ -11808,8 +11925,10 @@ Receives Proxmox VE notification webhooks for backup, replication, fencing, pack
 - **Body:**
 
 ```
-{"type":"{{ fields.type }}","title":"{{ escape title }}","message":"{{ escape message }}","severity":"{{ severity }}","hostname":"{{ fields.hostname }}"}
+{"type":"{{ fields.type }}","title":"{{ escape title }}","message":"{{ escape message }}","severity":"{{ severity }}","hostname":"{{ fields.hostname }}","job_id":"{{ fields.job-id }}"}
 ```
+
+`job_id` is optional. A target whose body lacks it keeps working, but then every backup on a node shares one card.
 
 A target on its own does nothing: Proxmox only calls it when a **matcher** selects a notification and lists that target. Add `PushWard` as a target on a matcher, either the built-in `default-matcher` or a dedicated one. In the UI go to **Datacenter > Notifications**, edit a matcher, and add `PushWard` under the targets to notify (a matcher can list several, so mail and PushWard both fire). Or from the shell:
 
@@ -12375,7 +12494,7 @@ Widgets are **independent of alerts**. Each entry in the `widgets:` list (or `PU
 
 `battery`, `schedule` and `flow` are server widget templates this bridge does not offer: each needs several independent readings in one push, and the poller runs one query per widget.
 
-Multi-series fan-out: set `query_all` instead of `query` plus a required `slug_template` to publish one widget per result series.
+Multi-series fan-out: set `query_all` instead of `query` plus a required `slug_template` to publish one widget per result series. Label values go into the template raw, so a rendered slug the server would refuse is cleaned up first: it is lower-cased, each run of characters other than `a-z`, `0-9`, `_` and `-` becomes `-`, and leading and trailing `-` are trimmed. `node-mem-{{.instance}}` with `instance="host.lan:9100"` publishes `node-mem-host-lan-9100`; a result that comes out empty or longer than 128 characters becomes `<slug>-<hash>`, the slug cut to fit. When several series end up on one slug, the series whose labels sort first feeds the widget and the others are skipped with a warning. A series whose slug is still invalid (one starting with `_`, say) or that lacks a label the template uses is skipped the same way; the other series and the rest of the bridge keep running.
 
 Server-mirrored validation runs at config load: `interval` defaults to `60s` and must be `>= 5s`; `update_mode` is `on_change` (default) or `always`; slug must match `^[a-z0-9_-]{1,128}$`; `stat_list` allows at most 6 rows, with row label <= 32 chars and row unit <= 16 chars. The per-user widget cap on the server is 50.
 
@@ -13290,9 +13409,15 @@ The entity you track shows up on the phone as a Live Activity, a Home/Lock Scree
 
 <p align="center"><em>Lock Screen Live Activities &nbsp;|&nbsp; Home Screen widgets &nbsp;|&nbsp; the in-app activity list. More examples at <a href="https://pushward.app">pushward.app</a>.</em></p>
 
+In Home Assistant, the [PushWard panel](#pushward-panel) in the sidebar lists everything you track, each with a live preview of what the phone shows.
+
+<p align="center">
+  <img src="assets/ha-panel-tracked.jpg" alt="The PushWard panel in Home Assistant listing tracked entities, widgets and a to-do list, each with a live preview" width="720">
+</p>
+
 ## Contents
 
-[What it looks like](#what-it-looks-like) | [How it works](#how-it-works) | [Features](#features) | [Android](#android) | [Prerequisites](#prerequisites) | [Installation](#installation) | [Configuration](#configuration) | [Account sensors](#account-sensors) | [Notify entity](#notify-entity) | [Services](#services) | [Domain Defaults](#domain-defaults) | [Contributing](#contributing) | [Support](#support) | [Translations](#translations) | [Development](#development) | [CI/CD & Releases](#cicd--releases) | [Server compatibility](#server-compatibility) | [Troubleshooting](#troubleshooting) | [Requirements & License](#requirements--license)
+[What it looks like](#what-it-looks-like) | [How it works](#how-it-works) | [Features](#features) | [Android](#android) | [Prerequisites](#prerequisites) | [Installation](#installation) | [Agent skill](#agent-skill) | [Configuration](#configuration) | [Account sensors](#account-sensors) | [Notify entity](#notify-entity) | [Pause switch](#pause-switch) | [Services](#services) | [Domain Defaults](#domain-defaults) | [Contributing](#contributing) | [Support](#support) | [Translations](#translations) | [Development](#development) | [CI/CD & Releases](#cicd--releases) | [Server compatibility](#server-compatibility) | [Troubleshooting](#troubleshooting) | [Requirements & License](#requirements--license)
 
 ## How it works
 
@@ -13330,8 +13455,8 @@ The surfaces are independent (separate config, managers, and caches) and share o
 ## Features
 
 - **Track any HA entity** as a PushWard Live Activity (Dynamic Island + Lock Screen)
-- **10 activity templates**: generic, countdown, alert, steps, gauge, timeline, board, log, media, approval
-- **10 widget templates**: value, progress, gauge, status, stat_list, trend, countdown, battery, schedule, flow,
+- **11 activity templates**: generic, countdown, alert, steps, gauge, timeline, board, log, media, approval, checklist
+- **11 widget templates**: value, progress, gauge, status, stat_list, trend, countdown, battery, schedule, flow, heatmap,
   each with an optional [style](#style) that overrides the one picked in the app
 - **Two widget trigger modes**: `event` (state-change) or `poll` (10-3600 s interval), plus an optional
   staleness heartbeat that keeps a rarely-changing widget from greying out
@@ -13353,8 +13478,9 @@ The surfaces are independent (separate config, managers, and caches) and share o
 - **6-level icon fallback**: attribute -> config -> entity -> registry -> device class -> domain default
 - **Color support**: RGB, HSV, XY, Kelvin, named colors
 - **TTL controls**: auto-delete after end, auto-end on stale activity, auto-dismiss from the Lock Screen
-- **Services** for the whole surface: create/update/end/delete activities (with a per-template update action), pause and resume timers, send notifications, send email, refresh/delete widgets, generate a ThumbHash
+- **Services** for the whole surface: create/update/end/delete activities (with a per-template update action), pause and resume timers, send notifications, send email, refresh/delete widgets, generate a ThumbHash, mute and unmute
 - **Notify entity** per account, for `notify.send_message` and notify groups
+- **Pause switch** per account: one toggle (or automation) that silences everything but critical alerts on every phone
 
 ## Android
 
@@ -13365,6 +13491,7 @@ The PushWard app is on [Google Play](https://play.google.com/store/apps/details?
 - On activities, `background_color` and `text_color` don't apply, because Android does not colorize promoted notifications. Widgets do use them.
 - The notification shade shows at most 3 action buttons. The notification's detail screen in the app lists all of them.
 - An approval activity shows at most 3 of its up to 4 options as buttons.
+- A checklist activity gets a button for each of the next 3 unticked items at most; the body lists them all.
 - A notification `media` of type video or audio is not shown in the shade. Images are.
 - `level: critical` needs Do Not Disturb access, granted in the app, and `volume` is ignored.
 - The PushWard widget is a home-screen widget on Android; there is no lock-screen widget.
@@ -13377,6 +13504,7 @@ pushward.app compares the two per template: <https://pushward.app/docs/live-acti
 - A **PushWard account** with an **integration key** (`hlk_` prefix), created in the PushWard app under **Settings > Integration Keys** (recommended scope `ha-*`)
   - The key needs the **`widgets`** permission to publish widgets
   - The key needs the **`emails`** capability *and* a verified recipient to use `send_email`
+  - The key needs **Account** set to **Full management** for the [pause switch](#pause-switch) and the `mute`/`unmute` actions
 - The **[PushWard app](https://pushward.app)** installed on the phone that will display the Live Activities / widgets
 
 ## Installation
@@ -13396,6 +13524,14 @@ directly in HACS; then download and restart. Or do it manually:
 ### Manual
 
 Copy the `custom_components/pushward` directory into your Home Assistant `config/custom_components/` folder and restart Home Assistant.
+
+## Agent skill
+
+```sh
+npx skills add mac-lucky/pushward-hass --skill pushward-home-assistant
+```
+
+This installs a skill for Claude Code, Codex, Cursor and other agents that read `SKILL.md` files. It teaches them which PushWard item fits "show the washer on my Lock Screen", "count down to my next calendar event" or "a widget with the room temperatures", which fields to fill in the PushWard panel, and how to create the same items through the [ha-mcp](https://github.com/homeassistant-ai/ha-mcp) server when it is connected. The agent never needs your integration key: you paste it into Home Assistant yourself.
 
 ## Configuration
 
@@ -13425,7 +13561,22 @@ Each PushWard account gets its own entry. On a Family plan every member has thei
 - Actions reach every account unless you pick one, see [Choosing the account](#choosing-the-account).
 - Each entry has its own [account sensors](#account-sensors) and its own quota.
 
-If all you want is to share Live Activities, the app can do it without a second entry. **Settings > Sharing > Create Pattern Share** with a pattern like `ha-*` gives a code the other person redeems once under **Join with Code**. The code expires after 7 days at most; the share doesn't. Every current and future activity whose slug matches reaches them, including the ones your automations end and create again. Notifications are not shared this way.
+If all you want is to share Live Activities, the app can do it without a second entry. **Settings > Sharing > Create Pattern Share** with a pattern like `ha-*` gives a code the other person redeems once under **Join with Code**. The code expires after 7 days at most; the share doesn't. Every current and future activity whose slug matches reaches them, including the ones your automations end and create again, and the [panel's](#pushward-panel) test activities. Notifications are not shared this way.
+
+### PushWard panel
+
+Once an account is set up, admin users get a **PushWard** item in the sidebar. It lists the tracked entities, widgets and to-do lists of every account, each with a preview of what the phone shows, redrawn when the entities it reads change. From there you can add, edit and delete them, with the preview following the form as you type. The forms are the config flow's own, so the fields, checks and translations are the same.
+
+**Send to phone** pushes the previewed item to your phone as a test. Tests reuse fixed slugs (`ha-preview` for activities, `ha-preview-widget` for widgets), so a new test replaces the last one sent from the same account, and **End on phone** ends the activity or removes the widget again. `ha-preview` matches a `ha-*` pattern share, so whoever you share with gets your test activities too, and End ends them on their phone as well. Pattern shares cover activities only, so test widgets are not shared. **Open in playground** loads the item into the playground from pushward.app, which sends through this integration's key.
+
+<p align="center">
+  <img src="assets/ha-panel-editor.jpg" alt="Editing a tracked heat pump in the PushWard panel: the gauge preview follows the form as the value attribute changes" width="420">
+  <img src="assets/ha-panel-playground.jpg" alt="A tracked media player opened in the playground tab of the PushWard panel" width="420">
+</p>
+
+<p align="center"><em>Editing with the live preview &nbsp;|&nbsp; a tracked item opened in the playground</em></p>
+
+Everything still works from **Settings > Devices & Services > PushWard** as before; the panel only saves the trip there. Users who are not admins don't see it.
 
 ### Add a tracked entity (Live Activity)
 
@@ -13454,9 +13605,13 @@ A two-step flow. **Step 1** picks the entity and a template (a better template i
 | Activity Name | Display name on the phone |
 | Icon / Icon Attribute | Static MDI/SF Symbol, or an entity attribute for a dynamic icon |
 | Priority | 0-10 (default: 1) |
-| Start / End States | States that trigger start or end |
+| Start / End States | States that trigger start or end. `*` as a start state matches any state that is not an end state |
+| Run Only While | Rows of an entity and its comma-separated states; the activity runs only while every row matches, max 5 |
+| Lead Time | Calendar entities only: minutes before the next timed event that the activity opens (0-1440, default 30) |
+| Subtitle Before / During the Event | Calendar entities only: subtitle while counting down to the start, and while the event runs (max 64 chars each); empty shows the calendar name |
 | Update Interval | Min seconds between updates (default: 5) |
 | Progress Entity / Attribute | 0-100 progress, optionally from a separate entity |
+| Progress Mode | `direct` (default) reads the progress source as 0-100; `remaining` reads a value falling toward 0 and fills the bar from the largest value seen this run (generic/steps templates) |
 | Live Progress ETA | Fill the progress bar smoothly and count down an ETA to the finish time, using the remaining-time source (generic/steps templates; on steps it fills the current step) |
 | Image URL / Shape / ThumbHash | Artwork beside the icon (generic/steps/media templates) - see [Activity images](#activity-images). On a media player, leave it empty and the cover art fills in |
 | Remaining Time Entity / Attribute | Seconds remaining (countdown), with smart time parsing |
@@ -13478,28 +13633,76 @@ A two-step flow. **Step 1** picks the entity and a template (a better template i
 | Transport Buttons | Show previous/play-pause/next/stop/volume on the card, filtered to what the player supports (media template) |
 | Favorite Script | Script the heart button runs; hidden when empty (media template) |
 | Subtitle Entity / Attribute | Subtitle text, optionally from a separate entity |
+| Subtitle Columns | Rows composing the subtitle from values (label, entity, attribute, unit, like Log Columns), max 6; when any resolves they replace the subtitle |
+| State Text Entity / Attribute | A value shown instead of the state label, optionally from a separate entity; the label comes back while it is unavailable |
+| State Text Format | `auto`, `distance_m` (`850 m`, `3.2 km`), `duration_s` or `duration_min` (`45 s`, `15 min`, `1 h 5 min`) |
+| State Text Pattern | Text around the value, `{value}` marks where it goes (e.g. `{value} from home`), max 64 chars |
 | State Labels | Rows giving custom display text per state (a state and its label, e.g. `on` shows `Running`) |
+| Icon Per State / Icon State Entity | Rows giving an icon per state of the tracked entity, or of the entity you pick; a match beats every other icon setting |
 | Island Label | Up to 4 characters that replace the template's default in the compact view. On iPhone it is the Dynamic Island's leading ear, in place of the icon, the steps ring, or the timeline high/low stack (the minimal presentation ignores it); on Android 16 QPR2 and later it is the status-bar chip text |
 | Island Trailing Label | Up to 4 characters for the compact trailing ear, in place of what that template shows there (the step counter, the timer). Wins over Island Trailing Icon when both are set. Needs PushWard 1.19.1 or later |
 | Island Trailing Icon | SF Symbol or `mdi:` icon for the same ear, tinted with the accent color. Needs PushWard 1.19.1 or later; the minimal presentation ignores both trailing fields |
 | Completion Message | Text shown at end (default: "Complete") |
 | Accent / Background / Text Color (+ Attribute) | Static hex / named color, or an entity attribute |
+| Accent From Progress | Accent goes red -> yellow -> green as progress goes 0 -> 0.5 -> 1, over the accent settings above; the completion frame stays green (generic/steps/gauge templates) |
 | URL / Secondary URL | Deep-link URLs, http/https (steps/alert templates) |
+| Remove Right Away When It Ends | Skip the completion frame and take the card off the Lock Screen as soon as the activity ends (overrides Dismissal TTL) |
 | Ended TTL / Stale TTL / Dismissal TTL | Auto-delete-after-end / auto-end-after-idle (1-2592000 s) / auto-dismiss the ended activity from the Lock Screen (0-14400 s) |
 
-Board tiles, stat rows, series entities, thresholds, log columns, state labels, the timeline series and per-series units maps, and the per-step details are all edited as row tables in the UI (add a row per entry). Stored configs and non-form callers keep working: the older comma-separated string forms for these fields are still accepted on input.
+Board tiles, stat rows, series entities, thresholds, log columns, subtitle columns, state labels, icons per state, the timeline series and per-series units maps, and the per-step details are all edited as row tables in the UI (add a row per entry). Stored configs and non-form callers keep working: the older comma-separated string forms for these fields are still accepted on input.
 
 </details>
 
+#### Wildcard start, run-while conditions, calendars
+
+`*` in Start States matches any state that is not an end state, so a `device_tracker` or `person` (whose defaults are `*` and `home`) keeps the activity up while it is away, whatever zone it is in. `unavailable` and `unknown` never start an activity.
+
+Run Only While adds conditions on other entities. Each row is an entity and the states it has to be in, comma-separated (`device_tracker.me`, `home`). The activity starts only when the tracked entity is in a start state and every row matches. When a row stops matching it ends with the usual completion frame, and it starts again once the row matches while the tracked entity is still in a start state. A condition entity that is unavailable counts as not matching.
+
+A `calendar` entity ignores Start/End States and follows its next timed event instead: Lead Time minutes before the event (30 by default) the activity opens and counts down to the start, from the start it counts down to the end, and it ends with the event. All-day events are skipped. The event title is the state text unless a State Text source resolves, and on the countdown template the start and end dates are pinned to the event so the bar fills across each phase. Subtitle Before the Event and Subtitle During the Event replace the calendar name for each phase (for example `In progress` while it runs); a Subtitle source or Subtitle Columns still win over both. A calendar subentry saved before Lead Time existed keeps its start/end states until it is reconfigured and saved.
+
+#### Ending
+
+When an activity ends it first shows a completion frame (green, with the Completion Message) for 5 seconds, then ends, and the ended card stays on the Lock Screen for a while (Dismissal TTL sets how long). Turn on **Remove Right Away When It Ends** (Advanced) to skip all of that: one push ends the activity and takes the card off the phone at once.
+
 #### Reading values from separate entities
 
-By default every value (remaining time, progress, subtitle, gauge value, current step, fired-at) is read from the **tracked entity**, its state or one of its attributes. Many appliances expose these as **separate entities** (e.g. an LG washer has one sensor for the program state and another for remaining time). For each value you can set an optional **source entity**:
+By default every value (remaining time, progress, subtitle, state text, gauge value, current step, fired-at) is read from the **tracked entity**, its state or one of its attributes. Many appliances expose these as **separate entities** (e.g. an LG washer has one sensor for the program state and another for remaining time). For each value you can set an optional **source entity**:
 
 - **Source entity empty** -> read from the tracked entity (default).
 - **Source entity set, attribute empty** -> read that entity's **state**.
 - **Source entity set, attribute set** -> read that **attribute** of the source entity.
 
-**Smart time parsing**: the remaining-time source accepts a `timestamp`/finish-time sensor (anchors the end date directly, no drift), a `duration` sensor with a unit (`s`/`min`/`h`/`d`), an `H:MM:SS`/`MM:SS` string, or a plain number of seconds.
+**Smart time parsing**: the remaining-time source accepts a `timestamp`/finish-time sensor (anchors the end date directly, no drift), a numeric state with a time unit (`s`/`min`/`h`/`d`, with or without the `duration` device class), an `H:MM:SS`/`MM:SS` string, or a plain number of seconds.
+
+<details>
+<summary><b>Computed text, progress, color and icon</b></summary>
+
+Some options build what the card shows out of other entities, which used to take a template sensor or a script. They all end up in the fields the app already knows (state, subtitle, icon, accent color, progress).
+
+State Text reads a value the way the subtitle source does and shows it instead of the state label. Numbers in metres, seconds or minutes get a format, and a pattern puts the result where `{value}` is (a plain replace, no templating).
+
+Progress Mode `remaining` is for values that drop toward 0. Progress is 1 minus the value divided by the largest value seen since the activity started, so the bar starts empty wherever the trip starts. Each new run starts its own maximum, and while the value is missing the bar keeps its last position. Accent From Progress then colors the accent from that bar.
+
+Icon Per State maps the states of one entity, a direction-of-travel sensor for example, to icons. Subtitle Columns joins a few values with ` · `; a column without a label is just the value.
+
+Example, someone on the way home, tracked through their phone's `device_tracker` (Start States `*`, End States `home`). The distance sensor reports miles but has a `distance (meters)` attribute, the travel time sensor reports minutes with no device class:
+
+| Field | Value |
+|-------|-------|
+| State Text Entity / Attribute | `sensor.trip_distance` / `distance (meters)` |
+| State Text Format / Pattern | `distance_m` / `{value} from home` |
+| Progress Entity / Attribute | `sensor.trip_distance` / `distance (meters)` |
+| Progress Mode | `remaining` |
+| Accent From Progress | on |
+| Remaining Time Entity | `sensor.trip_travel_time` |
+| Icon State Entity | `sensor.trip_direction` |
+| Icon Per State | `Towards` -> `mdi:home-import-outline`, `AwayFrom` -> `mdi:map-marker-distance` |
+| Subtitle Columns | `ETA` / `sensor.trip_travel_time` / unit `min`, then `sensor.trip_direction` with no label |
+
+Halfway home that shows `750 m from home`, a half-full yellow bar, the home icon, `8:00` left (it moves with each update, it does not tick on its own) and `ETA: 8min · Towards` (column units are glued on with no space, as in Log Columns). When they get home the usual completion frame runs and the activity ends.
+
+</details>
 
 <details>
 <summary><b>Multi-entity timeline series</b></summary>
@@ -13624,14 +13827,18 @@ A two-step flow mirroring entities. **Step 1** picks the entity, a widget templa
 | `battery` | Up to 8 device rings, each bound to a **separate** entity |
 | `schedule` | Up to 48 periods on a timeline (hourly tariffs, delivery windows, shifts) |
 | `flow` | What comes in, what buffers it, what is traded, what consumes it |
+| `heatmap` | One cell per day for up to 22 weeks, filled from the recorder's daily statistics |
 
 `countdown` here is the widget template, unrelated to the activity template of the same name.
 
-**The last five templates need the PushWard iOS app 1.6.0 or newer.** Older builds cannot decode
-them, and a single entry they cannot decode makes the entire widget list unavailable in the app
-until that widget is deleted -- not just the one new widget. Update every device on the account
-before adding one, especially if the account is shared with a device you have not opened in a while.
-The original five templates are unaffected.
+**`trend`, `countdown`, `battery`, `schedule` and `flow` need the PushWard iOS app 1.6.0 or newer,
+and `heatmap` 1.30.0 (Android 1.4.0).** The original five (`value`, `progress`, `status`,
+`gauge`, `stat_list`) work on every build. iPhone, iPad, watch and Mac builds older than 1.6.0
+simply don't see a widget of any other template: PushWard leaves it out of their widget list, and
+the rest of the list works as before. Builds from 1.6.0 up to the release that draws a template show
+an "update the app" placeholder in its place, and the Android app shows the same placeholder for any
+template it doesn't know yet. Update every device on the account to see the new widget, especially
+if the account is shared with a device you have not opened in a while.
 
 **Step 2** configures the widget (publishing widgets requires the `widgets` key permission).
 
@@ -13642,8 +13849,8 @@ The original five templates are unaffected.
 |-------|-------------|
 | Widget Name | Display name |
 | Value Attribute | Source attribute (value/progress/gauge); blank = entity state |
-| Unit | Display unit (value/progress/gauge) |
-| Min / Max Value | Gauge range bounds (default: 0-100) |
+| Unit | Display unit (value/progress/gauge/heatmap; heatmap defaults to the entity's unit) |
+| Min / Max Value | Gauge range bounds (default: 0-100); optional on trend and heatmap |
 | Severity | "", info, warning, critical, success (status template) |
 | Stat Rows | Rows binding a separate entity to a stat (label, entity, attribute, unit, timer), max 6 (stat_list) |
 | Trend History | Minutes of recorder history to seed the sparkline on start; 0 skips the seed (trend) |
@@ -13653,6 +13860,8 @@ The original five templates are unaffected.
 | Period Attributes / Start Key / Value Key | Where to read the period arrays and their keys (schedule) |
 | Low Band Maximum / High Band Minimum | Optional band thresholds; leave both empty to let the app derive them (schedule) |
 | Flow Nodes | Rows binding a separate entity to a slot, max 3 inputs (flow) |
+| Weeks | How many weeks of days the grid holds, 1-22, default 22 (heatmap) |
+| Daily Value | Which daily statistic fills a cell: change, mean, max or min (heatmap) |
 | Style | Not set (default), Standard, Bold or Classic, for every size and per size; plus Row Density on stat_list. See [Style](#style) |
 | Label / Label Attribute | Static label or an entity attribute |
 | Subtitle Attribute | Subtitle text from an attribute |
@@ -13724,6 +13933,33 @@ A trend widget needs at least two points before it can render, so a brand-new on
 a second sample arrives. Set **Trend History** to seed it from the recorder instead: entities with a
 `state_class` read pre-aggregated statistics, the rest read raw states. The buffer keeps up to 300 samples,
 downsampled to the 48 the wire allows, and persists across restarts so a reload doesn't flatten the chart.
+
+#### Heatmap days
+
+A `heatmap` widget reads its cells from the recorder's long-term statistics (the daily period), so the
+entity needs statistics: a sensor with a `state_class`. The flow refuses one without. Each cell is one
+local day, oldest first, ending today; a day the recorder has nothing for is sent as `null`, which the
+app draws as an empty cell rather than a zero.
+
+**Daily Value** picks the statistic. `change` is how much a total grew that day, for `total_increasing`
+sensors such as energy, water or steps; `mean`, `max` and `min` are for measurements such as temperature.
+The flow preselects `change` when the entity has a sum statistic and `mean` otherwise, and refuses a value
+the entity's statistics don't carry. The headline number is today's cell, the label and unit default to
+the entity's own, and Min / Max Value pin the color scale (leave them empty to scale from 0 to the
+largest day).
+
+Statistics are compiled once an hour, so today's cell holds the hours compiled so far and trails the live
+state by about an hour at most. The widget reads them when it starts, on a manual refresh and five minutes
+past every hour (after that hour is compiled; the 00:05 read starts the new local day). A state change
+does not read the recorder, since the statistics cannot have moved before the next compile; the one
+exception is the first change after local midnight, which starts the new day's cell. An update is only
+sent when a daily value actually moved. If the entity's history goes away, the widget stops sending
+and logs one warning instead of pushing an empty grid.
+
+The live state does not matter: the widget keeps sending while the entity is unavailable (an
+inverter's energy sensor at night) and after it is removed, as long as its statistics have a number.
+Home Assistant keeps the entity's name and unit on an unavailable state, so the label and unit stay
+the same; once the entity has no state at all, only the configured Label and Unit are sent.
 
 #### Self-advancing progress
 
@@ -13827,9 +14063,27 @@ It can also be a member of a notify group with other notify entities. The Compan
 
 The message goes out like a `pushward.send_notification` with only a title and body, so an [encryption key](#end-to-end-encryption) seals it (a message too long for the sealed envelope is shortened to fit) and a used-up notification quota refuses it. PushWard needs a title and `notify.send_message` doesn't always carry one; without it the title is your Home Assistant's name from **Settings > System > General** ("Home" unless you changed it), so the phone shows which home sent it. For levels, links, buttons or scheduling use `pushward.send_notification`.
 
+## Pause switch
+
+Each entry also gets a switch on the same device, `switch.pushward_pause_notifications` for an entry titled PushWard. On mutes everything except critical alerts on every device of the account, silently and until you turn it off: notifications still land in the app's list but make no sound, banner or screen wake, no new Live Activity starts and running ones update without sound. Turning it on while everything is already paused (in the app, with an end time or with notifications off) keeps that pause as it is; a pause of only notifications or only Live Activities gets the full pause added beside it. Off removes that mute again, also one set in the PushWard app or by `pushward.mute` with target `*`. A mute with an end time turns the switch off when it ends. The daily quiet hours you can set in the app are a separate schedule; they neither turn the switch on nor go away when you turn it off.
+
+The state is read from PushWard at setup, after each change and every 15 minutes, so a mute set in the app can take up to 15 minutes to show. The key needs **Account** set to **Full management** in the app (**Settings > Integration Keys**) to turn the switch on and off; at **Read** the switch shows its state but a toggle fails with an error. Without the Account permission the switch stays unavailable, the log says why once per start and everything else keeps working. Once you grant it the switch comes back within half an hour, or at once when you reload the entry. A switch you disable reads nothing from PushWard.
+
+```yaml
+- alias: Quiet while everyone is away
+  triggers:
+    - trigger: state
+      entity_id: zone.home
+      to: "0"
+  actions:
+    - action: switch.turn_on
+      target:
+        entity_id: switch.pushward_pause_notifications
+```
+
 ## Services
 
-All services live in the `pushward` domain. There are 24 in total: the fourteen described below plus a per-template `update_activity_<template>` for each of the 10 activity templates (and the deprecated `update_activity` alias).
+All services live in the `pushward` domain. There are 27 in total: the sixteen described below plus a per-template `update_activity_<template>` for each of the 11 activity templates (and the deprecated `update_activity` alias).
 
 ### Choosing the account
 
@@ -13840,7 +14094,7 @@ Every action except `generate_thumbhash` takes an optional `config_entry_id` (**
 | `create_activity`, `update_activity_<template>`, `end_activity`, `delete_activity`, `widget_refresh`, `delete_widget` | every account |
 | `send_notification` | every account; name one to read the response |
 | `cancel_notifications` | a `tag` is canceled on every account; a `notification_id` needs one |
-| `clear_notification` | every account |
+| `clear_notification`, `mute`, `unmute` | every account |
 | `get_notification_answer`, `list_scheduled_notifications`, `cancel_scheduled_notification`, `send_email` | fails until you name one |
 
 Notification ids belong to the account that sent them, hence the single-account rows. `send_email` goes to the address you give it, so sending it from every account would only deliver copies. When one account fails (quota, missing permission) the others still get the call, and the action raises the first error once they are done.
@@ -13897,7 +14151,7 @@ Push a content update to an existing activity. There is **one action per templat
 `update_activity_generic`, `update_activity_countdown`, `update_activity_steps`,
 `update_activity_alert`, `update_activity_gauge`, `update_activity_timeline`,
 `update_activity_board`, `update_activity_log`, `update_activity_media`,
-`update_activity_approval`, so the UI shows only
+`update_activity_approval`, `update_activity_checklist`, so the UI shows only
 the fields that template supports (Home Assistant cannot hide service fields based on another field's value, so a single
 action with collapsed sections would always surface every template's fields). The template is
 implied by the action name; you no longer pass a `template` field.
@@ -13965,6 +14219,7 @@ implied by the action name; you no longer pass a `template` field.
 | `update_activity_log` | `lines` |
 | `update_activity_media` | `media_title` (max 128), `playback_state`, `position_seconds`, `duration_seconds`, `position_at`, `volume`, `favorite`, `controls`, `image_url`, `image_shape`, `image_thumbhash` |
 | `update_activity_approval` | `options` (2-4 answer buttons), `source` (max 24), `details` (up to 2 label/value rows), `on_expire`, `end_date` |
+| `update_activity_checklist` | `items` (1-8 rows, each `{ id, label, checked? }`), `auto_end` |
 
 > **`board` / `log` / `media` / `approval` use a lean schema.** They render no progress bar and no
 > whole-activity button slots, so `update_activity_board`, `update_activity_log`,
@@ -13978,7 +14233,8 @@ implied by the action name; you no longer pass a `template` field.
 > buttons live in `options`). `tiles` is a list of 1-4 objects
 > `{ label, value, unit?, icon?, color?, trend?, url_action? }` (`value` is a string max 16
 > chars). `lines` is a list of 1-20 newest-first objects `{ text, at?, level? }` where `level`
-> is `info`/`warn`/`error`.
+> is `info`/`warn`/`error`. `update_activity_checklist` is lean too and also leaves out
+> `state_text`: the server writes the state text itself from the ticks.
 
 > `duration` (integer seconds or a string like `"30m"` / `"1h30m"`) is the set-and-forget
 > alternative to `end_date`: the server re-anchors `start_date = now` and
@@ -14119,6 +14375,50 @@ implied by the action name; you no longer pass a `template` field.
 >         entity_id: cover.front_gate
 > ```
 
+> **`checklist`** is a short list people tick off from the Lock Screen, the Dynamic Island, the
+> watch, the Mac or the Android notification, driven entirely by this action (the config flow does
+> not offer the template). `items` is a list of 1-8 rows `{ id, label, checked? }`: `id` is 1-16
+> letters, digits, `-` or `_` and unique in the list, `label` is at most 40 characters. The list
+> replaces the stored one on every call, like board tiles. While the list is ongoing, leave `checked`
+> out of a row to keep whatever tick the server already has for that id, so re-sending the list
+> doesn't undo a tick made on the phone; `true`/`false` sets it. Once every row is ticked the server
+> ends the activity a few seconds later.
+>
+> `auto_end: false` turns that off: a fully ticked list stays up and reads "All done" until you call
+> `pushward.end_activity` (or its `stale_ttl` runs out). Leave `auto_end` out of a later call and the
+> server keeps what it has; `true` puts the default back, and on a list that is already all ticked it
+> ends a few seconds later.
+>
+> An ended list works differently: a call with `state: ongoing` starts a new run, and every row sent
+> without `checked` starts unticked. An automation that re-sends the list on a repeating schedule
+> therefore brings it back, all unticked, on every device once someone ticks the last row. Send the
+> list once per run instead (a morning trigger, say), or keep the ticks in Home Assistant as described
+> below and send `checked` for every row, `true` for the ones that are done.
+>
+> Home Assistant does not learn about ticks. This integration never reads an activity back, so a
+> tick on the phone changes the card and nothing in Home Assistant, and there is no event or entity
+> for it. If an automation needs to know, keep the list in Home Assistant instead (a to-do list, or a
+> few `input_boolean` helpers) and send the rows' state from there; reading ticks back may come later
+> by syncing a to-do entity. The list needs PushWard 1.30.0 on iPhone, iPad, watch and Mac, or 1.4.0
+> on Android; older builds show a generic card with the count ("2 of 3").
+>
+> ```yaml
+> - action: pushward.update_activity_checklist
+>   data:
+>     slug: morning-routine
+>     state: ongoing
+>     subtitle: Before 9:00
+>     icon: checklist
+>     items:
+>       - id: meds
+>         label: Take vitamins
+>       - id: plants
+>         label: Water the plants
+>       - id: bins
+>         label: Bins out
+>         checked: true
+> ```
+
 #### Activity images
 
 `generic`, `steps` and `media` can show a picture beside the icon (on `media` it is the cover
@@ -14252,6 +14552,7 @@ Send a push notification.
 | `source` / `source_display_name` | No | Grouping ID + label in the PushWard inbox |
 | `activity_slug` | No | Link the notification to an existing Live Activity |
 | `url` | No | Deep-link URL opened on tap. A path like `/lovelace/kitchen` opens on your external URL, see [Links into Home Assistant](#links-into-home-assistant) |
+| `open_url_on_tap` | No | `true` makes a tap open `url` instead of the notification, when the link opens without asking on that phone (a Trusted Site, or Confirm Before Opening Links off). Other links still open the notification first. Needs `url`; app versions without it open the notification |
 | `media` | No | Object `{ url, type }`, type is image, video, or audio. Android shows only images in the shade |
 | `icon_url` | No | Custom icon URL |
 | `metadata` | No | Arbitrary key-value pairs for custom app handling |
@@ -14458,6 +14759,44 @@ The optional response is `{ devices: <count> }`, the number of devices the retra
         collapse_id: garage-door
 ```
 
+### `pushward.mute`
+
+Mute a notification source, an activity, or `*` for everything except critical alerts, on every device of the account. A muted notification still lands in the PushWard app's list. While an activity is muted no new Live Activity for it starts, and running ones update without sound. Muting the same `target` and `applies_to` again replaces the earlier mute instead of adding one. A mute on one source silences its critical alerts too; only `*` lets them through. Needs **Account** at **Full management** on the key.
+
+| Field | Required | Description |
+|-------|:--------:|-------------|
+| `target` | Yes | A notification `source` or activity slug, matched exactly, or `*` |
+| `applies_to` | No | `both` (default), `notifications` or `activities` |
+| `mode` | No | `silent` (default): no sound, banner or screen wake. `off`: no push at all. Quote it in YAML (`"off"`) |
+| `duration` | No | How long, e.g. `{ hours: 8 }` or `"08:00:00"`. Not together with `until` |
+| `until` | No | When it ends. A time without a UTC offset is read in Home Assistant's time zone |
+| `label` | No | The name the app shows for the target, up to 100 characters |
+
+Without `duration` or `until` the mute lasts until you unmute it. An account holds at most 100.
+
+```yaml
+- alias: Washer quiet at night
+  triggers:
+    - trigger: time
+      at: "22:00:00"
+  actions:
+    - action: pushward.mute
+      data:
+        target: ha-washer
+        label: Washer
+        duration:
+          hours: 9
+```
+
+### `pushward.unmute`
+
+Remove the mutes of a `target` (only the one for `applies_to` when given). Daily quiet-hours schedules set in the app stay, and nothing to remove is not an error. Needs **Account** at **Full management**.
+
+| Field | Required | Description |
+|-------|:--------:|-------------|
+| `target` | Yes | The muted target, or `*` |
+| `applies_to` | No | Only the mute for `notifications`, `activities` or `both` |
+
 ### `pushward.send_email`
 
 Send a transactional email. Requires the key's **`emails`** capability; the recipient must already be added and confirmed in the PushWard app (the integration cannot verify recipients itself).
@@ -14532,6 +14871,9 @@ apply at add time only - a player tracked before 0.43.0 still carries the old me
 | timer | active | idle, paused | mdi:timer-outline |
 | update | on | off | mdi:package-up |
 | water_heater | heating | off, idle | mdi:water-boiler |
+| device_tracker | `*` (any state but the end states) | home | mdi:map-marker-account |
+| person | `*` (any state but the end states) | home | mdi:account-arrow-right |
+| calendar | *(not used: the event window drives it)* | *(not used)* | mdi:calendar |
 | sensor | *(user-defined)* | *(user-defined)* | mdi:eye |
 | weather | *(user-defined)* | *(user-defined)* | mdi:weather-cloudy |
 
@@ -14579,7 +14921,7 @@ Requires Python **3.13.2+**. CI also runs **HACS validation** and **hassfest** o
 
 ## Server compatibility
 
-This integration talks to the public PushWard REST API at **`https://api.pushward.app`**, authenticating with `Authorization: Bearer <integration_key>`. Endpoints used: `GET /auth/me`, `POST/PATCH/DELETE /activities`, `POST/PATCH/DELETE /widgets`, `POST /notifications`, `POST /emails`. The request/response contract, including the Live Activity `ContentState` shape and widget content caps, is owned by the PushWard server; this integration mirrors those caps in `const.py`. Widget endpoints require the key's `widgets` permission; `POST /emails` requires the `emails` capability plus a verified recipient. The client retries with exponential backoff (up to 7 attempts with roughly 30-60 seconds of backoff between them, max 5 concurrent) and honors `Retry-After` on a rate-limit 429. Notification POSTs send one `Idempotency-Key` per send, the same on every retry, so a retry after a lost response gets the first notification back instead of delivering it twice. A quota 429 (`code: quota.exceeded`, sent once a metered monthly allowance is used up) is not retried: the integration stops sending that kind of request until the server's `reset_at`, re-reads the account usage so the matching repair issue appears within seconds, and resumes on its own after the reset, re-sending whatever changed in the meantime. Downloaded diagnostics list the paused kinds under `quota_blocks`.
+This integration talks to the public PushWard REST API at **`https://api.pushward.app`**, authenticating with `Authorization: Bearer <integration_key>`. Endpoints used: `GET /auth/me`, `POST/PATCH/DELETE /activities`, `POST/PATCH/DELETE /widgets`, `POST /notifications`, `POST /emails`, `GET/POST/DELETE /app/mutes`. The request/response contract, including the Live Activity `ContentState` shape and widget content caps, is owned by the PushWard server; this integration mirrors those caps in `const.py`. Widget endpoints require the key's `widgets` permission; `POST /emails` requires the `emails` capability plus a verified recipient; `/app/mutes` the Account permission (read to list, Full management to change). The client retries with exponential backoff (up to 7 attempts with roughly 30-60 seconds of backoff between them, max 5 concurrent) and honors `Retry-After` on a rate-limit 429. Notification POSTs send one `Idempotency-Key` per send, the same on every retry, so a retry after a lost response gets the first notification back instead of delivering it twice. A quota 429 (`code: quota.exceeded`, sent once a metered monthly allowance is used up) is not retried: the integration stops sending that kind of request until the server's `reset_at`, re-reads the account usage so the matching repair issue appears within seconds, and resumes on its own after the reset, re-sending whatever changed in the meantime. Downloaded diagnostics list the paused kinds under `quota_blocks`.
 
 ## Troubleshooting
 
@@ -14609,6 +14951,7 @@ Narrow to one area with `custom_components.pushward.api` (HTTP calls) or `custom
 - **Service call rejected with a server reason**: fixable problems surface as a validation error (e.g. a missing `widgets`/`emails` capability, or an unverified email recipient). Read the `custom_components.pushward.api` debug lines for the HTTP status and body.
 - **`slug` doesn't match an existing activity**: create it first with `pushward.create_activity`.
 - **Wrong field for the chosen template**: see [which fields apply to which template](#pushwardupdate_activity_template).
+- **Pause switch unavailable**: the key cannot read mutes. Set **Account** to **Full management** for it in the app under **Settings > Integration Keys**, then reload the entry or wait up to half an hour.
 - **Widget never appears**: confirm the key has the `widgets` permission, and that the bound entity has a renderable value (value/progress/gauge widgets are skipped when the value isn't numeric).
 - **Trend widget stays empty**: it needs at least two points. Either wait for a second sample or set Trend History so it seeds from the recorder.
 - **Countdown widget never updates**: the end date has to parse. A `device_class: timestamp` sensor, a timer's `finishes_at` and a calendar's `end_time` all work out of the box; anything else needs the End Date Attribute pointed at an ISO-8601 or epoch value. Dates before 2000 or more than a year out are dropped rather than sent, so the widget keeps its last content.
@@ -14692,6 +15035,8 @@ Then enable the app under Administration > Plugins and data > Plugins > PushWard
 3. Run Connect. It creates the webhook contact point and a scoped viewer service-account token, and routes your alerts to it.
 4. Optional: tune severity mapping, history window, and poll interval, and declare widgets. Fire a test timeline to confirm the whole path before you depend on it.
 
+Any signed-in member of the organization sees the plugin status on the Overview and Connect pages. The Activities and Widgets pages need the Editor role in the organization; sending a test and ending a Live Activity need Admin. The check reads only the role in the organization, because that is all Grafana passes to the plugin: a Grafana server admin who is a Viewer or Editor there gets the same answer as any other Viewer or Editor. A Viewer sees a message saying so instead of the data, and anonymous access gets nothing. Only the `pushward-alerts-webhook` service account that Connect creates can post alerts to the webhook, and only once the plugin holds that account's token in `secureJsonData.webhookToken`. Connect sets up both. A contact point you set up by hand has to use that account's token, or its service account's login has to be listed in `jsonData.webhookLogins` (see [Provision (GitOps)](#provision-gitops)).
+
 Every alert's Live Activity gets the same **Priority** (0-10, default 5). Turn on **Priority from severity** (`priorityFromSeverity: true` in `jsonData`) to take it from the severity label instead: critical alerts get 10, info and `none` alerts 1 (or **Priority**, if lower), everything else keeps **Priority**. When a more severe instance of a firing alert shows up, the activity is raised to match. Two things follow from the priority, and both count every app and integration on your PushWard account, not just Grafana. When the account runs out of Live Activity slots, the lowest-priority activities are pushed off first (and come back when a slot frees). And iOS uses it to rank activities in the Dynamic Island and Smart Stack. That is why it is off by default.
 
 **Live Activities** decides which alerts get a timeline Live Activity. With **All alerts** (the default, `activityMode: "all"`) every alert routed to the contact point gets one. With **Only labeled alerts** (`activityMode: "labeled"`) only alert rules carrying the label `pushward_activity="true"` do. The label works the other way too: `pushward_activity="false"` keeps a rule out of Live Activities even in **All alerts**. Any other value, or no label, follows the setting. An alert left without a Live Activity is not dropped: it gets one push notification when it starts firing and one when it resolves, whether or not **Also send a push notification** is on, with the **Notification priority** and **Repeat until acknowledged** settings below. Those pushes do not link to an activity and the alert does not show on the Activities page. The first instance of an alert decides for the whole alert name, so a rule should carry the label on every instance, not on some of them. Changing the setting does not touch Live Activities that are already running.
@@ -14736,7 +15081,7 @@ A `stat_list` row can also follow its data, again from the JSON view only. `valu
 
 A row `timer` can take `"from_value": true` in place of `date`: the polled value is read as Unix seconds and the row counts down to it. Use `bottomk(1, ...)` rather than `min(...)` to pick the earliest of a set of reset times, since `min` drops the labels the label template needs. The row costs a push when the target moves, not every poll. Older clients without timers show the value instead, and `{{clock .Value "Europe/Warsaw"}}` renders that as a time of day in the zone you name (`14:35`, with the date in front when it is not today). Leave the zone out and you get UTC: Grafana starts plugins without the host's `TZ`.
 
-`battery`, `schedule` and `flow` exist on the server but not here. Each needs several independent readings in one payload - per-device charge levels, an hourly price curve, the four sides of an energy flow - which one query per widget cannot express. Use the REST API or the Home Assistant integration for those.
+`battery`, `schedule` and `flow` exist on the server but not here. Each needs several independent readings in one payload - per-device charge levels, an hourly price curve, the four sides of an energy flow - which one query per widget cannot express. Use the REST API or the Home Assistant integration for those. `heatmap` is missing for a similar reason: it takes 7 to 154 daily values in one push. Send it through the REST API, or track a sensor with the Home Assistant integration's heatmap widget (0.58.0 and later).
 
 ### Before you add a trend or countdown widget
 
@@ -14756,9 +15101,13 @@ The counters reset when Grafana restarts the plugin's backend process. If you wa
 
 Everything the Configuration page and Connect wizard set can live in git and be provisioned from files, so a fresh Grafana comes up already wired. This repo ships an example under `provisioning/plugins/`.
 
-- App settings via `provisioning/plugins/apps.yaml`: an `apps:` block with `jsonData` for the config and the `widgets` array, and `secureJsonData.apiKey` for the `hlk_` key.
+- App settings via `provisioning/plugins/apps.yaml`: an `apps:` block with `jsonData` for the config and the `widgets` array, `secureJsonData.apiKey` for the `hlk_` key, and `secureJsonData.webhookToken` for the webhook token below.
 - Datasource via `provisioning/datasources/*.yaml`.
-- The webhook contact point via `provisioning/alerting/*.yaml`.
+- The webhook contact point via `provisioning/alerting/*.yaml`, posting to `/api/plugins/pushward-alerts-app/resources/webhook` with `authorization_scheme: Bearer` and the webhook token as `authorization_credentials`.
+
+The webhook token belongs to a service account named exactly `pushward-alerts-webhook` (the Viewer role is enough), made in the same organization with Terraform or the Grafana API. The webhook takes alerts only from that account, and refuses every alert while `secureJsonData.webhookToken` is empty, so set the same token in both places. A setup that leaves either one out gets a 403 for each alert, which shows as a failing contact point in Grafana Alerting and as a `refused a webhook call` warning in the plugin's log.
+
+A contact point that posts with another service account's token works once that account's login is listed in `jsonData.webhookLogins`, for example `webhookLogins: [sa-1-my-contact-point]` (Grafana names a service account `sa-<org id>-<name>`). A listed login needs no `secureJsonData.webhookToken`. The list is empty by default, and only an org Admin can change the plugin settings. The Configuration page keeps the list when you save it.
 
 Two caveats. Provisioning writes the settings row but does not run the plugin's first-run backend logic, so after a deploy hit `GET /api/plugins/pushward-alerts-app/resources/healthz` once to spin the backend up. And provisioned settings re-apply on every restart, so the file wins over any later UI edit. Keep the key out of git with `$__env{VAR}` interpolation in `secureJsonData`.
 

@@ -49,6 +49,7 @@ A fully-expanded Markdown bundle of every docs page lives at [/llms-full.txt](ht
 - [Acknowledged Alerts](https://pushward.app/docs/notifications/acknowledge): Send an alert that repeats until someone acknowledges it on one of their devices. Then read who did and when, or let PushWard call your endpoint.
 - [Retract Notifications](https://pushward.app/docs/notifications/retract): Take back a notification that no longer applies. Every device it reached removes it from view, and the PushWard app marks it read.
 - [End-to-End Encryption](https://pushward.app/docs/notifications/encryption): Seal a notification's title, subtitle, body and link on your own machine with a key only your devices hold. PushWard stores and delivers text it cannot read.
+- [Mute, Pause and Quiet Hours](https://pushward.app/docs/notifications/mutes): Mute one source, pause PushWard for a while, or set daily quiet hours. Every device signed in to your account follows them.
 - [Notifications API](https://pushward.app/docs/notifications/api): Send a notification to a user's inbox, with optional push delivery to their devices.
 
 ## Siri & Shortcuts
