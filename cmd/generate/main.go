@@ -134,6 +134,19 @@ var opaqueFields = map[string]bool{
 	"actions":     true,
 	"target":      true,
 	"acknowledge": true,
+	// A mute schedule: typed ints would send a left-out end_minute as 0
+	// (midnight, a valid value) instead of letting the server refuse it.
+	"schedule": true,
+}
+
+// toolDescriptions replaces the spec summary of an operation whose summary is
+// too terse for an agent to pick the tool from what a user says. The hosted
+// server withholds the 403 detail naming the missing permission, so each one
+// names it.
+var toolDescriptions = map[string]string{
+	"listMutes":  "List what is muted or paused on the account's devices, oldest first. Each mute has an id (pass it to delete_mute), target (a notification source or activity slug, or * for everything except critical alerts), applies_to (notifications, activities or both), mode (silent or off), until (RFC 3339, absent when it lasts until removed) and schedule (a daily window, absent when it is all day). Timed mutes that already ended are left out. Needs the key's account permission at read or above: every key starts without it, the default key included, and the user grants it in the PushWard app (403 integration_key.permission_denied otherwise).",
+	"createMute": "Mute or pause PushWard on every device of the account, e.g. \"pause PushWard for an hour\" (target *, applies_to both, until an hour from now) or \"mute sonarr until tomorrow\" (target sonarr). target is a notification source or activity slug, matched exactly, or * for everything except critical alerts; a mute on one specific source silences its critical alerts too. mode silent (the default) still delivers notifications, without sound, banner or screen wake; off sends no push. Either way the notification is kept in the app's list. While muted no new Live Activity starts for the target and running ones update without sound. until is an RFC 3339 time in the future, computed from the current time; leave it out to mute until delete_mute removes it. schedule mutes a daily window instead, e.g. {\"start_minute\": 1320, \"end_minute\": 420, \"time_zone\": \"Europe/Warsaw\"} for 22:00-07:00; critical alerts get through a schedule. Muting the same target and applies_to again replaces the timed mute; a schedule mute is kept as its own entry. 422 mute.invalid for a bad field (an until not in the future, a schedule that starts where it ends), mute.time_zone_invalid for an unknown time zone, mute.limit_exceeded past 100 mutes. Needs the key's account permission at manage: every key starts without it, the default key included, and the user grants it in the PushWard app (403 integration_key.permission_denied otherwise).",
+	"deleteMute": "Unmute: remove one mute by its id from list_mutes, e.g. to resume PushWard before a pause ends. 404 mute.not_found when the id is not one of this account's mutes. Needs the key's account permission at manage (403 integration_key.permission_denied otherwise).",
 }
 
 // paramDescSuffix adds MCP-side behaviour to a body param's spec description,
@@ -471,7 +484,7 @@ func buildAPITools(spec *openAPISpec) []toolDef {
 			t := toolDef{
 				Name:        toSnakeCase(op.OperationID),
 				FuncName:    toPascalCase(op.OperationID),
-				Description: firstNonEmpty(op.Summary, op.Description),
+				Description: firstNonEmpty(toolDescriptions[op.OperationID], op.Summary, op.Description),
 				Method:      strings.ToUpper(method),
 				Path:        path,
 			}

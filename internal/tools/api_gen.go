@@ -55,6 +55,45 @@ func registerAPITools(s *mcpserver.MCPServer, api *client.APIClient) {
 		},
 	)
 
+	// create_mute
+	s.AddTool(
+		mcp.NewTool("create_mute",
+			mcp.WithDescription("Mute or pause PushWard on every device of the account, e.g. \"pause PushWard for an hour\" (target *, applies_to both, until an hour from now) or \"mute sonarr until tomorrow\" (target sonarr). target is a notification source or activity slug, matched exactly, or * for everything except critical alerts; a mute on one specific source silences its critical alerts too. mode silent (the default) still delivers notifications, without sound, banner or screen wake; off sends no push. Either way the notification is kept in the app's list. While muted no new Live Activity starts for the target and running ones update without sound. until is an RFC 3339 time in the future, computed from the current time; leave it out to mute until delete_mute removes it. schedule mutes a daily window instead, e.g. {\"start_minute\": 1320, \"end_minute\": 420, \"time_zone\": \"Europe/Warsaw\"} for 22:00-07:00; critical alerts get through a schedule. Muting the same target and applies_to again replaces the timed mute; a schedule mute is kept as its own entry. 422 mute.invalid for a bad field (an until not in the future, a schedule that starts where it ends), mute.time_zone_invalid for an unknown time zone, mute.limit_exceeded past 100 mutes. Needs the key's account permission at manage: every key starts without it, the default key included, and the user grants it in the PushWard app (403 integration_key.permission_denied otherwise)."),
+			// Create/send is additive, not destructive; override the destructiveHint:true
+			// default so clients don't treat it as a data-clobbering operation.
+			mcp.WithDestructiveHintAnnotation(false),
+			// Every tool proxies an external REST API (api.pushward.app), so its
+			// results cross a trust boundary - keep the open-world hint explicit.
+			mcp.WithOpenWorldHintAnnotation(true),
+			mcp.WithString("applies_to",
+				mcp.Required(),
+				mcp.Description("applies_to"),
+				mcp.Enum("notifications", "activities", "both"),
+			),
+			mcp.WithString("label",
+				mcp.Description("The name the app shows for the target."),
+			),
+			mcp.WithString("mode",
+				mcp.Description("For notifications, silent delivers without sound, banner or screen wake and off sends no push; the notification is kept in the list either way. For Live Activities both modes mean no new Live Activity starts and updates arrive without sound: silent and off differ only for notifications."),
+				mcp.Enum("silent", "off"),
+			),
+			mcp.WithObject("schedule",
+				mcp.Description("Daily window; with until set too, a schedule that ends."),
+				mcp.Properties(map[string]any{"end_minute": map[string]any{"description": "End of the window (exclusive), minutes since local midnight; below start_minute the window wraps past midnight. Never equal to start_minute.", "type": "integer"}, "start_minute": map[string]any{"description": "Start of the window, minutes since local midnight.", "type": "integer"}, "time_zone": map[string]any{"description": "IANA time zone the window is in, e.g. Europe/Warsaw.", "type": "string"}}),
+			),
+			mcp.WithString("target",
+				mcp.Required(),
+				mcp.Description("A notification source or activity slug, or * for everything except critical alerts."),
+			),
+			mcp.WithString("until",
+				mcp.Description("When the mute ends, in the future; absent: until removed."),
+			),
+		),
+		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			return handleCreateMute(ctx, req, api)
+		},
+	)
+
 	// create_notification
 	s.AddTool(
 		mcp.NewTool("create_notification",
@@ -297,6 +336,25 @@ func registerAPITools(s *mcpserver.MCPServer, api *client.APIClient) {
 		},
 	)
 
+	// delete_mute
+	s.AddTool(
+		mcp.NewTool("delete_mute",
+			mcp.WithDescription("Unmute: remove one mute by its id from list_mutes, e.g. to resume PushWard before a pause ends. 404 mute.not_found when the id is not one of this account's mutes. Needs the key's account permission at manage (403 integration_key.permission_denied otherwise)."),
+			mcp.WithDestructiveHintAnnotation(true),
+			mcp.WithIdempotentHintAnnotation(true),
+			// Every tool proxies an external REST API (api.pushward.app), so its
+			// results cross a trust boundary - keep the open-world hint explicit.
+			mcp.WithOpenWorldHintAnnotation(true),
+			mcp.WithString("mute_id",
+				mcp.Required(),
+				mcp.Description("mute_id path parameter"),
+			),
+		),
+		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			return handleDeleteMute(ctx, req, api)
+		},
+	)
+
 	// delete_widget
 	s.AddTool(
 		mcp.NewTool("delete_widget",
@@ -377,6 +435,20 @@ func registerAPITools(s *mcpserver.MCPServer, api *client.APIClient) {
 		),
 		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 			return handleGetWidget(ctx, req, api)
+		},
+	)
+
+	// list_mutes
+	s.AddTool(
+		mcp.NewTool("list_mutes",
+			mcp.WithDescription("List what is muted or paused on the account's devices, oldest first. Each mute has an id (pass it to delete_mute), target (a notification source or activity slug, or * for everything except critical alerts), applies_to (notifications, activities or both), mode (silent or off), until (RFC 3339, absent when it lasts until removed) and schedule (a daily window, absent when it is all day). Timed mutes that already ended are left out. Needs the key's account permission at read or above: every key starts without it, the default key included, and the user grants it in the PushWard app (403 integration_key.permission_denied otherwise)."),
+			mcp.WithReadOnlyHintAnnotation(true),
+			// Every tool proxies an external REST API (api.pushward.app), so its
+			// results cross a trust boundary - keep the open-world hint explicit.
+			mcp.WithOpenWorldHintAnnotation(true),
+		),
+		func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			return handleListMutes(ctx, req, api)
 		},
 	)
 
@@ -560,6 +632,48 @@ func handleCreateActivity(ctx context.Context, req mcp.CallToolRequest, api *cli
 		}
 	}
 	raw, err := api.CreateActivity(ctx, input)
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
+	return mcp.NewToolResultText(string(raw)), nil
+}
+
+func handleCreateMute(ctx context.Context, req mcp.CallToolRequest, api *client.APIClient) (*mcp.CallToolResult, error) {
+	paramAppliesTo, err := req.RequireString("applies_to")
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
+	paramTarget, err := req.RequireString("target")
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
+	input := client.CreateMuteInput{
+		AppliesTo: paramAppliesTo,
+		Target:    paramTarget,
+	}
+	if v := req.GetString("label", ""); v != "" {
+		input.Label = v
+	}
+	if v := req.GetString("mode", ""); v != "" {
+		input.Mode = v
+	}
+	if v, ok := req.GetArguments()["schedule"]; ok && v != nil {
+		// An empty object is skipped like an omitted one: some clients fill
+		// every optional object param, and an empty one would not mean what the caller asked for.
+		if m, isMap := v.(map[string]any); !isMap || len(m) > 0 {
+			buf, err := json.Marshal(v)
+			if err != nil {
+				return mcp.NewToolResultError("encoding schedule: " + err.Error()), nil
+			}
+			// Forward opaque JSON - server is the source of truth for the
+			// schedule schema, so new fields don't require an MCP rebuild.
+			input.Schedule = json.RawMessage(buf)
+		}
+	}
+	if v := req.GetString("until", ""); v != "" {
+		input.Until = v
+	}
+	raw, err := api.CreateMute(ctx, input)
 	if err != nil {
 		return mcp.NewToolResultError(err.Error()), nil
 	}
@@ -905,6 +1019,18 @@ func handleDeleteActivity(ctx context.Context, req mcp.CallToolRequest, api *cli
 	return mcp.NewToolResultText("deleted successfully"), nil
 }
 
+func handleDeleteMute(ctx context.Context, req mcp.CallToolRequest, api *client.APIClient) (*mcp.CallToolResult, error) {
+	paramMuteID, err := req.RequireString("mute_id")
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
+	err = api.DeleteMute(ctx, paramMuteID)
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
+	return mcp.NewToolResultText("deleted successfully"), nil
+}
+
 func handleDeleteWidget(ctx context.Context, req mcp.CallToolRequest, api *client.APIClient) (*mcp.CallToolResult, error) {
 	paramSlug, err := req.RequireString("slug")
 	if err != nil {
@@ -951,6 +1077,14 @@ func handleGetWidget(ctx context.Context, req mcp.CallToolRequest, api *client.A
 		return mcp.NewToolResultError(err.Error()), nil
 	}
 	raw, err := api.GetWidget(ctx, paramSlug)
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
+	return mcp.NewToolResultText(string(raw)), nil
+}
+
+func handleListMutes(ctx context.Context, req mcp.CallToolRequest, api *client.APIClient) (*mcp.CallToolResult, error) {
+	raw, err := api.ListMutes(ctx)
 	if err != nil {
 		return mcp.NewToolResultError(err.Error()), nil
 	}

@@ -1076,6 +1076,59 @@ func TestBuildAPITools_TargetParams(t *testing.T) {
 	}
 }
 
+// The mute operations become tools with their own descriptions, and a
+// description override for an operation the spec no longer has fails here
+// instead of silently falling back to nothing.
+func TestBuildAPITools_MuteTools(t *testing.T) {
+	spec := apiSpec(t)
+	ops := map[string]bool{}
+	for _, item := range spec.Paths {
+		for _, op := range item {
+			ops[op.OperationID] = true
+		}
+	}
+	for id := range toolDescriptions {
+		if !ops[id] {
+			t.Errorf("toolDescriptions has %s, which openapi.yaml does not", id)
+		}
+	}
+	byName := map[string]toolDef{}
+	for _, tl := range buildAPITools(spec) {
+		byName[tl.Name] = tl
+	}
+	for name, want := range map[string]struct{ op, method, path string }{
+		"list_mutes":  {"listMutes", "GET", "/app/mutes"},
+		"create_mute": {"createMute", "POST", "/app/mutes"},
+		"delete_mute": {"deleteMute", "DELETE", "/app/mutes/{mute_id}"},
+	} {
+		tl, ok := byName[name]
+		if !ok {
+			t.Errorf("%s is not generated", name)
+			continue
+		}
+		if tl.Method != want.method || tl.Path != want.path || tl.Description != toolDescriptions[want.op] {
+			t.Errorf("%s = %s %s %q, want %s %s with its override", name, tl.Method, tl.Path, tl.Description, want.method, want.path)
+		}
+	}
+	params := map[string]paramDef{}
+	for _, p := range byName["create_mute"].Params {
+		params[p.Name] = p
+	}
+	for _, name := range []string{"target", "applies_to"} {
+		if p := params[name]; p.MCPType != "String" || !p.Required {
+			t.Errorf("create_mute %s = %+v, want a required string", name, p)
+		}
+	}
+	if p := params["schedule"]; p.MCPType != "Object" || !p.Opaque || p.Props["time_zone"] == nil {
+		t.Errorf("create_mute schedule = %+v, want an opaque object with its properties", p)
+	}
+	for _, name := range []string{"label", "mode", "until"} {
+		if p := params[name]; p.MCPType != "String" || p.Required {
+			t.Errorf("create_mute %s = %+v, want an optional string", name, p)
+		}
+	}
+}
+
 // The acknowledged-alert, encryption and snooze fields of a notification send
 // reach the client struct once the spec carries them: acknowledge as an
 // opaque object, tags as a string array, snooze as an integer array,

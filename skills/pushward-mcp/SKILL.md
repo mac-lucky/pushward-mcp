@@ -51,6 +51,7 @@ below use that prefix.
 | a number to glance at later | `create_widget` once, then `update_widget` |
 | a reminder later or on a repeat | `create_scheduled_notification` |
 | a report to read at a desk | `send_email` (only to addresses verified in the app) |
+| to pause PushWard, or silence one source, for a while | `create_mute` (`list_mutes` shows what is muted, `delete_mute` ends one early) |
 
 One notification at the end beats five along the way. Do not notify about what the user is
 watching you do right now; notify when they would otherwise have to come back and check.
@@ -334,5 +335,8 @@ the relay; the hosted server does not. For shell scripts and CI, point the user 
   and the MCP connection; a revoke or roll breaks whatever uses that key.
 - `bulk_end_activities` previews by default; show the user the preview before calling it again
   with `confirm: true`.
+- `create_mute` only when the user asks for quiet. A mute on `*` silences everything but
+  critical alerts on all their devices, including what you send next; give it an `until`
+  unless they said to keep it.
 - `delete_activity` and `delete_widget` remove things from the user's devices. End an activity
   instead unless they asked for a delete.

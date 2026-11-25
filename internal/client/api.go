@@ -643,6 +643,40 @@ func (c *APIClient) DeleteWidget(ctx context.Context, slug string) error {
 	return err
 }
 
+// CreateMuteInput is the request body for POST /app/mutes. Left-out optional
+// fields are not sent, so the server defaults apply (mode silent, no end).
+// Schedule is forwarded opaque, so the server refuses a window missing a field
+// instead of the client filling it with 0.
+type CreateMuteInput struct {
+	Target    string          `json:"target"`
+	AppliesTo string          `json:"applies_to"`
+	Label     string          `json:"label,omitempty"`
+	Mode      string          `json:"mode,omitempty"`
+	Until     string          `json:"until,omitempty"`
+	Schedule  json.RawMessage `json:"schedule,omitempty"`
+}
+
+// ListMutes returns the account's mutes, oldest first.
+func (c *APIClient) ListMutes(ctx context.Context) (json.RawMessage, error) {
+	raw, _, err := c.DoJSON(ctx, http.MethodGet, "/app/mutes", nil)
+	return raw, err
+}
+
+// CreateMute mutes a source, an activity slug or * on every device of the account.
+func (c *APIClient) CreateMute(ctx context.Context, input CreateMuteInput) (json.RawMessage, error) {
+	raw, _, err := c.DoJSON(ctx, http.MethodPost, "/app/mutes", input)
+	return raw, err
+}
+
+// DeleteMute removes one of the account's mutes.
+func (c *APIClient) DeleteMute(ctx context.Context, id string) error {
+	if id == "" {
+		return errors.New("mute_id is required: take it from list_mutes")
+	}
+	_, _, err := c.DoJSON(ctx, http.MethodDelete, "/app/mutes/"+url.PathEscape(id), nil)
+	return err
+}
+
 var keyIDPattern = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`)
 
 // integrationKeyPath rejects anything but a hyphenated UUID before it is
