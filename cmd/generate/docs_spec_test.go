@@ -191,6 +191,38 @@ func TestTrimDocsSpec_CommittedAsset(t *testing.T) {
 	}
 }
 
+// Tools are generated from openapi.yaml, but a networked run refreshes the
+// asset from production, so an operation production does not document yet
+// would ship as a tool get_pushward_docs knows nothing about.
+func TestDocsAssetCoversToolSpec(t *testing.T) {
+	root, err := os.ReadFile(filepath.Join(repoRoot(t), "openapi.yaml"))
+	if err != nil {
+		t.Skipf("openapi.yaml not found: %v", err)
+	}
+	asset, err := os.ReadFile(filepath.Join(repoRoot(t), "internal", "docs", "assets", "api-openapi.yaml"))
+	if err != nil {
+		t.Skipf("api-openapi.yaml not found: %v", err)
+	}
+	trimmed, err := trimDocsSpec(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	documented := map[string]bool{}
+	for _, item := range asMap(decodeSpec(t, asset)["paths"]) {
+		for _, op := range asMap(item) {
+			id, _ := asMap(op)["operationId"].(string)
+			documented[id] = true
+		}
+	}
+	for path, item := range asMap(decodeSpec(t, trimmed)["paths"]) {
+		for method, op := range asMap(item) {
+			if id, _ := asMap(op)["operationId"].(string); !documented[id] {
+				t.Errorf("%s %s (%s) is in openapi.yaml but not in internal/docs/assets/api-openapi.yaml", method, path, id)
+			}
+		}
+	}
+}
+
 const syntheticSpec = `openapi: 3.1.0
 paths:
   /orgs/{id}:
