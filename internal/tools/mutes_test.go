@@ -44,7 +44,7 @@ func TestMuteTools_Requests(t *testing.T) {
 		{handleCreateMute, map[string]any{"target": "*", "applies_to": "both", "until": "2030-01-01T10:00:00Z"}, `"m-1"`},
 		// Clients that fill every optional param send empty values; they
 		// must not reach the server as a blank mode or an empty schedule.
-		{handleCreateMute, map[string]any{"target": "sonarr", "applies_to": "notifications", "mode": "", "label": "", "until": "", "schedule": map[string]any{}}, `"m-1"`},
+		{handleCreateMute, map[string]any{"target": "sonarr", "applies_to": "notifications", "mode": "", "label": nil, "until": "", "schedule": map[string]any{}}, `"m-1"`},
 		{handleCreateMute, map[string]any{
 			"target": "deploy-prod", "applies_to": "activities", "mode": "off", "label": "Deploys",
 			"schedule": map[string]any{"start_minute": float64(1320), "end_minute": float64(0), "time_zone": "Europe/Warsaw"},
@@ -83,8 +83,11 @@ func TestMuteTools_MissingArgsNeverSent(t *testing.T) {
 	}{
 		"create without target":     {handleCreateMute, map[string]any{"applies_to": "both"}},
 		"create without applies_to": {handleCreateMute, map[string]any{"target": "*"}},
-		"delete without id":         {handleDeleteMute, nil},
-		"delete with empty id":      {handleDeleteMute, map[string]any{"mute_id": ""}},
+		// Dropped, a unix-time until would leave a mute that never ends.
+		"create with a numeric until": {handleCreateMute, map[string]any{"target": "*", "applies_to": "both", "until": float64(1764072000)}},
+		"create with a boolean mode":  {handleCreateMute, map[string]any{"target": "*", "applies_to": "both", "mode": true}},
+		"delete without id":           {handleDeleteMute, nil},
+		"delete with empty id":        {handleDeleteMute, map[string]any{"mute_id": ""}},
 	} {
 		if r, err := c.handler(context.Background(), newReq(c.args), api); err != nil || !r.IsError {
 			t.Errorf("%s: want a tool error, got %v", name, err)

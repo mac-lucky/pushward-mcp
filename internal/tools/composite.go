@@ -77,6 +77,21 @@ func isJSONObject(s string) bool {
 	return len(t) > 0 && t[0] == '{' && json.Valid([]byte(s))
 }
 
+// optionalString is a generated tool's optional string param: "" when left out
+// or null, an error for any other type. GetString would read a number as left
+// out, and a dropped until turns a one-hour mute into one that never ends.
+func optionalString(req mcp.CallToolRequest, name string) (string, error) {
+	v, ok := req.GetArguments()[name]
+	if !ok || v == nil {
+		return "", nil
+	}
+	s, isString := v.(string)
+	if !isString {
+		return "", fmt.Errorf("%s must be a string", name)
+	}
+	return s, nil
+}
+
 func registerCompositeTools(s *mcpserver.MCPServer, api *client.APIClient, relay *client.RelayClient) {
 	// relay is nil in http/remote mode; derive the gate from it so the enable
 	// state has a single source (the presence of a relay client).

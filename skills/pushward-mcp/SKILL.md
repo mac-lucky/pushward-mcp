@@ -337,6 +337,8 @@ the relay; the hosted server does not. For shell scripts and CI, point the user 
   with `confirm: true`.
 - `create_mute` only when the user asks for quiet. A mute on `*` silences everything but
   critical alerts on all their devices, including what you send next; give it an `until`
-  unless they said to keep it.
+  unless they said to keep it. It replaces the mute of the same kind (all-day or daily
+  window) on that target and `applies_to`, so read `list_mutes` first: an hour's pause over
+  a standing mute ends that mute in an hour, and a second window drops the first.
 - `delete_activity` and `delete_widget` remove things from the user's devices. End an activity
   instead unless they asked for a delete.

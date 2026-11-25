@@ -58,7 +58,7 @@ func registerAPITools(s *mcpserver.MCPServer, api *client.APIClient) {
 	// create_mute
 	s.AddTool(
 		mcp.NewTool("create_mute",
-			mcp.WithDescription("Mute or pause PushWard on every device of the account, e.g. \"pause PushWard for an hour\" (target *, applies_to both, until an hour from now) or \"mute sonarr until tomorrow\" (target sonarr). target is a notification source or activity slug, matched exactly, or * for everything except critical alerts; a mute on one specific source silences its critical alerts too. mode silent (the default) still delivers notifications, without sound, banner or screen wake; off sends no push. Either way the notification is kept in the app's list. While muted no new Live Activity starts for the target and running ones update without sound. until is an RFC 3339 time in the future, computed from the current time; leave it out to mute until delete_mute removes it. schedule mutes a daily window instead, e.g. {\"start_minute\": 1320, \"end_minute\": 420, \"time_zone\": \"Europe/Warsaw\"} for 22:00-07:00; critical alerts get through a schedule. Muting the same target and applies_to again replaces the timed mute; a schedule mute is kept as its own entry. 422 mute.invalid for a bad field (an until not in the future, a schedule that starts where it ends), mute.time_zone_invalid for an unknown time zone, mute.limit_exceeded past 100 mutes. Needs the key's account permission at manage: every key starts without it, the default key included, and the user grants it in the PushWard app (403 integration_key.permission_denied otherwise)."),
+			mcp.WithDescription("Mute or pause PushWard on every device of the account, e.g. \"pause PushWard for an hour\" (target *, applies_to both, until an hour from now) or \"mute sonarr until tomorrow\" (target sonarr). target is a notification source or activity slug, matched exactly, or * for everything except critical alerts; a mute on one specific source silences its critical alerts too. mode silent (the default) still delivers notifications, without sound, banner or screen wake; off sends no push. Either way the notification is kept in the app's list. While muted no new Live Activity starts for the target and running ones update without sound. until is an RFC 3339 time in the future, computed from the current time; leave it out to mute until delete_mute removes it. schedule mutes a daily window instead, e.g. {\"start_minute\": 1320, \"end_minute\": 420, \"time_zone\": \"Europe/Warsaw\"} for 22:00-07:00; critical alerts get through a schedule. Each target and applies_to holds one all-day mute (timed or until removed) and one daily window, and a new mute replaces the one of its kind with exactly what it sends: a second window replaces the first, \"mute sonarr for an hour\" turns a sonarr mute that lasted until removed into one that ends in an hour, and a left-out mode goes back to silent. Call list_mutes first and carry over what the user wants to keep. 422 mute.invalid for a bad field (an until not in the future, a schedule that starts where it ends), mute.time_zone_invalid for an unknown time zone, mute.limit_exceeded past 100 mutes. Needs the key's account permission at manage: every key starts without it, the default key included, and the user grants it in the PushWard app (403 integration_key.permission_denied otherwise)."),
 			// Create/send is additive, not destructive; override the destructiveHint:true
 			// default so clients don't treat it as a data-clobbering operation.
 			mcp.WithDestructiveHintAnnotation(false),
@@ -651,10 +651,14 @@ func handleCreateMute(ctx context.Context, req mcp.CallToolRequest, api *client.
 		AppliesTo: paramAppliesTo,
 		Target:    paramTarget,
 	}
-	if v := req.GetString("label", ""); v != "" {
+	if v, err := optionalString(req, "label"); err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	} else if v != "" {
 		input.Label = v
 	}
-	if v := req.GetString("mode", ""); v != "" {
+	if v, err := optionalString(req, "mode"); err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	} else if v != "" {
 		input.Mode = v
 	}
 	if v, ok := req.GetArguments()["schedule"]; ok && v != nil {
@@ -670,7 +674,9 @@ func handleCreateMute(ctx context.Context, req mcp.CallToolRequest, api *client.
 			input.Schedule = json.RawMessage(buf)
 		}
 	}
-	if v := req.GetString("until", ""); v != "" {
+	if v, err := optionalString(req, "until"); err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	} else if v != "" {
 		input.Until = v
 	}
 	raw, err := api.CreateMute(ctx, input)
@@ -704,25 +710,39 @@ func handleCreateNotification(ctx context.Context, req mcp.CallToolRequest, api 
 		// actions schema, so new fields don't require an MCP rebuild.
 		input.Actions = json.RawMessage(buf)
 	}
-	if v := req.GetString("activity_slug", ""); v != "" {
+	if v, err := optionalString(req, "activity_slug"); err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	} else if v != "" {
 		input.ActivitySlug = v
 	}
-	if v := req.GetString("body", ""); v != "" {
+	if v, err := optionalString(req, "body"); err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	} else if v != "" {
 		input.Body = v
 	}
-	if v := req.GetString("callback_url", ""); v != "" {
+	if v, err := optionalString(req, "callback_url"); err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	} else if v != "" {
 		input.CallbackURL = v
 	}
-	if v := req.GetString("collapse_id", ""); v != "" {
+	if v, err := optionalString(req, "collapse_id"); err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	} else if v != "" {
 		input.CollapseID = v
 	}
-	if v := req.GetString("encrypted", ""); v != "" {
+	if v, err := optionalString(req, "encrypted"); err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	} else if v != "" {
 		input.Encrypted = v
 	}
-	if v := req.GetString("icon_url", ""); v != "" {
+	if v, err := optionalString(req, "icon_url"); err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	} else if v != "" {
 		input.IconURL = v
 	}
-	if v := req.GetString("level", ""); v != "" {
+	if v, err := optionalString(req, "level"); err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	} else if v != "" {
 		input.Level = v
 	}
 	if v, ok := req.GetArguments()["media"]; ok && v != nil {
@@ -761,13 +781,19 @@ func handleCreateNotification(ctx context.Context, req mcp.CallToolRequest, api 
 		}
 		input.Snooze = parsed
 	}
-	if v := req.GetString("source", ""); v != "" {
+	if v, err := optionalString(req, "source"); err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	} else if v != "" {
 		input.Source = v
 	}
-	if v := req.GetString("source_display_name", ""); v != "" {
+	if v, err := optionalString(req, "source_display_name"); err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	} else if v != "" {
 		input.SourceDisplayName = v
 	}
-	if v := req.GetString("subtitle", ""); v != "" {
+	if v, err := optionalString(req, "subtitle"); err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	} else if v != "" {
 		input.Subtitle = v
 	}
 	if v, ok := req.GetArguments()["tags"]; ok && v != nil {
@@ -794,13 +820,19 @@ func handleCreateNotification(ctx context.Context, req mcp.CallToolRequest, api 
 			input.Target = json.RawMessage(buf)
 		}
 	}
-	if v := req.GetString("thread_id", ""); v != "" {
+	if v, err := optionalString(req, "thread_id"); err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	} else if v != "" {
 		input.ThreadID = v
 	}
-	if v := req.GetString("title", ""); v != "" {
+	if v, err := optionalString(req, "title"); err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	} else if v != "" {
 		input.Title = v
 	}
-	if v := req.GetString("url", ""); v != "" {
+	if v, err := optionalString(req, "url"); err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	} else if v != "" {
 		input.URL = v
 	}
 	if v := req.GetFloat("volume", math.NaN()); !math.IsNaN(v) {
@@ -837,25 +869,39 @@ func handleCreateScheduledNotification(ctx context.Context, req mcp.CallToolRequ
 		// actions schema, so new fields don't require an MCP rebuild.
 		input.Actions = json.RawMessage(buf)
 	}
-	if v := req.GetString("activity_slug", ""); v != "" {
+	if v, err := optionalString(req, "activity_slug"); err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	} else if v != "" {
 		input.ActivitySlug = v
 	}
-	if v := req.GetString("body", ""); v != "" {
+	if v, err := optionalString(req, "body"); err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	} else if v != "" {
 		input.Body = v
 	}
-	if v := req.GetString("callback_url", ""); v != "" {
+	if v, err := optionalString(req, "callback_url"); err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	} else if v != "" {
 		input.CallbackURL = v
 	}
-	if v := req.GetString("collapse_id", ""); v != "" {
+	if v, err := optionalString(req, "collapse_id"); err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	} else if v != "" {
 		input.CollapseID = v
 	}
-	if v := req.GetString("encrypted", ""); v != "" {
+	if v, err := optionalString(req, "encrypted"); err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	} else if v != "" {
 		input.Encrypted = v
 	}
-	if v := req.GetString("icon_url", ""); v != "" {
+	if v, err := optionalString(req, "icon_url"); err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	} else if v != "" {
 		input.IconURL = v
 	}
-	if v := req.GetString("level", ""); v != "" {
+	if v, err := optionalString(req, "level"); err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	} else if v != "" {
 		input.Level = v
 	}
 	if v, ok := req.GetArguments()["media"]; ok && v != nil {
@@ -894,7 +940,9 @@ func handleCreateScheduledNotification(ctx context.Context, req mcp.CallToolRequ
 		}
 		input.Recurrence = parsed
 	}
-	if v := req.GetString("send_at", ""); v != "" {
+	if v, err := optionalString(req, "send_at"); err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	} else if v != "" {
 		input.SendAt = v
 	}
 	if v, ok := req.GetArguments()["snooze"]; ok && v != nil {
@@ -908,13 +956,19 @@ func handleCreateScheduledNotification(ctx context.Context, req mcp.CallToolRequ
 		}
 		input.Snooze = parsed
 	}
-	if v := req.GetString("source", ""); v != "" {
+	if v, err := optionalString(req, "source"); err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	} else if v != "" {
 		input.Source = v
 	}
-	if v := req.GetString("source_display_name", ""); v != "" {
+	if v, err := optionalString(req, "source_display_name"); err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	} else if v != "" {
 		input.SourceDisplayName = v
 	}
-	if v := req.GetString("subtitle", ""); v != "" {
+	if v, err := optionalString(req, "subtitle"); err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	} else if v != "" {
 		input.Subtitle = v
 	}
 	if v, ok := req.GetArguments()["tags"]; ok && v != nil {
@@ -941,13 +995,19 @@ func handleCreateScheduledNotification(ctx context.Context, req mcp.CallToolRequ
 			input.Target = json.RawMessage(buf)
 		}
 	}
-	if v := req.GetString("thread_id", ""); v != "" {
+	if v, err := optionalString(req, "thread_id"); err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	} else if v != "" {
 		input.ThreadID = v
 	}
-	if v := req.GetString("title", ""); v != "" {
+	if v, err := optionalString(req, "title"); err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	} else if v != "" {
 		input.Title = v
 	}
-	if v := req.GetString("url", ""); v != "" {
+	if v, err := optionalString(req, "url"); err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	} else if v != "" {
 		input.URL = v
 	}
 	if v := req.GetFloat("volume", math.NaN()); !math.IsNaN(v) {
@@ -1112,10 +1172,14 @@ func handleSendEmail(ctx context.Context, req mcp.CallToolRequest, api *client.A
 		Subject: paramSubject,
 		To:      paramTo,
 	}
-	if v := req.GetString("html_body", ""); v != "" {
+	if v, err := optionalString(req, "html_body"); err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	} else if v != "" {
 		input.HTMLBody = v
 	}
-	if v := req.GetString("text_body", ""); v != "" {
+	if v, err := optionalString(req, "text_body"); err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	} else if v != "" {
 		input.TextBody = v
 	}
 	raw, err := api.SendEmail(ctx, input)
@@ -1149,13 +1213,17 @@ func handleUpdateActivity(ctx context.Context, req mcp.CallToolRequest, api *cli
 	if v := req.GetFloat("priority", math.NaN()); !math.IsNaN(v) {
 		input.Priority = &v
 	}
-	if v := req.GetString("sound", ""); v != "" {
+	if v, err := optionalString(req, "sound"); err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	} else if v != "" {
 		input.Sound = v
 	}
 	if v := req.GetFloat("stale_ttl", math.NaN()); !math.IsNaN(v) {
 		input.StaleTTL = &v
 	}
-	if v := req.GetString("state", ""); v != "" {
+	if v, err := optionalString(req, "state"); err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	} else if v != "" {
 		input.State = v
 	}
 	if v, ok := req.GetArguments()["target"]; ok && v != nil {
@@ -1212,7 +1280,9 @@ func handleUpdateWidget(ctx context.Context, req mcp.CallToolRequest, api *clien
 	input := client.UpdateWidgetInput{
 		Content: json.RawMessage(contentStr),
 	}
-	if v := req.GetString("name", ""); v != "" {
+	if v, err := optionalString(req, "name"); err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	} else if v != "" {
 		input.Name = v
 	}
 	if v := req.GetFloat("push_throttle", math.NaN()); !math.IsNaN(v) {
