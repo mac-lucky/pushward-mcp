@@ -789,7 +789,7 @@ var (
 
 	widgetProgressClause  = "progress (value 0.0-1.0, or start_date + end_date to advance the bar on device between pushes; send both when you have them, older builds render value), "
 	widgetGaugeClause     = "gauge (value, min_value and max_value all required), "
-	widgetStatListClause  = "stat_list (stat_rows: 1-6 {label, value, unit, timer {date, style}}), "
+	widgetStatListClause  = "stat_list (stat_rows: 1-6 {label, value, unit, timer {date, style}, progress 0.0-1.0 draws a bar under the row; value stays the text shown}), "
 	widgetTrendClause     = "trend (value plus points: 2-48 numbers oldest first; min_value/max_value fix the chart bounds, otherwise it auto-scales), "
 	widgetCountdownClause = "countdown (end_date required, start_date fills a progress bar alongside it, expired_text replaces the counter once end_date passes), "
 	widgetBatteryClause   = "battery (devices: 1-8 {name, level 0-100, charging, icon, color}; device_sort: up to 2 keys of {field: level|name, direction: asc|desc}, applied in order and reordering devices on write so the ones that matter land in the 2 a small widget shows), "
